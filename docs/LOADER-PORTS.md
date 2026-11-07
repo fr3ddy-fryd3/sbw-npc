@@ -61,7 +61,7 @@ Build prerequisites found on the way:
 - **Maven Central rate limits (HTTP 429)** the shared cloud proxy; retrying later works.
 
 Still to do for Fabric: long sessions and saving and reloading; aircraft rendering;
-a Fabric GameTest or server scene run in CI; the `enabled` profile and release artifact validation.
+a Fabric GameTest or server scene run in CI.
 
 ## Forge, Minecraft 1.20.1 (#16)
 
@@ -94,10 +94,10 @@ Differences and gaps:
 - Worlds are not portable between 1.20.1 and 1.21: block positions and item data are saved in each version's format.
 
 Still to do for Forge: aircraft rendering; running the JourneyMap plugin (`integration/journeymap`, a copy of the NeoForge
-one against JourneyMap API 1.20.1-2.0.0, compiled only) in JourneyMap; the `enabled` profile and release artifact validation.
-JourneyMap 6.0.7 cannot be used on a Legacy Launcher client while `authserver.ely.by` is unreachable: it looks up player
-skins on the render thread through `authlib-ely` and the game freezes for 30 s per lookup (seen in thread dumps; not
-caused by this mod).
+one against JourneyMap API 1.20.1-2.0.0, compiled only) in JourneyMap; a Forge GameTest or server scene run in CI.
+Seen once, on one tester's Legacy Launcher setup: JourneyMap 6.0.7 froze the game, because it looks up player skins on
+the render thread through `authlib-ely` and `authserver.ely.by` did not answer (30 s per lookup, in thread dumps). Not
+reproduced elsewhere and not caused by this mod.
 
 ## Local test pack and release
 
@@ -109,4 +109,5 @@ caused by this mod).
 - Jars are named `sbwnpc-<version>-mc<minecraft>-<loader>.jar` on every loader.
 - Found and fixed while auditing the Fabric module: `fabric.mod.json` shipped the literal `${version}`;
   `verify-release-artifact.py` rejected a `preview` profile; the Fabric jar had no loader classifier.
-  CI builds the Fabric jar. Releases still publish only the enabled NeoForge jar.
+  CI builds and verifies the production jar of every loader, and a release tag publishes all three
+  (`docs/RELEASE-VALIDATION.md`).

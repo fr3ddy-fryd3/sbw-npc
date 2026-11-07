@@ -10,7 +10,7 @@ import com.sbwnpc.squad.entity.DroneRegistry
 import com.sbwnpc.squad.entity.GrenadeRegistry
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
-import com.sbwnpc.squad.entity.ai.DroneLinks
+import com.sbwnpc.squad.ai.integration.DroneLinks
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.experience.ExperienceAwards
@@ -85,6 +85,7 @@ object FabricEvents {
 
     private fun onServerTick(server: net.minecraft.server.MinecraftServer) {
         SelectionHighlight.tick(server)
+        com.sbwnpc.squad.squad.DeployPreview.tick(server)
         PilotlessHelicopters.tick(server)
         com.sbwnpc.squad.team.Diplomacy.tick(server)
         com.sbwnpc.squad.map.MapFeed.tick(server)
@@ -99,10 +100,8 @@ object FabricEvents {
     private fun onServerStopped() {
         com.sbwnpc.squad.team.Diplomacy.detach()
         com.sbwnpc.squad.map.MapFeed.clearAll()
-        com.sbwnpc.squad.combat.Withdrawal.clearAll()
         com.sbwnpc.squad.combat.SmokeClouds.clearAll()
         com.sbwnpc.squad.squad.FireSupport.clearAll()
-        com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour.clearAll()
         com.sbwnpc.squad.entity.ai.SquadMarch.clearAll()
         com.sbwnpc.squad.entity.ai.BoatTrips.clearAll()
         com.sbwnpc.squad.vehicle.WaterMap.clearAll()

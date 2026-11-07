@@ -2,12 +2,15 @@ package com.sbwnpc.squad.gametest
 
 import com.atsuishio.superbwarfare.entity.projectile.ProjectileEntity
 import com.atsuishio.superbwarfare.init.ModDamageTypes
+import com.sbwnpc.squad.ai.tactics.UnverifiedContacts
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
+import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
+import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
@@ -87,7 +90,73 @@ object AllyDeathGameTests {
         }
     }
 
-    /** Wariness only steers an idle NPC's eyes: an enemy in the open is still fought. */
+    /** Thirty seconds after a man last had a target he grows wary of where the enemy was last seen (#186). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 800, batch = "contact-end")
+    fun manGrowsWaryThirtySecondsAfterContactEnds(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val man = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 22.5), SquadFaction.PIG)
+        val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(40.5, 1.0, 22.5), SquadFaction.COW).apply { isNoAi = true }
+        val lastSeen = helper.absoluteVec(Vec3(40.5, 1.0, 22.5))
+        helper.runAtTickTime(20) {
+            man.target = enemy
+            helper.assertTrue(!man.wary(), "The man was wary before the contact ended")
+        }
+        helper.runAtTickTime(40) {
+            man.target = null
+            enemy.discard()
+        }
+        helper.runAtTickTime(500) {
+            helper.assertTrue(!man.wary(), "The man grew wary before 30 seconds had passed")
+        }
+        helper.runAtTickTime(700) {
+            helper.assertTrue(man.wary(), "The man did not grow wary 30 seconds after the contact ended")
+            val toward = man.waryToward()!!
+            helper.assertTrue(toward.distanceTo(lastSeen) < 2.0, "The man is wary of $toward, not where the enemy was last seen")
+            man.discard()
+            helper.succeed()
+        }
+    }
+
+    /** Within 100 blocks of its objective a squad on foot is wary, and on ATTACK walks, until its first target (#148). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 200, batch = "objective-approach")
+    fun squadApproachingItsObjectiveIsWaryAndWalksUntilContact(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val manager = SquadManager.get(helper.level)
+        fun squad(at: Vec3, order: SquadOrder, objective: BlockPos): NpcEntity {
+            val man = AttackDeploymentGameTests.spawn(helper, at, SquadFaction.PIG)
+            val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
+            manager.setOrder(squad.id, order)
+            manager.setObjective(helper.level, squad.id, helper.absolutePos(objective))
+            return man
+        }
+        val attacker = squad(Vec3(10.5, 1.0, 10.5), SquadOrder.ATTACK, BlockPos(70, 1, 10))
+        val mover = squad(Vec3(10.5, 1.0, 20.5), SquadOrder.MOVE, BlockPos(70, 1, 20))
+        val distant = squad(Vec3(10.5, 1.0, 30.5), SquadOrder.ATTACK, BlockPos(10 + 150, 1, 30))
+        val base = attacker.getAttributeValue(Attributes.MOVEMENT_SPEED)
+        var enemy: NpcEntity? = null
+        helper.runAtTickTime(60) {
+            helper.assertTrue(attacker.wary() && mover.wary(), "A man within 100 blocks of his objective was not wary: attacker=${attacker.wary()} mover=${mover.wary()} squad=${attacker.currentSquad()?.order} obj=${attacker.currentSquad()?.objective} pos=${attacker.blockPosition()}")
+            helper.assertTrue(!distant.wary(), "A man 150 blocks from his objective was wary")
+            helper.assertTrue(attacker.getAttributeValue(Attributes.MOVEMENT_SPEED) < base * 0.7, "The attacking man did not slow to a walk")
+            helper.assertTrue(mover.getAttributeValue(Attributes.MOVEMENT_SPEED) > base * 0.95, "The MOVE order was slowed further")
+            enemy = AttackDeploymentGameTests.spawn(helper, Vec3(60.5, 1.0, 40.5), SquadFaction.COW).apply { isNoAi = true }
+            attacker.target = enemy
+        }
+        helper.runAtTickTime(80) {
+            helper.assertTrue(!attacker.wary(), "The man stayed wary after his first contact")
+            helper.assertTrue(attacker.getAttributeValue(Attributes.MOVEMENT_SPEED) > base * 0.95, "The man kept walking after his first contact")
+            listOf(attacker, mover, distant, enemy!!).forEach { it.discard() }
+            helper.succeed()
+        }
+    }
+
+    /**
+     * Wariness only steers an idle NPC's eyes: an enemy in the open is still fought. The squad is
+     * told where he is, as a scout's report would, so the scene does not wait on each man happening
+     * to turn his head his way.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400, batch = "ally-death-engage")
     fun waryAlliesStillEngageAVisibleEnemy(helper: GameTestHelper) {
@@ -96,7 +165,7 @@ object AllyDeathGameTests {
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
         val allies = men.drop(1)
-        val engaged = HashSet<UUID>()
+        val shots = allies.associateWith { it.lastShotTick }
         var enemy: NpcEntity? = null
         helper.runAtTickTime(40) { men.first().kill() }
         helper.runAtTickTime(60) {
@@ -109,8 +178,8 @@ object AllyDeathGameTests {
         }
         helper.onEachTick {
             val seen = enemy ?: return@onEachTick
-            allies.filter { it.target == seen }.forEach { engaged += it.uuid }
-            if (allies.all { it.uuid in engaged }) {
+            allies.forEach { com.sbwnpc.squad.combat.tactics.SquadTactics.observe(it, seen) }
+            if (allies.all { it.lastShotTick != shots.getValue(it) }) {
                 manager.deleteSquad(helper.level, squad.id)
                 (men + seen).forEach { it.discard() }
                 helper.succeed()
@@ -153,7 +222,9 @@ object AllyDeathGameTests {
             val reports = Files.createDirectories(Path.of(System.getProperty("sbwnpc.gameTestReports")))
             Files.writeString(reports.resolve("ally-death-$name.txt"), lines.joinToString("\n") + "\n")
             helper.assertTrue(allies.all { it.wary() }, "An ally stopped being wary within 10 seconds")
-            helper.assertTrue(allies.all { it.target != null || it.position().distanceTo(start.getValue(it)) < 4.0 }, "A wary ally with nothing to fight wandered off")
+            // A named killer's direction may send the squad's pair of scouts to look; nobody else goes.
+            val moved = allies.count { it.target == null && it.position().distanceTo(start.getValue(it)) >= 4.0 }
+            helper.assertTrue(moved <= if (killer) UnverifiedContacts.SCOUTS else 0, "A wary ally with nothing to fight wandered off: $moved moved")
             manager.deleteSquad(helper.level, squad.id)
             (men + shooter).forEach { it.discard() }
             helper.succeed()

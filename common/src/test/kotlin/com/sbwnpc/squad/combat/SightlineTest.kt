@@ -17,6 +17,11 @@ class SightlineTest {
     }
 
     @Test
+    fun `a shot half a block beside the hull is not blocked`() {
+        assertFalse(Sightline.crosses(hulls, Vec3(2.0, 1.6, 0.0), Vec3(2.0, 1.6, 20.0)))
+    }
+
+    @Test
     fun `a shot well clear of the hull is not blocked`() {
         assertFalse(Sightline.crosses(hulls, Vec3(12.0, 1.6, 0.0), Vec3(12.0, 1.6, 20.0)))
     }

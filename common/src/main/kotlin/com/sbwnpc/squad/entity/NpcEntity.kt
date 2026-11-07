@@ -5,13 +5,11 @@ import com.sbwnpc.squad.compat.NpcEntityBase
 import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.domain.port.Ports
-import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
 import com.sbwnpc.squad.entity.ai.IdleWanderGoal
-import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
 import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
-import com.sbwnpc.squad.entity.ai.MortarCrewBehaviour
+import com.sbwnpc.squad.entity.ai.MortarDeployment
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.SquadOrderBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleCombatSupportBehaviour
@@ -29,6 +27,7 @@ import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.util.SaveableStacks
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
@@ -177,11 +176,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         BrainUtils.setForgettableMemory(this, ModMemories.SUPPRESSING_THREAT.get(), threat, ticks.toInt())
     }
 
-    // Alertness (see InvestigateBehaviour / Alarm): a real "heard something, go check it out"
-    // reaction, distinct from actually having a target. Two sources — GunAttackBehaviour.tick()
-    // raises this on nearby allies whenever it fires (heard gunfire), and die() raises it on nearby
-    // squadmates when the killer can't be resolved as a direct TeamAwareness contact (see die()
-    // below). Backed by a SmartBrainLib TTL memory.
+    // Alertness (see Alarm): "heard something worth a look", distinct from actually having a
+    // target. Two sources — GunAttackBehaviour.tick() raises this on nearby allies whenever it fires
+    // (heard gunfire), and die() raises it on nearby squadmates when the killer can't be resolved as
+    // a direct TeamAwareness contact (see die() below). Backed by a SmartBrainLib TTL memory. Who
+    // walks over to look is the squad's decision (#254): the spot goes to it here and in [hear].
     fun isAlert(): Boolean = BrainUtils.hasMemory(this, ModMemories.ALERT_POSITION.get())
 
     fun alert(pos: Vec3) {
@@ -189,6 +188,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             hear(pos)
             return
         }
+        com.sbwnpc.squad.combat.tactics.SquadTactics.heard(this, pos)
         val remaining = if (isAlert()) {
             BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.ALERT_POSITION.get())
         } else {
@@ -204,12 +204,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /**
      * An eligible noise heard at [at], including allied player gunfire — see [com.sbwnpc.squad.combat.Hearing].
-     * With nothing to fight, it turns to face the sound; and if nothing holds it where it is, goes
-     * to see. Holding means dug in, at a crew post, defending, barraging, on the move or falling
-     * back to an objective, or off to a Supply — none of those drop what they're doing for a noise.
-     * Without [goLook] it only turns: others of its squad go to look instead.
+     * His squad learns of it first, whatever he is doing: whether anyone walks over to look is its
+     * plan's decision (#254). With nothing to fight he turns to face the sound, and is marked alert
+     * if nothing holds him where he is. Holding means dug in, at a crew post, defending, barraging,
+     * on the move or falling back to an objective, or off to a Supply. Without [goLook] he only
+     * turns: he is not among the men who would be free to go.
      */
     fun hear(at: Vec3, nearbyFootstep: Boolean = false, goLook: Boolean = true) {
+        com.sbwnpc.squad.combat.tactics.SquadTactics.heard(this, at)
         val currentTarget = target
         if (currentTarget != null) {
             if (!nearbyFootstep || com.sbwnpc.squad.combat.DetectionSightline.canSee(this, currentTarget)) {
@@ -227,18 +229,18 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         heardUntilTick = tickCount + HEARD_LOOK_TICKS
         val holding = if (goLook) holdReason() else "others of the squad look"
         if (holding == null) alert(at)
-        logHearing(at, if (holding == null) "turns and goes to look" else "turns, holds ($holding)")
+        logHearing(at, if (holding == null) "turns, alert" else "turns, holds ($holding)")
     }
 
     /** What keeps this NPC where it is when it hears a noise, or null when it is free to go and look. */
     internal fun holdReason(): String? {
         val order = currentSquad()?.order
         return when {
-            diggedIn -> "dug in"
+            holds(NpcActivity.DUG_IN) -> "dug in"
 
             busyWithRole() -> "busy with a role"
 
-            resupplying -> "resupplying"
+            holds(NpcActivity.RESUPPLY) -> "resupplying"
 
             order == SquadOrder.DEFEND || order == SquadOrder.PATROL || order == SquadOrder.BARRAGE || order == SquadOrder.MOVE ||
                 order == SquadOrder.RETREAT -> "order $order"
@@ -269,11 +271,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var waryUntilTick = 0
     private var lastHitWarning = Int.MIN_VALUE / 2
 
+    /** Once a fight has been quiet for 30 s the NPC grows wary of where the enemy was last seen (#186). */
+    private val contact = com.sbwnpc.squad.combat.ContactTracker()
+
+    /** Wary and, on ATTACK, walking while within 100 blocks of the squad's objective, until the first target (#148). */
+    private val approach = com.sbwnpc.squad.combat.ObjectiveApproach.State()
+
     /** Whether the NPC is wary: a squadmate fell, a round hit or missed it narrowly, so it watches where the threat came from. */
-    fun wary(): Boolean = waryAt != null && tickCount < waryUntilTick
+    fun wary(): Boolean = approach.toward != null || (waryAt != null && tickCount < waryUntilTick)
 
     /** Where the threat the NPC is wary of came from, while it is wary. */
-    fun waryToward(): Vec3? = waryAt?.takeIf { wary() }
+    fun waryToward(): Vec3? = approach.toward ?: waryAt?.takeIf { wary() }
 
     /**
      * Makes the NPC wary of a threat from [toward] for [WARY_TICKS]: it turns there now, then
@@ -310,32 +318,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     /** Whether an active role, vehicle, medical or tactics controller owns the look direction. */
-    fun lookOwnedElsewhere(): Boolean = busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.combat.tactics.SquadTactics.ownsLook(this)
+    fun lookOwnedElsewhere(): Boolean = !may(Cap.LOOK) || vehicle != null || com.sbwnpc.squad.combat.tactics.SquadTactics.ownsLook(this)
 
-    /** Called by [com.sbwnpc.squad.entity.ai.InvestigateBehaviour] once it reaches the alert
-     *  position (or gives up navigating to it) — ends the investigation instead of waiting out the
-     *  full timer. */
+    /** Ends the alert before its timer, e.g. once he sets off for a Supply. */
     fun clearAlert() {
         BrainUtils.clearMemory(this, ModMemories.ALERT_POSITION.get())
     }
-
-    /** True while [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour] must have the mob to itself for
-     *  movement and combat goals should stand down entirely — false during its PEEKING phase, the
-     *  deliberate window where the mob steps out to return fire and GunAttackBehaviour/
-     *  GrenadeThrowBehaviour take back over. Backed by [ModMemories.COVER_HOLD] (see its own doc
-     *  comment) instead of a hand-rolled enum with a logging setter. */
-    fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get()) || evadingGrenade()
-
-    /** Peeking permits shooting while cover keeps sole ownership of the short movement. */
-    var coverPeekPoint: Vec3? = null
-        internal set
-    fun movementLockedByCover(): Boolean = combatLockedByCover() || coverPeekPoint != null
-
-    /** Running from a live grenade (GrenadeEvadeBehaviour). Part of [combatLockedByCover]; exposed
-     *  on its own for the movers that don't read that lock. */
-    fun evadingGrenade(): Boolean = BrainUtils.hasMemory(this, ModMemories.GRENADE_EVADE.get())
-
-    fun combatLockedByMedic(): Boolean = BrainUtils.hasMemory(this, ModMemories.MEDIC_HEALING.get())
 
     // Set by GunAttackBehaviour every time it actually fires (not just "has a target" — genuinely
     // pulled the trigger this tick). Used by SeekCoverBehaviour to verify an ally is really
@@ -345,6 +333,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var readyToCover: Boolean = false
     internal var debugAimTicks: Int = 0
     val firingObstruction = com.sbwnpc.squad.combat.FiringObstruction()
+
+    /** What his gun saw of his fight, for his plan's engage facts (#251 step B). */
+    val fireObservation = com.sbwnpc.squad.combat.FireObservation()
     var lastFireAt: Vec3? = null
         internal set
     private var sightedTarget: UUID? = null
@@ -397,6 +388,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** Smoke grenades carried, thrown to cover a withdrawal, see [com.sbwnpc.squad.combat.SmokeScreen]. */
     var smokeLeft = 0
+
+    /**
+     * His own tick from which he may throw a grenade again ([com.sbwnpc.squad.ai.integration.GrenadeChoice]).
+     * On the man, not his plan: his plan comes and goes with his fights, and a cooldown kept there
+     * started over each time.
+     */
+    var grenadeReadyTick = 0
 
     /** Which grenade to throw now, or null with none left: the RGO while defending or falling
      *  back, the RGN otherwise — and whichever is left when that one has run out. */
@@ -454,7 +452,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             medkitsLeft = MEDKITS
             topped = true
         }
-        val maxDrones = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+        val maxDrones = com.sbwnpc.squad.ai.integration.DroneStation.MAX_DRONES
         if (npcClass == NpcClass.DRONE_OPERATOR && dronesLeft < maxDrones) {
             dronesLeft = maxDrones
             topped = true
@@ -516,150 +514,92 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  [com.sbwnpc.squad.entity.ai.GunAttackBehaviour]. */
     fun lowAmmoFallback(): Vec3? = if (ammoFraction() < VERY_LOW_AMMO_FRACTION) nearestSupply() else null
 
-    /** What this NPC has taken up; the flags below read and write it. Transient, apart from [carryingMortar]. */
-    var activities = NpcActivities()
-        private set
+    // Not created with the other fields: the vanilla constructor reads the claims before this
+    // class's initializers run, and a read then must see nothing held.
+    private var activities: NpcActivities? = null
 
-    /** Set by [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] while it walks this NPC to a Supply,
-     *  so squad orders and alarms leave it be. Transient. */
-    var resupplying: Boolean
-        get() = activities.has(NpcActivity.RESUPPLYING)
-        set(value) {
-            activities = activities.with(NpcActivity.RESUPPLYING, value)
+    /**
+     * What this NPC has taken up and who holds its feet, trigger and gaze; every claim and takeover
+     * is traced in the `movement` log group. Transient, apart from [NpcActivity.CARRYING_MORTAR].
+     */
+    private val claims: NpcActivities
+        get() = activities ?: NpcActivities { com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MOVEMENT, "{} event={}", uuid, it) }.also { activities = it }
+
+    /**
+     * [owner] takes up [kind], for [lifetime] ticks if it should lapse unrenewed. It stays on until
+     * every owner has called [release], so one behaviour stopping does not end a kind another still
+     * holds. Holding two kinds that [NpcActivities.excluding] names is traced in the `vehicle` log group.
+     */
+    fun claim(kind: NpcActivity, owner: Any, lifetime: Int? = null) {
+        val conflicts = claims.claim(kind, owner, tickCount, lifetime)
+        if (conflicts.isNotEmpty()) {
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.VEHICLE, "{} event=activity_conflict claimed={} held={} owner={}", uuid, kind, conflicts, owner.javaClass.simpleName)
         }
+    }
+
+    /** [owner] becomes the only holder of [kind]; false while another owner has it. Released with [release]. */
+    fun claimAlone(kind: NpcActivity, owner: Any): Boolean = claims.claimAlone(kind, owner, tickCount)
+
+    /** [owner] puts [kind] down; it ends here only if nobody else holds it. */
+    fun release(kind: NpcActivity, owner: Any) {
+        activities?.release(kind, owner, tickCount)
+    }
+
+    /** Whether anybody holds [kind]. */
+    fun holds(kind: NpcActivity): Boolean = activities?.has(kind, tickCount) == true
+
+    /** Whether an owner [owner] accepts holds [kind]: which rule holds a kind several rules claim. */
+    fun holdsBy(kind: NpcActivity, owner: (Any) -> Boolean): Boolean = activities?.has(kind, tickCount, owner) == true
+
+    /** Every activity he holds now, for the decision trace. */
+    fun activitiesHeld(): List<NpcActivity> = NpcActivity.entries.filter(::holds)
+
+    /** Whether nobody holds [cap] for this NPC. */
+    fun may(cap: Cap): Boolean = activities?.may(cap, tickCount) != false
+
+    /** Whether [kind] may use [cap]: nothing ranked above it holds it, besides owners [own] accepts. */
+    fun mayFor(kind: NpcActivity, cap: Cap, own: ((Any) -> Boolean)? = null): Boolean = activities?.mayFor(kind, cap, tickCount, own) != false
+
+    /** Whether anybody holds any of [kinds]. */
+    fun holdsAny(vararg kinds: NpcActivity): Boolean = kinds.any(::holds)
+
+    /** True when no behaviour but [owner] holds [kind]; asked before starting, see [claimAlone]. */
+    fun freeFor(kind: NpcActivity, owner: Any): Boolean = activities?.freeFor(kind, owner) != false
 
     /** Classes that carry hand grenades at all: not the crews, whose hands are on something else. */
     private fun carriesGrenades(): Boolean =
         npcClass != NpcClass.MORTAR &&
             npcClass != NpcClass.TANK_CREW && npcClass != NpcClass.DRONE_OPERATOR
 
-    // Set/cleared only by SeekCoverBehaviour (enterDugInHolding/stop) while the mob is holding a
-    // foxhole it dug for itself. Read by GunAttackBehaviour to skip ALL repositioning (formation
-    // advance, bounding, friendly-fire sidestep) while still aiming and firing normally — a dug-in
-    // mob fights from the hole rather than leaving it, per explicit user decision (see
-    // SeekCoverBehaviour.enterDugInHolding's doc comment for the fuller reasoning/history).
-    var diggedIn: Boolean
-        get() = activities.has(NpcActivity.DUG_IN)
-        set(value) {
-            activities = activities.with(NpcActivity.DUG_IN, value)
-        }
-
-    // Claimed by the vehicle behaviours while the mob is seeking/boarding/driving/riding a vehicle
-    // to cover long squad-transit distances, see [claim]. Same "hands off this mob" contract as
-    // diggedIn — every other movement/role behaviour must stand down while this is true.
-    val vehicleTransport: Boolean
-        get() = activities.has(NpcActivity.VEHICLE)
-
-    // Not created with the other fields: the vanilla constructor reads [activities] before this
-    // class's initializers run.
-    private var claims: ActivityClaims? = null
-
-    /**
-     * [owner] takes up [activity]. It stays on until every owner has called [release], so one
-     * behaviour stopping does not end an activity another still holds. Holding two activities that
-     * [NpcActivities.excluding] names is traced in the `vehicle` log group.
-     */
-    fun claim(activity: NpcActivity, owner: Any) {
-        val conflicts = (claims ?: ActivityClaims().also { claims = it }).claim(activity, owner, activities)
-        if (conflicts.isNotEmpty()) {
-            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.VEHICLE, "{} event=activity_conflict claimed={} held={} owner={}", uuid, activity, conflicts, owner.javaClass.simpleName)
-        }
-        activities = activities.with(activity, true)
-    }
-
-    /** [owner] puts [activity] down; it ends here only if nobody else holds it. */
-    fun release(activity: NpcActivity, owner: Any) {
-        if (claims?.release(activity, owner) != false) activities = activities.with(activity, false)
-    }
-
-    /**
-     * [owner] becomes the one behaviour that gets this NPC into a vehicle, keeps him there and gets
-     * him out ([NpcActivity.SEAT]). False while another behaviour has him; released with [release].
-     */
-    fun claimSeat(owner: Any): Boolean {
-        if (!(claims ?: ActivityClaims().also { claims = it }).claimAlone(NpcActivity.SEAT, owner)) return false
-        activities = activities.with(NpcActivity.SEAT, true)
-        return true
-    }
-
-    /** True when no behaviour but [owner] has this NPC's seat; asked before starting, see [claimSeat]. */
-    fun seatFreeFor(owner: Any): Boolean = claims?.freeFor(NpcActivity.SEAT, owner) != false
-
-    // Set/cleared only by DroneOperatorBehaviour while preparing a launch or flying a drone —
-    // same "hands off this mob" contract as vehicleTransport (no shooting, no squad movement, no
-    // investigating), plus it keeps the AI LOD at full rate: the drone is flown from this mob's
-    // brain tick, so throttling the operator would throttle the drone.
-    var operatingDrone: Boolean
-        get() = activities.has(NpcActivity.DRONE)
-        set(value) {
-            activities = activities.with(NpcActivity.DRONE, value)
-        }
-
-    /** At a mortar as its operator or loader. Same "hands off" contract as [operatingDrone] for
-     *  the rifle and the squad's own movement: a crewman pulled toward the enemy by one behaviour
-     *  and back to the tube by another spins on the spot. An enemy close enough to be a personal
-     *  threat ends it (see the mortar behaviours). */
-    var servingMortar: Boolean
-        get() = activities.has(NpcActivity.MORTAR_CREW)
-        set(value) {
-            activities = activities.with(NpcActivity.MORTAR_CREW, value)
-        }
-
     /** Tick at which this NPC last lost sight of its target, or null while it can see it. Stamped
      *  by [com.sbwnpc.squad.entity.ai.GunAttackBehaviour], read by
-     *  [com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour] to tell "behind cover" from "behind a tree
+     *  [com.sbwnpc.squad.ai.integration.GrenadeChoice] to tell "behind cover" from "behind a tree
      *  for a moment". Combat-moment state, not persisted. */
     var blockedSightSince: Int? = null
-
-    // Set/cleared only by AntiDroneBehaviour while this mob is dealing with a hostile drone
-    // (shooting at it or running from it) — same "hands off" contract as the two above.
-    var antiDroneEngaged: Boolean
-        get() = activities.has(NpcActivity.ANTI_DRONE)
-        set(value) {
-            activities = activities.with(NpcActivity.ANTI_DRONE, value)
-        }
 
     /** Taken up by a role that owns the NPC's hands and feet — driving or riding to a destination,
      *  flying a drone, crewing a mortar, dealing with a drone — so the rifle, the grenades and the
      *  squad's own movement leave it alone. */
-    fun busyWithRole(): Boolean = activities.ownsHandsAndFeet()
+    fun busyWithRole(): Boolean = activities?.ownsHandsAndFeet(tickCount) == true
 
     /** Medical kits on this NPC, for itself — see [com.sbwnpc.squad.entity.ai.SelfTreatBehaviour].
      *  Every class carries [MEDKITS]. Persisted. */
     var medkitsLeft: Int = MEDKITS
 
     /** Shells a mortar loader carries for its crew's tube — see
-     *  [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. Persisted; zero for every other class. */
+     *  [com.sbwnpc.squad.ai.integration.CrewDutyAction]. Persisted; zero for every other class. */
     var mortarShellsLeft: Int = 0
 
     /** Kamikaze drones this operator still carries; refilled by SquadManager.resupplyAtBarracks.
      *  Persisted. Meaningless for other classes. */
     var dronesLeft: Int = 0
 
-    /** True while a mortar operator has broken its mortar down and is carrying it to a new
-     *  position — see [com.sbwnpc.squad.entity.ai.MortarDeployment]. Persisted, and put back on
-     *  the ground if the carrier dies, so a displacing crew can never simply lose its mortar. */
-    var carryingMortar: Boolean
-        get() = activities.has(NpcActivity.CARRYING_MORTAR)
-        set(value) {
-            activities = activities.with(NpcActivity.CARRYING_MORTAR, value)
-        }
-
     var assignedMortarId: UUID? = null
     var packedMortarState: CompoundTag = CompoundTag()
 
-    /** The mortar crew's own behaviour is walking this man somewhere — after the carried tube, to
-     *  a Supply for shells, back to the tube — see [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]
-     *  and [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. Runtime only. */
-    var mortarErrand: Boolean
-        get() = activities.has(NpcActivity.MORTAR_ERRAND)
-        set(value) {
-            activities = activities.with(NpcActivity.MORTAR_ERRAND, value)
-        }
-
     /** The crew's errand, not the squad order, sets where and how fast it goes. Both used to steer
      *  it at once, and the order's walking pace won. */
-    fun movingMortar(): Boolean = activities.movingMortar()
+    fun movingMortar(): Boolean = activities?.movingMortar(tickCount) == true
 
     /** A machine gunner's launcher while the machine gun is in its hands, and the machine gun
      *  while the launcher is — see [com.sbwnpc.squad.combat.AntiArmourKit]. Persisted; empty for
@@ -668,7 +608,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** The gun stowed while the operator holds the drone monitor — persisted so a world save
      *  mid-flight doesn't leave the operator with a monitor and no weapon (see
-     *  DroneOperatorBehaviour.holdMonitor/restoreWeapon). */
+     *  DroneStation.holdMonitor/restoreWeapon). */
     var stowedWeapon: ItemStack = ItemStack.EMPTY
 
     /** The backup pistol; while drawn this is the same stack as the hand/monitor stow. */
@@ -906,7 +846,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var lodRecheckTick = 0
     private var brainTickInterval = 1
 
-    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || operatingDrone || antiDroneEngaged
+    // Aircrew too: the flight control and the turret are worked from the plan's tick, every tick,
+    // and an aircraft flown one tick in four drifts and misses its attack's quiet interval (#260).
+    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || holdsAny(NpcActivity.DRONE, NpcActivity.ANTI_DRONE) || com.sbwnpc.squad.ai.integration.AirRoster.aircrew(this)
 
     private fun refreshAiLod() {
         brainTickInterval = when {
@@ -950,8 +892,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         com.sbwnpc.squad.combat.DebugFlags.log(
             com.sbwnpc.squad.combat.LogGroup.ORDER,
             "{} ({}) got {}: target={} alert={} transport={} mortar={} drone={} dug={}",
-            squad.name, npcClass, squad.order, target?.name?.string, isAlert(), vehicleTransport,
-            servingMortar, operatingDrone, diggedIn,
+            squad.name, npcClass, squad.order, target?.name?.string, isAlert(), holds(NpcActivity.VEHICLE),
+            holds(NpcActivity.MORTAR_CREW), holds(NpcActivity.DRONE), holds(NpcActivity.DUG_IN),
         )
         if (target == null) {
             clearAlert()
@@ -966,6 +908,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         com.sbwnpc.squad.combat.VehicleAmmoSupply.tick(this)
         SidearmKit.update(this)
         takeNewOrders()
+        contact.update(target?.position(), tickCount)?.let { becomeWary(it) }
+        approach.update(this)
         if (equipmentResyncTicksRemaining > 0) {
             equipmentResyncTicksRemaining--
             resyncEquipmentForNewlySpawnedNpc()
@@ -1130,11 +1074,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             *VersionCompat.doorBehaviours(),
             SeekCoverBehaviour(),
             com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(),
-            MortarCrewBehaviour(),
-            com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(),
             com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(),
             VehicleCrewBehaviour(),
-            com.sbwnpc.squad.entity.ai.HelicopterPilotBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(),
             VehicleCombatSupportBehaviour(),
@@ -1150,13 +1091,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour(),
         )
 
-    // Investigating remains idle-only. Supply, transport and ordinary orders retain their own
-    // guards in Core, in that priority order, so remembered remote contacts do not cancel a trip.
-    override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
-        net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(
-            InvestigateBehaviour(),
-        )
-
     // Fight: only while ATTACK_TARGET is set, all running side by side. AnimatableMeleeAttack is
     // SmartBrainLib's own melee behaviour and only strikes what is already in reach — it does no
     // chasing: every class carries a gun, and GunAttackBehaviour closes the distance itself.
@@ -1166,11 +1100,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             // Gun empty: run from the target rather than stand facing it (GunAttack stands down).
             com.sbwnpc.squad.entity.ai.OutOfAmmoBehaviour(),
             net.tslat.smartbrainlib.api.core.behaviour.custom.attack.AnimatableMeleeAttack<NpcEntity>(20),
-            GrenadeThrowBehaviour(),
-            com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour(),
         )
 
-    // Also used by GrenadeUseBehaviour, hence internal not private.
+    // Also used by the plan's grenade choice, hence internal not private.
     internal fun isEnemy(other: LivingEntity): Boolean {
         if (other !is NpcEntity && other !is Player && other !is net.minecraft.world.entity.Mob) return false
         if (other is Player && (other.isCreative || other.isSpectator)) return false
@@ -1226,15 +1158,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
         // Two RGN and two RGO per fighter, crews excepted (they aren't a combat-suppression role)
         // — per user request. Counted, NOT visible offhand items — user feedback: holding a
-        // physical grenade in the offhand looked wrong (both hands full). Thrown by
-        // GrenadeUseBehaviour, the grenadier's GrenadeThrowBehaviour and SeekCoverBehaviour's
-        // post-dig throw, all from these same counts.
+        // physical grenade in the offhand looked wrong (both hands full). Thrown by the plan's
+        // grenade throws (GrenadeChoice) and SeekCoverBehaviour's post-dig throw, all from these
+        // same counts.
         rgnLeft = if (carriesGrenades()) GRENADES_OF_EACH else 0
         rgoLeft = rgnLeft
         smokeLeft = if (carriesGrenades()) SMOKE_GRENADES else 0
         medkitsLeft = MEDKITS
         mortarShellsLeft = if (npcClass == NpcClass.MORTAR) MORTAR_SHELLS else 0
-        if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+        if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.ai.integration.DroneStation.MAX_DRONES
 
         // A belt-fed gun does nothing to a tank, and the machine gunner is the one member of an
         // ordinary squad with a free hand for something that does.
@@ -1271,7 +1203,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         compound.putInt("Smoke", smokeLeft)
         compound.putInt("Medkits", medkitsLeft)
         compound.putInt("MortarShells", mortarShellsLeft)
-        if (carryingMortar) compound.putBoolean("CarryingMortar", true)
+        if (holds(NpcActivity.CARRYING_MORTAR)) compound.putBoolean("CarryingMortar", true)
         assignedMortarId?.let { compound.putUUID("AssignedMortar", it) }
         if (!packedMortarState.isEmpty) compound.put("PackedMortar", packedMortarState.copy())
         compound.putInt("DronesLeft", dronesLeft)
@@ -1330,13 +1262,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         } else {
             0
         }
-        carryingMortar = compound.getBoolean("CarryingMortar")
+        if (compound.getBoolean("CarryingMortar")) claim(NpcActivity.CARRYING_MORTAR, MortarDeployment)
         assignedMortarId = if (compound.hasUUID("AssignedMortar")) compound.getUUID("AssignedMortar") else null
         packedMortarState = compound.getCompound("PackedMortar").copy()
         dronesLeft = if (compound.contains("DronesLeft")) {
             compound.getInt("DronesLeft")
         } else if (npcClass == NpcClass.DRONE_OPERATOR) {
-            com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+            com.sbwnpc.squad.ai.integration.DroneStation.MAX_DRONES
         } else {
             0
         }
@@ -1377,10 +1309,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
                 (level() as? ServerLevel)?.let { com.sbwnpc.squad.vehicle.PilotlessHelicopters.pilotDown(it, ride) }
             }
         }
-        // Operator down -> signal lost: its drone crashes where it is (DroneOperatorBehaviour.stop
-        // would do this too once the brain notices the death, but the entity may already be gone
-        // from the level by then). Drop the gun, not the monitor, as loot.
-        com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.onOperatorDied(this)
+        // Operator down -> signal lost: its drone crashes where it is, here, as the entity may
+        // already be gone from the level before his plan is next looked at. Drop the gun, not the
+        // monitor, as loot.
+        com.sbwnpc.squad.ai.integration.DroneStation.onOperatorDied(this)
         super.die(cause)
     }
 
@@ -1445,8 +1377,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (roll >= AMMO_DROP_CHANCE) return
         // A box of it where there is one — loose rounds on a body looked odd — and a magazine's
         // worth of whatever else (heavy rounds, rockets) has no box.
-        val ammo = Ports.guns.ammoBox(gun).takeUnless { it.isEmpty }
-            ?: Ports.guns.ammoItems(gun, minOf(reserve, Ports.guns.magazineSize(gun).coerceAtLeast(1)))
+        val ammo = SaveableStacks.capped(
+            Ports.guns.ammoBox(gun).takeUnless { it.isEmpty }
+                ?: Ports.guns.ammoItems(gun, minOf(reserve, Ports.guns.magazineSize(gun).coerceAtLeast(1))),
+        )
         if (ammo.isEmpty) {
             rolls[rolls.size - 1] += " (no ammo item)"
             return
@@ -1465,20 +1399,27 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         rolls[rolls.size - 1] += if (spawnAtLocation(Ports.grenades.item(kind)) != null) " DROPPED $kind" else " (spawn failed)"
     }
 
-    /** A squadmate going down is itself an "invariant" every shooter-AI convention treats as a
-     *  strong signal (F.E.A.R./Half-Life-style squad escalation on a downed ally). When the killer
-     *  is resolvable, this is strictly better than a vague alert — feed it into [TeamAwareness] so
-     *  the infantry can act on it after the normal relay delay. Not as a sighting, though: nobody
-     *  saw him, and fire support only shoots at what someone has seen. Only when the killer can't
-     *  be resolved (fell, environmental, whatever) does this fall back to a plain [Alarm] at the
-     *  death position. */
+    /**
+     * A squadmate going down alerts the men round him: wary toward his killer when there is one,
+     * otherwise an [Alarm] at the body. A known killer is not their target: they turn towards where
+     * he fired from and must spot him. Reported as a contact to the side, he was a target at once
+     * for every man of it, at 60–80 blocks, without anyone seeing him (in-game 03.11).
+     */
     private fun alertAllies(cause: net.minecraft.world.damagesource.DamageSource) {
-        val faction = com.sbwnpc.squad.team.SquadTeams.factionOf(this) ?: return
-        val level = level() as? ServerLevel ?: return
         val attacker = cause.entity as? LivingEntity
         val knownKiller = attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)
         if (knownKiller) {
-            com.sbwnpc.squad.combat.TeamAwareness.reportUnseen(faction, attacker!!.uuid, level.gameTime)
+            // The shot's direction, not the killer's place: a squad out of a fight sends a pair that
+            // way, to the assault stand-off short of him but no farther than [DEATH_LEAD_REACH] from
+            // the body. In-game 04.11 nobody went to look; a squad in a fight only turns
+            // ([UnverifiedContacts] sends nobody then).
+            val toward = attacker!!.position().subtract(position())
+            val walk = (toward.length() - com.sbwnpc.squad.ai.tactics.OperationTactics.ASSAULT_STANDOFF).coerceIn(0.0, DEATH_LEAD_REACH)
+            val lead = position().add(toward.normalize().scale(walk))
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.HEARING, "{} event=death_lead at={} killerRange={}", uuid, BlockPos.containing(lead).toShortString(), toward.length().toInt())
+            // The squad's alarm, not every man's: [com.sbwnpc.squad.combat.Alarm.raise] would send them all.
+            val mate = currentSquad()?.members?.firstNotNullOfOrNull { id -> ((level() as ServerLevel).getEntity(id) as? NpcEntity)?.takeIf { it !== this && it.isAlive } }
+            if (mate != null) com.sbwnpc.squad.combat.tactics.SquadTactics.heard(mate, lead, walk = true)
         } else {
             com.sbwnpc.squad.combat.Alarm.raiseDeath(this, DEATH_ALARM_RADIUS)
         }
@@ -1535,6 +1476,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val SUPPRESSION_DURATION_TICKS = 100
         private const val SUPPRESSION_CAP_TICKS = 200
         private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead
+
+        /** How far (48 blocks) from a body killed by a known enemy his squad goes at most to look his way. */
+        private const val DEATH_LEAD_REACH = 48.0
         private const val DEATH_ALARM_RADIUS = 36.0 // detection range, x1.5 per user request (was 24)
 
         // How far an NPC can spot / act on relayed contacts — see the FOLLOW_RANGE note in

@@ -2,6 +2,7 @@ package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.combat.tactics.TacticalBudget
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
@@ -30,9 +31,12 @@ object SquadAreas {
         var cursor = 0
     }
     private val worlds = WeakHashMap<ServerLevel, World>()
-    private val roles = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
 
-    private fun eligible(squad: Squad) =
+    /** Ground infantry; vehicle and crew roles keep their own order point. */
+    internal val roles = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
+
+    /** Orders that hold ground take a shared local area; MOVE, attacks and patrol routes keep their exact point. */
+    internal fun eligible(squad: Squad) =
         squad.order in setOf(SquadOrder.DEFEND, SquadOrder.PATROL, SquadOrder.RETREAT) &&
             squad.focusEntity == null && (squad.order != SquadOrder.PATROL || squad.routeId == null)
 
@@ -63,7 +67,7 @@ object SquadAreas {
             val members = loaded[squad.id] ?: return@mapNotNull null
             val point = members.first().orderCenter() ?: return@mapNotNull null
             val radius = if (squad.order == SquadOrder.PATROL) SquadFormation.patrolRadius(squad.members.size) + 2.0 else SquadFormation.perimeterRadius(squad.members.size) + 6.0
-            SquadAreaRequest(squad.id, squad.faction, point, radius)
+            SquadAreaRequest(squad.id, squad.faction, point, radius, nudge = squad.order == SquadOrder.PATROL)
         }
         val before = requests.associate { it.squad to world.layout.area(it.squad)?.center }
         for (request in requests) {
@@ -115,7 +119,7 @@ object SquadAreas {
         }
         if (pending.isEmpty()) return
         val area = pending[Math.floorMod(world.cursor++, pending.size)]
-        val actor = world.members[area.request.squad].orEmpty().mapNotNull { level.getEntity(it) as? NpcEntity }.filter { !it.busyWithRole() && !it.resupplying && !it.movementLockedByCover() && !it.combatLockedByMedic() }
+        val actor = world.members[area.request.squad].orEmpty().mapNotNull { level.getEntity(it) as? NpcEntity }.filter { !it.busyWithRole() && !it.holds(NpcActivity.RESUPPLY) && !it.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL) }
             .minByOrNull { it.position().distanceToSqr(area.center) } ?: return
         val navigation = actor.navigation as? PositionPaths ?: return
         if (!navigation.canPlan || !TacticalBudget.path(actor)) return

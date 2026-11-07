@@ -21,9 +21,7 @@ import net.minecraft.gametest.framework.GameTestListener
 import net.minecraft.gametest.framework.GameTestRunner
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.GameType
-import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import net.tslat.smartbrainlib.util.BrainUtils
 import java.nio.file.Files
@@ -189,8 +187,6 @@ object SavedBattleGameTests {
         val replay = SavedBattleReplay(helper.level, fixture)
         val previousGroups = DebugFlags.enabledGroups
         DebugFlags.enabledGroups = previousGroups + setOf(LogGroup.ORDER, LogGroup.PATH)
-        val pacer = CombatTickPacer()
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         var trace: CombatParticipationTrace? = null
         var observer: net.minecraft.server.level.ServerPlayer? = null
         var closed = false
@@ -201,7 +197,6 @@ object SavedBattleGameTests {
             observer?.let { helper.level.removePlayerImmediately(it, Entity.RemovalReason.DISCARDED) }
             replay.close()
             DebugFlags.enabledGroups = previousGroups
-            NeoForge.EVENT_BUS.unregister(pacer)
         }
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit

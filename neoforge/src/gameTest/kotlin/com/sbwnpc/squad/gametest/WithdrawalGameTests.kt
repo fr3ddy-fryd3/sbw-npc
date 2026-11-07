@@ -164,12 +164,12 @@ object WithdrawalGameTests {
     }
 
     /**
-     * Smoke still hides a man after SBW has discarded the grenade (200 ticks) for as long as its
-     * particles last, and stops once they are gone. Nobody looks through it while the grenade
-     * lives, so the cloud is kept from the grenade's end, not from the last look.
+     * Smoke still hides a man after SBW has discarded the grenade (200 ticks): the cloud is kept
+     * from the grenade's end, though nobody looked through it while the grenade lived. When the
+     * kept cloud clears is SmokeCloudsTest's.
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "smoke-linger")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "smoke-linger")
     fun smokeHidesAManUntilItsParticlesAreGone(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "smoke-linger")
         val watcher = scene.spawn(Vec3(40.5, 1.0, 64.5))
@@ -177,15 +177,14 @@ object WithdrawalGameTests {
         watcher.isNoAi = true
         Ports.grenades.throwSmoke(watcher, helper.level, helper.absoluteVec(Vec3(50.5, 1.0, 64.5)))
         helper.onEachTick {
-            when (helper.tick) {
-                320L -> helper.assertTrue(!DetectionSightline.canSee(watcher, enemy) && SmokeCloudRegistry.all(helper.level).isEmpty(), "Smoke stopped hiding him once the grenade was gone")
-
-                1000L -> {
-                    helper.assertTrue(DetectionSightline.canSee(watcher, enemy), "Smoke still hid him after its particles were gone")
-                    scene.result("PASS", "tick=${helper.tick}")
-                    helper.succeed()
-                }
+            if (helper.tick == GRENADE_GONE_TICK) {
+                helper.assertTrue(!DetectionSightline.canSee(watcher, enemy) && SmokeCloudRegistry.all(helper.level).isEmpty(), "Smoke stopped hiding him once the grenade was gone")
+                scene.result("PASS", "tick=${helper.tick}")
+                helper.succeed()
             }
         }
     }
+
+    // SBW discards the grenade at 200 ticks; 320 leaves it gone well before the look.
+    private const val GRENADE_GONE_TICK = 320L
 }

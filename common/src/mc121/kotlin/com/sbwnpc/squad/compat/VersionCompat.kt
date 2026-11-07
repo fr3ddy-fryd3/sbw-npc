@@ -75,4 +75,7 @@ object VersionCompat {
     fun setStepHeight(mob: Mob, height: Float) {
         mob.getAttribute(Attributes.STEP_HEIGHT)?.baseValue = height.toDouble()
     }
+
+    /** The game directory a server runs in, where latest.log's `logs/` is. */
+    fun serverDirectory(server: net.minecraft.server.MinecraftServer): java.nio.file.Path = server.serverDirectory
 }

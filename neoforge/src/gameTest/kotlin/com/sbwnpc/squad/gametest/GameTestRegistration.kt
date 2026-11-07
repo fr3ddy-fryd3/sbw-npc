@@ -13,7 +13,19 @@ import net.neoforged.neoforge.event.RegisterGameTestsEvent
 object GameTestRegistration {
     @SubscribeEvent
     fun register(event: RegisterGameTestsEvent) {
-        val classes = listOf(
+        val classes = sceneClasses()
+        // Saved-world replays require an explicit local fixture; ordinary suites stay portable.
+        val replayClasses = if (System.getProperty("sbwnpc.gameTestReplay", "").isNotBlank()) listOf(SavedBattleGameTests::class.java) else emptyList()
+        val battleClasses = if (System.getProperty("sbwnpc.gameTestBattleSaves", "").isNotBlank()) listOf(RealTerrainBattleGameTests::class.java) else emptyList()
+        val selectedClasses = GameTestGroups.select(classes, System.getProperty("sbwnpc.gameTestGroup", "").split(',').filter { it.isNotBlank() })
+        val methods = (selectedClasses + replayClasses + battleClasses).flatMap { it.declaredMethods.toList() }.filter { it.isAnnotationPresent(GameTest::class.java) || it.isAnnotationPresent(GameTestGenerator::class.java) }
+        val selected = System.getProperty("sbwnpc.gameTestFilter", "").split(',').filter { it.isNotBlank() }.toSet()
+        require(selected.all { name -> methods.any { it.name == name } }) { "Unknown GameTest: $selected; available: ${methods.map { it.name }}" }
+        methods.filter { selected.isEmpty() || it.name in selected }.forEach(event::register)
+    }
+
+    private fun sceneClasses(): List<Class<*>> =
+        listOf(
             FactionLogisticsGameTests::class.java,
             VehicleSupplyGameTests::class.java,
             ExperienceGameTests::class.java,
@@ -22,7 +34,13 @@ object GameTestRegistration {
             LadderNavigationGameTests::class.java,
             ScaffoldingGameTests::class.java,
             SidearmGameTests::class.java,
+            PlannedCoverGameTests::class.java,
+            ArmourCoverGameTests::class.java,
+            WoundedCoverGameTests::class.java,
+            PlannedEngageGameTests::class.java,
+            EngageOnlyGameTests::class.java,
             AmmunitionTacticsGameTests::class.java,
+            AttackStrengthGameTests::class.java,
             MortarCrewGameTests::class.java,
             HelicopterOrbitGameTests::class.java,
             DefensiveOverwatchGameTests::class.java,
@@ -30,6 +48,7 @@ object GameTestRegistration {
             RoofedOverwatchGameTests::class.java,
             AttackDeploymentGameTests::class.java,
             TerrainAttackGameTests::class.java,
+            HeightMenGameTests::class.java,
             FiringPostSearchGameTests::class.java,
             FoliageCombatGameTests::class.java,
             HearingGameTests::class.java,
@@ -47,7 +66,6 @@ object GameTestRegistration {
             CoverBudgetGameTests::class.java,
             AllyDeathGameTests::class.java,
             DroneFlightGameTests::class.java,
-            ObserverLookGameTests::class.java,
             VehicleSeatGameTests::class.java,
             VehicleSupportOrderGameTests::class.java,
             VehicleSupportSightlineGameTests::class.java,
@@ -58,18 +76,10 @@ object GameTestRegistration {
             VehicleBendGameTests::class.java,
             MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
+            SightRangeGameTests::class.java,
             HostileMobApiGameTests::class.java,
             HostileMobCombatGameTests::class.java,
             SquadManoeuvreGameTests::class.java,
             TreePlatformGameTests::class.java,
-        )
-        // Saved-world replays require an explicit local fixture; ordinary suites stay portable.
-        val replayClasses = if (System.getProperty("sbwnpc.gameTestReplay", "").isNotBlank()) listOf(SavedBattleGameTests::class.java) else emptyList()
-        val battleClasses = if (System.getProperty("sbwnpc.gameTestBattleSaves", "").isNotBlank()) listOf(RealTerrainBattleGameTests::class.java) else emptyList()
-        val selectedClasses = GameTestGroups.select(classes, System.getProperty("sbwnpc.gameTestGroup", "").split(',').filter { it.isNotBlank() })
-        val methods = (selectedClasses + replayClasses + battleClasses).flatMap { it.declaredMethods.toList() }.filter { it.isAnnotationPresent(GameTest::class.java) || it.isAnnotationPresent(GameTestGenerator::class.java) }
-        val selected = System.getProperty("sbwnpc.gameTestFilter", "").split(',').filter { it.isNotBlank() }.toSet()
-        require(selected.all { name -> methods.any { it.name == name } }) { "Unknown GameTest: $selected; available: ${methods.map { it.name }}" }
-        methods.filter { selected.isEmpty() || it.name in selected }.forEach(event::register)
-    }
+        ) + listOf(ArmourLauncherGameTests::class.java)
 }

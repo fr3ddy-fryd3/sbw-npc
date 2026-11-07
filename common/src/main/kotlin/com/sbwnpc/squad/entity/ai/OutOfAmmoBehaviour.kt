@@ -8,6 +8,7 @@ import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
@@ -22,7 +23,10 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * Empty NPCs go to a known friendly Supply, even far away. Without Supply they seek nearby
  * cover or make a bounded withdrawal; a relayed target cannot make them flee indefinitely.
  */
-class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
+class OutOfAmmoBehaviour :
+    ExtendedBehaviour<NpcEntity>(),
+    MandatoryRuleOwner {
+    override val rule = MandatoryRule.OUT_OF_AMMO
 
     init {
         noTimeout()
@@ -39,20 +43,20 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     private fun empty(entity: NpcEntity): Boolean {
-        if (entity.isPassenger || entity.vehicleTransport || entity.servingMortar || entity.operatingDrone) return false
+        if (entity.isPassenger || entity.holdsAny(NpcActivity.VEHICLE, NpcActivity.MORTAR_CREW, NpcActivity.DRONE)) return false
         val target = entity.target ?: return false
         if (!target.isAlive) return false
         val gun = Ports.guns.inHand(entity) ?: return false
         return !gun.hasAmmo()
     }
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = empty(entity)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = empty(entity) && MandatoryRules.may(MandatoryRule.OUT_OF_AMMO, entity)
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = empty(entity)
 
     override fun start(entity: NpcEntity) {
         nextStepTick = 0
-        entity.resupplying = entity.nearestSupply() != null
+        if (entity.nearestSupply() != null) entity.claim(NpcActivity.RESUPPLY, this) else entity.release(NpcActivity.RESUPPLY, this)
         FiringSpots.release(entity.uuid)
         DebugFlags.log(LogGroup.AMMO, "{} ({}) out of ammo, running from {}", entity.uuid, entity.npcClass, entity.target?.name?.string)
         beginEpisode(entity)
@@ -61,16 +65,17 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
         beginEpisode(entity)
-        if (entity.movementLockedByCover() || entity.coverPeekPoint != null || entity.evadingGrenade() || entity.combatLockedByMedic()) return
+        // A rule above his (#257) or his cover has him for now; his run goes on after.
+        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.PEEK) || !MandatoryRules.may(MandatoryRule.OUT_OF_AMMO, entity)) return
         // A fully empty NPC can return to a known Supply even outside the ordinary search radius.
+        // Ordered back with nothing to fire, he has no cover to give his squad's bounds: he runs
+        // straight to his place at the rally point (owner, #253). The claim keeps his feet from
+        // his plan, which would otherwise count him into a bounding half.
         entity.retreatPoint()?.let { rally ->
-            entity.resupplying = false
-            val squad = entity.currentSquad()!!
-            val point = com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, rally)
-            trace(entity, "ordered_retreat", point ?: entity.position())
-            if (point == null) {
-                entity.navigation.stop()
-            } else if (entity.tickCount >= nextStepTick || entity.navigation.isDone) {
+            entity.claim(NpcActivity.RESUPPLY, this)
+            val point = com.sbwnpc.squad.combat.SquadAreas.rallySlot(entity, rally)
+            trace(entity, "ordered_retreat", point)
+            if (entity.tickCount >= nextStepTick || entity.navigation.isDone) {
                 nextStepTick = entity.tickCount + REPATH_TICKS
                 entity.navigateTo(point, SPEED)
                 ownedPath = entity.navigation.path
@@ -78,7 +83,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         entity.nearestSupply()?.let {
-            entity.resupplying = true
+            entity.claim(NpcActivity.RESUPPLY, this)
             trace(entity, "supply", it)
             if (entity.tickCount < nextStepTick && !entity.navigation.isDone) return
             nextStepTick = entity.tickCount + REPATH_TICKS
@@ -86,7 +91,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
             ownedPath = entity.navigation.path
             return
         }
-        entity.resupplying = false
+        entity.release(NpcActivity.RESUPPLY, this)
         if (retreat.exhausted(entity.position(), entity.level().gameTime)) {
             hold(entity, "limit_reached")
             return
@@ -105,7 +110,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextStepTick) return
         nextStepTick = entity.tickCount + REPATH_TICKS
         val level = entity.level() as ServerLevel
-        val search = TickBudget.attempt(entity, TickBudget.Work.COVER) { CoverSearch.find(entity, level, target.position(), failedCover, retreat::permits) }
+        val search = TickBudget.attempt(entity, TickBudget.Work.COVER) { CoverSearch.find(entity, level, target.position(), failedCover, CoverSearch.Filter(permitted = retreat::permits)) }
         if (search == null) {
             nextStepTick = entity.tickCount + 2
             return
@@ -161,7 +166,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        entity.resupplying = false
+        entity.release(NpcActivity.RESUPPLY, this)
         stopOwnedPath(entity)
         // Target loss is temporary when contacts are relayed by the squad. Only ammo restores the allowance.
         if (Ports.guns.inHand(entity)?.hasAmmo() != false) retreat.reset()

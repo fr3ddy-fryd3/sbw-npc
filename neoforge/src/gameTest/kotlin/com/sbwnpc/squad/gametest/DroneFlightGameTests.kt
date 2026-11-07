@@ -4,8 +4,8 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
-import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
@@ -20,15 +20,20 @@ import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
-import net.tslat.smartbrainlib.util.BrainUtils
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
 import kotlin.math.abs
 
+private fun atShelter(operator: NpcEntity, shelter: Vec3?): Boolean = shelter != null && operator.position().distanceTo(shelter) <= 1.0 && operator.navigation.isDone
+
 @PrefixGameTestTemplate(false)
 object DroneFlightGameTests {
-    private fun atShelter(operator: NpcEntity, shelter: Vec3?): Boolean = shelter != null && operator.position().distanceTo(shelter) <= 1.0 && operator.navigation.isDone
+    /** How long after the launch the operator is kept under fire and must stay at his monitor. */
+    private const val UNDER_FIRE_TICKS = 60L
+
+    // Ticks he gets to cover most of the 8 blocks to his cover.
+    private const val COVER_WALK_TICKS = 40L
 
     /** A defensive post under broad cover, with a distant strike target confirmed by a spotter. */
     private class RoofLaunchScene(val helper: GameTestHelper, name: String, radius: Int) {
@@ -64,9 +69,9 @@ object DroneFlightGameTests {
         helper.onEachTick {
             roof.report()
             helper.assertTrue(operator.isAlive, "The operator died while finding open sky")
-            if (preparingAt == null && operator.operatingDrone && operator.dronesLeft == 10) preparingAt = operator.position()
+            if (preparingAt == null && operator.holds(NpcActivity.DRONE) && operator.dronesLeft == 10) preparingAt = operator.position()
             val drone = roof.drone()
-            if (helper.tick % 20L == 0L) scene.result("RUNNING", "tick=${helper.tick} operator=${operator.position()} home=$home busy=${operator.operatingDrone} left=${operator.dronesLeft} launchedAt=$launchedAt drone=${drone?.position()}")
+            if (helper.tick % 20L == 0L) scene.result("RUNNING", "tick=${helper.tick} operator=${operator.position()} home=$home busy=${operator.holds(NpcActivity.DRONE)} left=${operator.dronesLeft} launchedAt=$launchedAt drone=${drone?.position()}")
             if (drone != null && launchedAt == null) {
                 launchedAt = operator.position()
                 helper.assertTrue(home.distanceTo(operator.position()) > 3.0, "The drone launched through the broad roof")
@@ -80,17 +85,23 @@ object DroneFlightGameTests {
         }
     }
 
-    /** A roof wider than the short search leaves drones untouched and releases the operator between tries. */
+    /**
+     * A roof wider than the short search leaves drones untouched and releases the operator between
+     * tries: he does look for open sky, and gives up without spending a drone.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "drone-launch-closed")
     fun operatorWithNoNearbyOpenSkyKeepsDronesAndReleasesMovement(helper: GameTestHelper) {
         val roof = RoofLaunchScene(helper, "drone-launch-closed", 20)
         var freeTicks = 0
+        var searched = false
         helper.onEachTick {
             roof.report()
             helper.assertTrue(roof.operator.dronesLeft == 10, "Searching without open sky consumed a drone")
-            if (helper.tick >= 100 && !roof.operator.operatingDrone) freeTicks++
+            searched = searched || roof.operator.holds(NpcActivity.DRONE)
+            if (helper.tick >= 100 && !roof.operator.holds(NpcActivity.DRONE)) freeTicks++
             if (helper.tick >= 300) {
+                helper.assertTrue(searched, "He never looked for open sky, so nothing was released")
                 helper.assertTrue(freeTicks >= 50, "A failed launch search kept the operator's movement indefinitely")
                 roof.scene.result("PASS", "tick=${helper.tick} freeTicks=$freeTicks")
                 helper.succeed()
@@ -106,13 +117,13 @@ object DroneFlightGameTests {
         var orderedAt: Long? = null
         helper.onEachTick {
             roof.report()
-            if (orderedAt == null && roof.operator.operatingDrone && roof.operator.dronesLeft == 10) {
+            if (orderedAt == null && roof.operator.holds(NpcActivity.DRONE) && roof.operator.dronesLeft == 10) {
                 roof.manager.issueOrderAt(helper.level, roof.squad.id, SquadOrder.RETREAT, helper.absolutePos(BlockPos(100, 1, 20)))
                 orderedAt = helper.tick
             }
             val since = orderedAt?.let { helper.tick - it } ?: return@onEachTick
             helper.assertTrue(roof.operator.dronesLeft == 10, "The operator launched instead of withdrawing")
-            if (since > 5) helper.assertTrue(!roof.operator.operatingDrone, "The launch walk kept control after RETREAT")
+            if (since > 5) helper.assertTrue(!roof.operator.holds(NpcActivity.DRONE), "The launch walk kept control after RETREAT")
             if (since >= 40) {
                 roof.scene.result("PASS", "orderedAt=$orderedAt finishedAt=${helper.tick}")
                 helper.succeed()
@@ -120,27 +131,32 @@ object DroneFlightGameTests {
         }
     }
 
-    /** An emergency cover path replacing the return route stays owned by cover on later flight ticks. */
+    /** An operator whose drone is up and who must take cover walks to it, and the drone stays up. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "drone-launch-cover")
     fun coverInterruptingLaunchReturnKeepsItsOwnPath(helper: GameTestHelper) {
         val roof = RoofLaunchScene(helper, "drone-launch-cover", 6)
-        var coverPath: net.minecraft.world.level.pathfinder.Path? = null
+        val coverOwner = Any()
+        var cover: Vec3? = null
+        var startGap = 0.0
         var interruptedAt: Long? = null
         helper.onEachTick {
             roof.report()
             if (interruptedAt == null && roof.drone() != null) {
-                BrainUtils.setMemory(roof.operator, ModMemories.COVER_HOLD.get(), true)
-                val cover = roof.operator.position().add(8.0, 0.0, 0.0)
-                roof.operator.navigation.moveTo(cover.x, cover.y, cover.z, 1.0)
-                coverPath = roof.operator.navigation.path
-                helper.assertTrue(coverPath != null, "The fixture could not establish its cover path")
+                roof.operator.claim(NpcActivity.COVER, coverOwner)
+                val point = roof.operator.position().add(8.0, 0.0, 0.0)
+                roof.operator.navigation.moveTo(point.x, point.y, point.z, 1.0)
+                helper.assertTrue(roof.operator.navigation.path != null, "The fixture could not establish its cover path")
+                cover = point
+                startGap = roof.operator.position().distanceTo(point)
                 interruptedAt = helper.tick
             }
             val since = interruptedAt?.let { helper.tick - it } ?: return@onEachTick
-            helper.assertTrue(roof.operator.navigation.path === coverPath, "The drone flight stopped cover's replacement path")
-            if (since >= 5) {
-                roof.scene.result("PASS", "interruptedAt=$interruptedAt finishedAt=${helper.tick}")
+            if (since >= COVER_WALK_TICKS) {
+                val gap = roof.operator.position().distanceTo(cover!!)
+                helper.assertTrue(gap < startGap - 4.0, "He did not walk to cover: ${"%.1f".format(startGap)} -> ${"%.1f".format(gap)}")
+                helper.assertTrue(roof.drone() != null, "The drone came down when he went for cover")
+                roof.scene.result("PASS", "interruptedAt=$interruptedAt gap=${"%.1f".format(startGap)}->${"%.1f".format(gap)}")
                 helper.succeed()
             }
         }
@@ -169,9 +185,16 @@ object DroneFlightGameTests {
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(operator.uuid))
         manager.setOrder(squad.id, SquadOrder.ATTACK)
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(150, 1, 100)))
+        // A drone strikes only an enemy known near the ATTACK point (9f8d4b5), never the bare point.
+        val target = AttackDeploymentGameTests.spawn(helper, Vec3(150.5, 1.0, 100.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH)!!.baseValue = 50000.0
+            health = maxHealth
+        }
         val heights = mutableListOf<Double>()
         val trace = StringBuilder("tick,x,height,vy\n")
         helper.onEachTick {
+            TeamAwareness.report(SquadFaction.PIG, target.uuid, target.position(), helper.level.gameTime, "strike-test spotter")
             // The operator's is the only drone in the arena.
             val drone = helper.level.getEntities(operator, operator.boundingBox.inflate(200.0)) { Ports.drones.isDrone(it) }.firstOrNull()
                 ?: return@onEachTick
@@ -209,8 +232,15 @@ object DroneFlightGameTests {
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(operator.uuid))
         manager.setOrder(squad.id, SquadOrder.ATTACK)
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(120, 1, 100)))
+        // A drone strikes only an enemy known near the ATTACK point (9f8d4b5), never the bare point.
+        val target = AttackDeploymentGameTests.spawn(helper, Vec3(120.5, 1.0, 100.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH)!!.baseValue = 50000.0
+            health = maxHealth
+        }
         var launchedAt: Vec3? = null
         helper.onEachTick {
+            TeamAwareness.report(SquadFaction.PIG, target.uuid, target.position(), helper.level.gameTime, "strike-test spotter")
             helper.assertTrue(operator.isAlive, "The operator died by tick ${helper.tick}, drone launched at $launchedAt")
             val drone = helper.level.getEntities(operator, operator.boundingBox.inflate(200.0)) { Ports.drones.isDrone(it) }.firstOrNull()
                 ?: return@onEachTick
@@ -218,6 +248,112 @@ object DroneFlightGameTests {
             if (launchedAt == null) launchedAt = at
             if (at.y >= 12.0) {
                 helper.assertTrue(abs(launchedAt!!.y - 3.0) <= 0.5, "The drone went up from $launchedAt, not 2 over the operator's feet")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** An open field: an elite operator and two riflemen of one squad on DEFEND, and the enemies a spotter reports far off. */
+    private class StrikeScene(val helper: GameTestHelper, name: String, squadless: Boolean = false) {
+        val scene = CombatIdleGameTests.Scene(helper, name)
+        val operator = scene.spawn(Vec3(20.5, 1.0, 100.5), NpcClass.DRONE_OPERATOR)
+        val manager = SquadManager.get(helper.level)
+        val riflemen = if (squadless) emptyList() else listOf(scene.spawn(Vec3(22.5, 1.0, 98.5)), scene.spawn(Vec3(22.5, 1.0, 102.5)))
+        val squad = if (squadless) null else manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(operator.uuid) + riflemen.map { it.uuid })
+
+        init {
+            DebugFlags.enabledGroups = setOf(LogGroup.DRONE, LogGroup.FIRE_SUPPORT, LogGroup.ORDER)
+            operator.npcRank = NpcRank.ELITE
+            squad?.let { manager.issueOrderAt(helper.level, it.id, SquadOrder.DEFEND, operator.blockPosition()) }
+            scene.onClose = { squad?.let { manager.deleteSquad(helper.level, it.id) } }
+        }
+
+        fun report(target: Entity) = TeamAwareness.report(SquadFaction.PIG, target.uuid, target.position(), helper.level.gameTime, "strike-test spotter")
+
+        fun drone(): Entity? = helper.level.getEntities(operator, operator.boundingBox.inflate(200.0)) { Ports.drones.isDrone(it) }.firstOrNull()
+    }
+
+    /**
+     * An operator launches, strikes and has his drone come to an end in the same team as his
+     * riflemen: the strike is his own plan's method, not a move out of his team and back (#259).
+     * Fire on him after the launch keeps him at the monitor and the drone flying (#259).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "drone-strike-team")
+    fun operatorStaysWithHisTeamThroughAStrike(helper: GameTestHelper) {
+        val strike = StrikeScene(helper, "drone-strike-team")
+        val target = strike.scene.enemy(Vec3(150.5, 1.0, 100.5))
+        var team: com.sbwnpc.squad.ai.planning.AgentId? = null
+        var launchedAt: Long? = null
+        helper.onEachTick {
+            strike.report(target)
+            // The squad re-cuts its teams when its duty changes on contact; the operator goes with
+            // his riflemen, never into a team of his own for the strike.
+            val now = com.sbwnpc.squad.ai.integration.NativeTactics.teamOf(strike.operator)
+            val theirs = strike.riflemen.map { com.sbwnpc.squad.ai.integration.NativeTactics.teamOf(it) }
+            if (now != null) team = now
+            if (now != null && theirs.all { it != null }) helper.assertTrue(theirs.all { it == now }, "The operator's team $now left his riflemen's $theirs at tick ${helper.tick}, launched at $launchedAt")
+            val drone = strike.drone()
+            if (drone != null && launchedAt == null) launchedAt = helper.tick
+            launchedAt?.let { helper.tick - it }?.takeIf { it <= UNDER_FIRE_TICKS }?.let { since ->
+                if (since % 10 == 0L) strike.operator.suppress(strike.operator.position().add(-30.0, 1.6, 0.0))
+                helper.assertTrue(drone != null && strike.operator.holds(NpcActivity.DRONE), "Fire took the operator off his drone $since ticks after launch")
+            }
+            if (launchedAt != null && drone == null && helper.tick - launchedAt!! > UNDER_FIRE_TICKS) {
+                helper.assertTrue(team != null, "The operator was never planned in a team")
+                strike.scene.result("PASS", "launchedAt=$launchedAt endedAt=${helper.tick} team=$team")
+                helper.succeed()
+            }
+            if (helper.tick == 400L) helper.assertTrue(launchedAt != null, "The operator never launched at a reported target")
+        }
+    }
+
+    /** A drone whose target dies under it takes the next one the plan gives it, instead of flying home (#259). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "drone-strike-next")
+    fun droneWhoseTargetDiesTakesTheNextThroughThePlan(helper: GameTestHelper) {
+        val strike = StrikeScene(helper, "drone-strike-next")
+        val first = strike.scene.enemy(Vec3(150.5, 1.0, 100.5))
+        var second: NpcEntity? = null
+        var lastSeen: Vec3? = null
+        helper.onEachTick {
+            val next = second
+            if (next == null) {
+                strike.report(first)
+                val drone = strike.drone() ?: return@onEachTick
+                // Well on its way: the first target goes, and the side reports another.
+                if (drone.position().distanceTo(strike.operator.position()) > 40.0) {
+                    first.discard()
+                    second = strike.scene.enemy(Vec3(130.5, 1.0, 130.5))
+                }
+                return@onEachTick
+            }
+            strike.report(next)
+            val drone = strike.drone()
+            // Gone before it got there: it ended somewhere, and only near the second target is
+            // that the strike rather than a drone flown home, timed out or crashed on the way.
+            if (drone == null) {
+                val end = lastSeen?.distanceTo(next.position())
+                helper.assertTrue(end != null && end <= 20.0, "The drone ended ${end?.let { "%.0f".format(it) }} blocks from the next target, not on it")
+            }
+            lastSeen = drone?.position() ?: lastSeen
+            if (drone == null || drone.position().distanceTo(next.position()) <= 20.0) {
+                strike.scene.result("PASS", "tick=${helper.tick} drone=${drone?.position()} last=$lastSeen left=${strike.operator.dronesLeft}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A squadless operator strikes what his side reports, in a plan of his own (#259). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "drone-strike-alone")
+    fun squadlessOperatorStrikesAReportedTarget(helper: GameTestHelper) {
+        val strike = StrikeScene(helper, "drone-strike-alone", squadless = true)
+        val target = strike.scene.enemy(Vec3(120.5, 1.0, 100.5))
+        helper.onEachTick {
+            strike.report(target)
+            if (strike.drone() != null) {
+                strike.scene.result("PASS", "tick=${helper.tick}")
                 helper.succeed()
             }
         }

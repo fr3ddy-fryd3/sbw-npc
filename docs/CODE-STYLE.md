@@ -59,7 +59,7 @@ some calls. Leaving a step shows plainly whether the tick goes on.
 | A squad's strategy (advance, hold, gain height, withdraw) | A squad HTN method per strategy, scored by `SquadManners` |
 | Attack phases and their transitions | `AttackPhase`; the history and roles of a running attack in `AttackProgress` |
 | A member's duty and post in an operation | `OperationTactics`, `OperationFront` |
-| An operation's losses and when it withdraws | `OperationLosses` |
+| An attack's strength and when it holds or withdraws | `CombatStrength` |
 | Collecting data from the world | `TacticalSnapshotCollector` |
 | Gathering observations and applying decisions in the world | `ai/integration/NativeTactics`, `NativePositionAction` |
 | Constraints and scoring of a position | `TacticalPositionPolicy` |

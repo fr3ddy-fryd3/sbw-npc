@@ -53,8 +53,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     private val noticing = Noticing("sight")
 
     /** A turret gunner's own: what the ground scan drains is not what he has been watching. */
-    private val gunnerNoticing = Noticing("turret gunner", LogGroup.VEHICLE, cutOff = false)
+    private val gunnerNoticing = Noticing("turret gunner", LogGroup.VEHICLE)
     private var nextReallocationTick = Long.MIN_VALUE
+    private val beyondRange = BeyondRangeGrace(BEYOND_RANGE_GRACE_TICKS)
 
     // ExtendedSensor's default is a flat 20 ticks with NO initial offset (nextTickTime starts at 0
     // — confirmed via javap), so every NPC deployed in the same tick (a whole preset squad, a
@@ -83,7 +84,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         if (reconsider) nextReallocationTick = level.gameTime + REALLOCATION_MIN + entity.random.nextInt(REALLOCATION_JITTER)
         val desired = computeDesired(entity, level, directTarget, reconsider)
         val feasible = feasible(entity, desired, directTarget)
-        val target = gunnerNotices(entity, level, feasible, previous)
+        val target = withinRange(entity, gunnerNotices(entity, level, feasible, previous), previous, directTarget)
         // Capture sight loss before target selection can discard the personally observed enemy.
         if (previous != null && entity.lastSeenFire.observed(previous.uuid)) {
             entity.noticeHidden(previous, DetectionSightline.trace(entity, previous))
@@ -114,6 +115,8 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         when {
             desired == null -> null
 
+            entity.vehicle == null && !SquadTactics.permitsFire(entity, desired) -> SquadTactics.preferredTarget(entity, entity.level() as ServerLevel) ?: directTarget?.takeIf { SquadTactics.permitsFire(entity, it) }
+
             !VehicleTargeting.weaponPermits(entity, desired) -> directTarget
 
             directTarget != null && directTarget !== desired && !VehicleTargeting.shootableNow(entity, desired) &&
@@ -124,7 +127,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
     /**
      * At any vehicle weapon a new target counts only once the gunner has noticed it
-     * himself, by his rank and the light, with no cut-off (#146). Every source of a target goes
+     * himself, by the rule a man on foot goes by (#146, #245). Every source of a target goes
      * through here: his crewmates' instant sight handed him new contacts at once, and SBW lays the
      * turret on a perfect lead the moment it has one. Whatever shot at the vehicle, and the target he
      * already has, stay instant. Until he notices it he keeps the one he had.
@@ -135,12 +138,34 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val kept = previous?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) && VehicleTargeting.weaponPermits(mob, it) }
         val chosen = when {
             desired == null || desired === previous || desired === mob.vehicleAttacker() -> desired
-            !DetectionSightline.canSee(mob, desired) -> kept
-            gunnerNoticing.noticed(mob, level, desired, GUNNER_OFF_AXIS) -> desired
-            else -> kept
+
+            else -> {
+                val sighting = DetectionSightline.sight(mob, desired)
+                val noticed = sighting.visibility == DetectionSightline.Visibility.VISIBLE &&
+                    gunnerNoticing.noticed(mob, level, desired, GUNNER_OFF_AXIS, sighting.grassBlocks)
+                if (noticed) desired else kept
+            }
         }
         gunnerNoticing.endScan(level.gameTime)
         return chosen
+    }
+
+    /**
+     * [chosen] unless it is beyond detection range. A target already held may stay out of range for
+     * the grace period; one not held yet is never taken from out there. Shared contacts keep a
+     * target alive for as long as any squadmate refreshes it, so a shooter would otherwise fire at
+     * a man he cannot see, 280 blocks off, on any order. Past [DetectionSightline.MAX_SIGHT] it is
+     * dropped at once. Aircrew and gunners have their own reach; the nearest visible enemy stands in.
+     */
+    private fun withinRange(mob: NpcEntity, chosen: LivingEntity?, previous: LivingEntity?, directTarget: LivingEntity?): LivingEntity? {
+        if (chosen == null || mob.vehicle != null || mob.npcClass == NpcClass.MORTAR) return chosen
+        val range = VehicleTargeting.rangeFor(chosen, NpcEntity.DETECTION_RANGE)
+        val distanceSqr = mob.distanceToSqr(chosen)
+        val inRange = distanceSqr <= range * range
+        val tooFar = distanceSqr > DetectionSightline.MAX_SIGHT * DetectionSightline.MAX_SIGHT
+        val expired = beyondRange.expired(chosen.uuid, inRange, mob.level().gameTime)
+        val refused = !inRange && chosen !== previous
+        return if (tooFar || expired || refused) directTarget else chosen
     }
 
     /** Priority is explicit here: later queries run only when earlier sources have no target. */
@@ -159,8 +184,11 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             val orderedTarget = squadFocusTarget(mob, level)
             if (orderedTarget != null) return orderedTarget
         }
+        // Who hit him is known only up close. Farther, the hit turns him towards the fire and he has
+        // to spot the shooter: taken at once, a man hit at 60–120 blocks had the shooter's exact
+        // place within a second (in-game 03.11).
         val attacker = mob.lastHurtByMob
-        val hostileAttacker = attacker?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) }
+        val hostileAttacker = attacker?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= CLOSE_RETALIATION * CLOSE_RETALIATION }
         val assignment = SquadTactics.task(mob)
         if (assignment?.job == TacticalJob.RESERVE) {
             if (hostileAttacker != null && mob.incomingFire.pending(level.gameTime) && FiringOpportunity.assess(mob, hostileAttacker) == TacticalTargetSelection.Opportunity.SHOOTABLE) return hostileAttacker
@@ -318,13 +346,14 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         // At a vehicle's gun it's the mount that turns: the whole circle, like aircrew. Held to
         // its head's cone, a gunner saw only the arc its last target had been in, missed the next
         // enemy coming from the side, and climbed out believing the fight was over.
-        val allRound = airborne || mob.vehicle?.let { Ports.vehicles.hasWeaponAt(it, mob) } == true
+        val gunner = mob.vehicle?.let { Ports.vehicles.hasWeaponAt(it, mob) } == true
+        val allRound = airborne || gunner
         val box = mob.boundingBox.inflate(range, height, range)
         val hostiles = level.getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
             candidate !== mob && candidate.isAlive && SquadTeams.isHostile(mob, candidate)
         }
-        // Only a man on his own feet takes time to spot; a vehicle's crew and aircrew keep their sight.
-        val onFoot = !airborne && !allRound && mob.vehicle == null
+        // Everyone takes time to spot, in a vehicle or not (#245). A gunner's every target is
+        // noticed once, in gunnerNotices: noticing here as well would make him look twice as long.
         if (hostiles.isEmpty()) {
             noticing.endScan(level.gameTime)
             return null
@@ -340,9 +369,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             // yaw: an NPC scanning around while it walks is looking where its head points.
             if (!allRound && !Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
             val sighting = DetectionSightline.sight(mob, candidate)
-            if (sighting.visibility == DetectionSightline.Visibility.VISIBLE && (!onFoot || noticing.noticed(mob, level, candidate, Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()), sighting.grassBlocks))) {
+            if (sighting.visibility == DetectionSightline.Visibility.VISIBLE && (gunner || noticing.noticed(mob, level, candidate, if (allRound) GUNNER_OFF_AXIS else Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()), sighting.grassBlocks))) {
                 SquadTactics.observe(mob, candidate)
-                if (!VehicleTargeting.weaponPermits(mob, candidate)) continue
+                if (!VehicleTargeting.weaponPermits(mob, candidate) || (mob.vehicle == null && !SquadTactics.permitsFire(mob, candidate))) continue
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
             }
@@ -352,14 +381,18 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     }
 
     companion object {
-        /** A mount turns all round; its gunner looks as if half-way to the edge of a cone. */
+        /** A mount or an airframe turns all round; the man in it looks as if half-way to the edge of a cone. */
         private const val GUNNER_OFF_AXIS = 0.5
+
+        /** How near the man who hit him has to be for a man to know him without spotting him. */
+        private const val CLOSE_RETALIATION = 8.0
 
         private const val SCAN_RATE_MIN = 15
         private const val SCAN_RATE_JITTER = 11 // 15..25 ticks, mean 20 — same average as before
         private const val REALLOCATION_MIN = 80L
         private const val REALLOCATION_JITTER = 41 // 4..6s, independent for each NPC; aim stays stable between reviews.
         private const val DETECTION_HEIGHT = 24.0
+        private const val BEYOND_RANGE_GRACE_TICKS = 200L // 10s, like a shared contact
 
         /** How many visible enemies a scan considers when spreading the squad's fire. */
         private const val MAX_SPREAD_CANDIDATES = 4

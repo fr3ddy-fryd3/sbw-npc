@@ -201,7 +201,8 @@ object TacticalPositions {
             search.reject("no_goal_progress")
             return
         }
-        if (!TacticalRules.withinOrder(context.view, candidate, context.homeRadius)) {
+        // A scout is sent past the defended ring on purpose, to a noise his squad chose within its reach (#254).
+        if (task.job != TacticalJob.SEARCH && !TacticalRules.withinOrder(context.view, candidate, context.homeRadius)) {
             search.reject("order")
             return
         }
@@ -547,7 +548,7 @@ object TacticalPositions {
         }
         val level = entity.level() as ServerLevel
         val hulls = Sightline.vehicleHulls(level, AABB(eye, aim.eye).inflate(2.0), entity, entity.target)
-        return !Sightline.blockedBy(level, eye, aim.eye, entity, hulls, entity.spread) &&
+        return !Sightline.blockedBy(level, eye, aim.eye, entity, hulls) &&
             !Sightline.ownHullInLane(entity, eye, aim.eye, entity.spread, entity.target) &&
             clearOfGrass(level, entity, point, aim.eye) &&
             friendlyLane(entity, eye, aim.eye)

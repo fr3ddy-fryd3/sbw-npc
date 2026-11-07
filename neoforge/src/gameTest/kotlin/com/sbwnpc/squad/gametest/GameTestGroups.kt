@@ -18,7 +18,6 @@ internal object GameTestGroups {
             FarDefenceGameTests::class.java,
             ScaffoldingGameTests::class.java,
             TreePlatformGameTests::class.java,
-            ObserverLookGameTests::class.java,
         ),
         "orders" to listOf(
             HtnTacticsGameTests::class.java,
@@ -28,6 +27,7 @@ internal object GameTestGroups {
             WithdrawalGameTests::class.java,
             AttackDeploymentGameTests::class.java,
             TerrainAttackGameTests::class.java,
+            HeightMenGameTests::class.java,
         ),
         "posts" to listOf(
             TacticalSearchGameTests::class.java,
@@ -46,12 +46,20 @@ internal object GameTestGroups {
             CombatIdleGameTests::class.java,
             AllyDeathGameTests::class.java,
             SidearmGameTests::class.java,
+            PlannedCoverGameTests::class.java,
+            ArmourCoverGameTests::class.java,
+            ArmourLauncherGameTests::class.java,
+            WoundedCoverGameTests::class.java,
+            PlannedEngageGameTests::class.java,
+            EngageOnlyGameTests::class.java,
             AmmunitionTacticsGameTests::class.java,
+            AttackStrengthGameTests::class.java,
             HostileMobApiGameTests::class.java,
             HostileMobCombatGameTests::class.java,
         ),
         "perception" to listOf(
             NoticingGameTests::class.java,
+            SightRangeGameTests::class.java,
             HearingGameTests::class.java,
         ),
         "vehicles" to listOf(

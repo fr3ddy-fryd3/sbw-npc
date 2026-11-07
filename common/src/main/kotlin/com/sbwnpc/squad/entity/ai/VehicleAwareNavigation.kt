@@ -3,11 +3,13 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.mixin.PathNavigationAccessor
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.tags.BlockTags
 import net.minecraft.world.entity.Mob
+import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation
 import net.minecraft.world.level.BlockCollisions
 import net.minecraft.world.level.Level
@@ -155,6 +157,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
             onPrepare = { if (pathWorkObserver != null) observedSearches++ },
         )
         evaluator.setCanPassDoors(true)
+        evaluator.setCanOpenDoors(true)
         this.nodeEvaluator = evaluator
         return PathFinder(evaluator, maxVisitedNodes)
     }
@@ -285,8 +288,25 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
             stopOnLanding = null
         }
         super.tick()
+        workHatches()
+        // SmartBrainLib's door task reads the route from this brain memory, which only vanilla's own
+        // brain walk fills. Without it no door on our routes was ever opened.
+        mob.brain.setMemory(MemoryModuleType.PATH, path?.takeUnless { it.isDone })
         traceWalk()
         traceLadder()
+    }
+
+    /** The hatch this man opened and has yet to shut behind him, see [Hatches]. */
+    private var openedHatch: BlockPos? = null
+
+    /** Opens a closed wooden trapdoor on the next two nodes as he reaches it, and shuts it again once he is past. */
+    private fun workHatches() {
+        openedHatch?.let { if (Hatches.closeBehind(mob, it)) openedHatch = null }
+        val active = path?.takeUnless { it.isDone } ?: return
+        for (index in active.nextNodeIndex until minOf(active.nodeCount, active.nextNodeIndex + 2)) {
+            val pos = active.getNode(index).asBlockPos()
+            if (Hatches.open(mob, pos)) openedHatch = pos
+        }
     }
 
     private var lastLadderLogTick = Int.MIN_VALUE / 2
@@ -306,7 +326,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
     }
 
     private fun investigating() =
-        (mob as? com.sbwnpc.squad.entity.NpcEntity)?.isAlert() == true &&
+        (mob as? com.sbwnpc.squad.entity.NpcEntity)?.let { com.sbwnpc.squad.combat.tactics.SquadTactics.scouting(it) } == true &&
             com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH)
 
     /** While he's off to look at a noise: who took his path away or swapped it, from the frames above. */
@@ -445,7 +465,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
         return null
     }
 
-    private fun resupplyTrip(npc: com.sbwnpc.squad.entity.NpcEntity): Boolean = npc.resupplying || (npc.servingMortar && npc.mortarShellsLeft <= 0)
+    private fun resupplyTrip(npc: com.sbwnpc.squad.entity.NpcEntity): Boolean = npc.holds(NpcActivity.RESUPPLY) || (npc.holds(NpcActivity.MORTAR_CREW) && npc.mortarShellsLeft <= 0)
 
     /** What the path being walked was last planned to, on the near, formation and route branches. */
     private var nearGoal: BlockPos? = null

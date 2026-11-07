@@ -44,7 +44,7 @@ class PlanningAgentTest {
     @Test fun `unknown facts wake planning only when the missing input becomes available`() {
         val feedback = ArrayList<PlanningFeedback>()
         val work = Work()
-        val agent = PlanningAgent(id, domain(Condition.test(ready, "not_ready") { it }), PlanRuntime({ _, _ -> work }, ResourceLeases()), feedback::add)
+        val agent = PlanningAgent(id, domain(Condition.test(ready, "not_ready") { it }), PlanRuntime({ _, _ -> work }, ResourceLeases()), feedback = feedback::add)
         agent.command(UUID(0, 9), root.call(Unit), facts(0))
         agent.tick(facts(0), planningWork = 10)
         assertEquals(PlanningStatus.WAITING_FOR_FACTS, agent.status)
@@ -57,7 +57,7 @@ class PlanningAgentTest {
 
     @Test fun `failed search does not repeat every tick but relevant change permits a new attempt`() {
         val feedback = ArrayList<PlanningFeedback>()
-        val agent = PlanningAgent(id, domain(Condition.test(ready, "not_ready") { it }), PlanRuntime({ _, _ -> Work() }, ResourceLeases()), feedback::add)
+        val agent = PlanningAgent(id, domain(Condition.test(ready, "not_ready") { it }), PlanRuntime({ _, _ -> Work() }, ResourceLeases()), feedback = feedback::add)
         agent.command(UUID(0, 9), root.call(Unit), facts(0).observe(ready, false))
         agent.tick(facts(0).observe(ready, false), planningWork = 10)
         repeat(20) { agent.tick(facts(it + 1L).observe(ready, false).observe(irrelevant, it % 2 == 0), planningWork = 10) }

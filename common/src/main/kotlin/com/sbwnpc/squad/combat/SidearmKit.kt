@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.team.SquadTeams
@@ -54,7 +55,7 @@ object SidearmKit {
     /** Reloading an empty magazine with reserve rounds is not a reason to switch. */
     fun update(npc: NpcEntity) {
         sync(npc)
-        if (npc.operatingDrone || Ports.drones.isMonitor(npc.mainHandItem)) return
+        if (npc.holds(NpcActivity.DRONE) || Ports.drones.isMonitor(npc.mainHandItem)) return
         if (AntiArmourKit.isLauncher(npc.mainHandItem)) {
             if (Ports.guns.roundsLeft(npc.mainHandItem) > 0) return
             AntiArmourKit.wield(npc, launcher = false)

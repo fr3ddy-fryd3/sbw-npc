@@ -1,5 +1,6 @@
-# Publishes a GitHub release with the mod jar when a version tag (v0.7.0, v0.7.0-beta.1) is pushed.
-# Lint and tests run on the tagged commit first, so a failing tag never produces a release.
+# Publishes a GitHub release with the mod jars (NeoForge, Fabric, Forge) when a version tag (v0.7.0,
+# v0.7.0-beta.1) is pushed. Lint and tests run on the tagged commit first, so a failing tag never
+# produces a release.
 name: Release
 
 on:
@@ -45,24 +46,45 @@ jobs:
       - name: Dedicated server smoke
         run: ./gradlew --console=plain runGameTestServer -PgameTestFilter=moveAcrossFlatGround,survivalRecruitmentRestrictsDeploymentButKeepsExistingGarrisons,classMultipliersApplyOnceToKillsDeferredRewardsAndSavedExperience -PgameTestReportName=release-smoke
 
-      # Plain build is the production build: DebugFlags stay off.
+      # Plain build is the production build: DebugFlags stay off. A Gradle run configures one loader and
+      # stages only its jar into build/libs, so each loader is built and verified in turn and its jar is
+      # collected into dist/ before the next build replaces build/libs.
       - name: Build
         run: ./gradlew --console=plain build
 
       - name: Verify production artifact and pinned input
         run: python3 scripts/verify-release-artifact.py
 
+      - name: Collect the NeoForge jar
+        run: mkdir -p dist && cp build/libs/*.jar dist/
+
+      - name: Build the Fabric jar
+        run: ./gradlew --console=plain -Ploader=fabric build
+
+      - name: Verify the Fabric jar
+        run: python3 scripts/verify-release-artifact.py --loader fabric
+
+      - name: Collect the Fabric jar
+        run: cp build/libs/*.jar dist/
+
+      - name: Build the Forge jar
+        run: ./gradlew --console=plain -Ploader=forge build
+
+      - name: Verify the Forge jar
+        run: python3 scripts/verify-release-artifact.py --loader forge
+
+      - name: Collect the Forge jar
+        run: cp build/libs/*.jar dist/
+
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          minecraft_version=$(sed -n 's/^minecraft_version=//p' gradle.properties)
-          # The root build stages one jar per loader into build/libs, named by loader classifier
-          # (sbwnpc-<version>-mc<mc>-neoforge.jar); every one of them goes into the release.
+          # One jar per loader, named sbwnpc-<version>-mc<minecraft>-<loader>.jar; every one goes into the release.
           shopt -s nullglob
-          jars=(build/libs/"sbwnpc-${GITHUB_REF_NAME#v}-mc${minecraft_version}"-*.jar)
-          if [ ${#jars[@]} -eq 0 ]; then
-            echo "::error::No release jar in build/libs for ${GITHUB_REF_NAME#v}"
+          jars=(dist/"sbwnpc-${GITHUB_REF_NAME#v}"-mc*-{neoforge,fabric,forge}.jar)
+          if [ ${#jars[@]} -ne 3 ]; then
+            echo "::error::Expected a NeoForge, a Fabric and a Forge jar in dist/ for ${GITHUB_REF_NAME#v}, found ${#jars[@]}"
             exit 1
           fi
           prerelease=()

@@ -6,8 +6,10 @@
 and command your own AI-driven infantry, mortar, tank, drone, and helicopter squads.
 
 ![NeoForge](https://img.shields.io/badge/NeoForge-1.21.1-orange)
+![Fabric](https://img.shields.io/badge/Fabric-1.21.1-lightgrey)
+![Forge](https://img.shields.io/badge/Forge-1.20.1-red)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
-![Status](https://img.shields.io/badge/status-active%20dev-yellow)
+![Status](https://img.shields.io/badge/status-alpha-yellow)
 
 </div>
 
@@ -16,36 +18,42 @@ and command your own AI-driven infantry, mortar, tank, drone, and helicopter squ
 ## What is this
 
 [SBW] NPC Squads lets you recruit NPCs with a single tool, form them into squads, and command them like
-a small AI-controlled army: riflemen, medics, snipers, machine gunners, grenadiers, mortar crews,
+a small AI-controlled army: riflemen, shotgunners, medics, snipers, machine gunners, grenadiers, mortar crews,
 tank and helicopter crews, and kamikaze-drone operators. Squads take cover, dig in under fire, avoid shooting
 their own side, relay spotted enemies to the rest of their faction, ride and crew vehicles, and
-follow orders — Attack, Defend, Patrol, Move — from a quick-command HUD or by pointing and
+follow orders — Attack, Defend, Patrol, Move, Follow — from a quick-command HUD or by pointing and
 clicking. Supply points keep them equipped, boats carry them across water, and radio reports tell
 you when they make contact, lose men, need ammunition, or reach their objective.
 
-## Version 1.0.0 design
+## Alpha
 
-[PLAN-1.0.0.md](PLAN-1.0.0.md) defines the next version: physical NPC commanders with delegated
-authority and succession, sequential barracks recruitment, earned ranks, engineering squads,
-territorial Supply points, and operations. These systems are being designed on `feature/1.0.0`;
-`develop` contains the released `0.6.0`. The recruitment queue is implemented
-on `feature/1.0.0`; the remaining systems are planned features, not part of
-the current release.
+1.0.0-alpha1 is the first release for all three loaders. It is an alpha: expect rough edges in the AI,
+and keep backups of worlds you care about. Bug reports are welcome on the [Issues](../../issues) page.
 
 ## Requirements
 
-- Minecraft 1.21.1 + NeoForge 21.1.203 or newer
-- Kotlin for Forge 5.8.0 or newer (NeoForge build)
-- [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) 0.8.9.1 or newer
-- SmartBrainLib 1.16.11 or newer
-- Optional: the SBW Drone Warfare addon, for the drone operator class to use its FPV drone model
-- Optional: [JourneyMap](https://www.curseforge.com/minecraft/mc-mods/journeymap) 6.x — your squads,
-  their objectives and the enemies your side has spotted on the map, and orders given from it
+| | NeoForge | Fabric | Forge |
+|---|---|---|---|
+| Minecraft | 1.21.1 | 1.21.1 | 1.20.1 |
+| Loader | NeoForge 21.1.203 or newer | Fabric Loader 0.17.2 or newer | Forge 47 or newer |
+| Kotlin | Kotlin for Forge 5.8.0 or newer | Fabric Language Kotlin | Kotlin for Forge 4.11 |
+| SuperbWarfare | [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) 0.8.9.1 or newer | [SuperbWarfare ReFabricated](https://github.com/CrawKatt/SuperbWarfareReFabricated) 0.8.9 or newer | SuperbWarfare 0.8.9 or newer for 1.20.1 |
+| SmartBrainLib | 1.16.11 or newer | 1.16.11 or newer | 1.15 or newer |
+
+Optional:
+
+- the SBW Drone Warfare addon, for the drone operator class to use its FPV drone model;
+- [JourneyMap](https://www.curseforge.com/minecraft/mc-mods/journeymap) 6.x: your squads, their
+  objectives and the enemies your side has spotted on the map, and orders given from it. Only tried
+  on NeoForge so far.
+
+Worlds don't carry over between Minecraft 1.20.1 and 1.21.1.
 
 ## Installation
 
-1. Install NeoForge, Kotlin for Forge, SuperbWarfare, and SmartBrainLib first.
-2. Grab the latest jar from the [Releases](../../releases) page.
+1. Install the loader, its Kotlin library, SuperbWarfare and SmartBrainLib first.
+2. Grab the jar for your loader from the [Releases](../../releases) page: the file name ends in
+   `-neoforge`, `-fabric` or `-forge`.
 3. Replace the previous NPC Squads jar in your `mods/` folder with the new one.
 
 ## Key conflicts
@@ -74,7 +82,14 @@ guaranteed response time.
 ## Features
 
 - **8 factions** with distinct uniforms and colours; deploy friendly or hostile squads.
-- **Combat AI** that takes cover, reacts to suppression, avoids friendly fire and shares contacts.
+- **Combat AI** that plans how each squad fights: bounding overwatch, flanks, assaults by halves
+  under covering fire, smoke-covered retreats, and scouts sent to look at a shot from out of sight.
+  Squads take cover, react to suppression, avoid friendly fire and share contacts.
+- **Spotting takes time**, by distance, light, weather, cover and experience; men grow wary after a
+  contact and look around.
+- **Joint operations** — several squads on one point attack it together, each from its own sector,
+  and call off a beaten attack.
+- **Soldiers with a record** — each one has a persistent name and experience, and earns his rank.
 - **Ground and water transport** — squads drive, crew mounted guns, plan routes around terrain and
   cross water by boat. Amphibious vehicles travel between land and water.
 - **Drone operators** attack with kamikaze drones; other NPCs shoot down or take cover from them.
@@ -92,8 +107,9 @@ guaranteed response time.
 | **Supply Point** (`sbwnpc:supply`) | Same tab — or `/give @s sbwnpc:supply` | Automatically resupplies friendly NPCs within 8 blocks; right-click for a player kit or respawn point. |
 | **Quick-command HUD** | Key `Z`, rebindable under controls category *SBW NPC Squads* | Pick a squad and an order without opening a menu. |
 
-On first use the tool asks you to pick a faction once. That is only your own default — you can
-still deploy any of the eight afterwards, including hostile ones to fight against.
+On first use the tool asks you to pick a faction once. In survival you recruit and deploy only that
+faction, by the tool and by a Barracks. In creative you can deploy any of the eight, including
+hostile ones to fight against, and set which faction a Supply serves.
 
 ## Using the tool
 
@@ -101,9 +117,11 @@ Two modes, switched with **Ctrl + right-click on air**. The current one is on th
 
 **Recruit mode — what gets deployed**
 
-- **Right-click air** opens the deploy config: preset, class (Single only), faction, and the
+- **Right-click** deploys where you look, up to 64 blocks away, on a block or at a distant spot. Cover in the
+  way takes the squad instead of the ground behind it. The squad is lined up abreast and faces you. A column
+  of particles, visible only to you, marks the spot while the tool is in your hand.
+- **Shift + right-click** opens the deploy config: preset, class (Single only), faction, and the
   vehicle or airframe where the preset has one.
-- **Right-click a block** deploys it there, lined up abreast and facing you.
 - Presets: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `32: Company`, `Mortar Crew`, `Tank Crew`
   (ZTZ-99A / T-90A / M1A2), `Drone Team`, `Heli Crew` — Mi-28 gunship or AH-6 transport, and the
   airframe decides which crew comes with it. `5` and `7` can bring a LAV-25 / LAV-150 / BMP-2.
@@ -150,11 +168,12 @@ disbanding one moves the rest up into the freed numbers.
 | Order | What it means | Who can be given it |
 |---|---|---|
 | **Defend** | Hold near the objective, don't chase far | Everyone except tank crews |
-| **Patrol** | Roam within 40 blocks of the objective, or walk the assigned route | Infantry |
+| **Patrol** | Roam round the objective (30 to 50 blocks, by squad size), or walk the assigned route | Infantry |
 | **Attack** | Advance on the objective; AH-6 circles it for its bench gunners | Everyone except tank crews |
 | **Move** | Travel to the objective, then hold or land | Infantry, tank crews, helicopters |
 | **Barrage** | Shell a 40-block area around the objective instead of one point | Mortar crews |
 | **Retreat** | Fall back to the objective, then hold; helicopters land there | Everyone |
+| **Follow** | Stay with you, spread out, and fight on the way; ride in the vehicle you sit in. One squad follows a player at a time, and it holds where it stands if you die or leave | Infantry |
 
 Tank crews take **Move** and **Retreat** — they fight from the tank by themselves. A Mi-28 gunship takes
 Attack / Defend / Move / Retreat and attacks from a standoff hover. An AH-6 uses Defend to patrol
@@ -215,6 +234,8 @@ before it had logistics support may need to be broken and placed again.
 
 ## Worth knowing
 
+- Several squads ordered onto the same point fight it as one operation, each from its own side.
+  Right-clicking an operation's marker on the JourneyMap map lets the selected squads join it.
 - Squads take cover, dig in when badly hurt, and won't fire through a squadmate — or through a
   parked vehicle.
 - A squad with a distant objective commandeers a vehicle nearby and drives. You can ride along in
@@ -227,11 +248,14 @@ before it had logistics support may need to be broken and placed again.
 - Every NPC has one medical kit and uses it on itself when wounded in cover; Supply replenishes it.
 - Machine gunners carry a launcher on the side for anything riding a vehicle; infantry stays the
   machine gun's job.
-- NPCs throw grenades at covered enemies or when pinned, checking reach, obstacles and nearby allies.
+- NPCs throw grenades at covered enemies or when pinned, one thrower per squad at a time, checking
+  reach, obstacles, vehicle hulls and nearby allies. Passengers don't throw.
+- NPCs open wooden doors and ladder or scaffolding trapdoors, and climb ladders and scaffolding.
+- Mobs that hunt players hunt NPCs too, and NPCs fight back.
 - Mortar crews only shell what their own side has actually seen. Out of reach of the target, they
   break the mortar down, carry it closer and set it back up.
 - A killed NPC drops the weapon in its hands with a 3.75% chance (with only its loaded magazine), each
-  piece of armour with a 1.25% chance, a box of ammunition for its gun with an 18.75% chance, and one of
+  piece of armour with a 1.25% chance, a box of ammunition for its gun with a 28.125% chance, and one of
   the grenades it had left with a 1.25% chance, whoever killed it.
   Ammunition without a box item, such as heavy rounds and rockets, drops as individual items.
 

@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.combat.tactics.TacticalBudget
 import com.sbwnpc.squad.combat.tactics.TacticalPositions
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.server.level.ServerLevel
@@ -45,7 +46,11 @@ internal class DroneLaunchWalk(entity: NpcEntity) {
             if (!TacticalBudget.path(entity)) return Result.WAITING
             cursor++
             val path = TacticalPositions.pathToPosition(entity, point)
-            if (TacticalPositions.reaches(path, point)) {
+            if (TacticalPositions.reaches(path, point) && (0 until path!!.nodeCount).all { index ->
+                    val node = path.getNode(index)
+                    com.sbwnpc.squad.ai.integration.NativeTactics.armourSheltered(entity, Vec3.atBottomCenterOf(net.minecraft.core.BlockPos(node.x, node.y, node.z)))
+                }
+            ) {
                 ownedPath = path
                 entity.navigation.moveTo(path, WALK_SPEED)
             }
@@ -96,7 +101,7 @@ internal class DroneLaunchWalk(entity: NpcEntity) {
 
     private fun sameOrder(entity: NpcEntity) = entity.currentSquad()?.orderStamp == orderStamp
 
-    private fun returnInterrupted(entity: NpcEntity) = !sameOrder(entity) || entity.movementLockedByCover() || entity.combatLockedByMedic()
+    private fun returnInterrupted(entity: NpcEntity) = !sameOrder(entity) || entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)
 
     private companion object {
         const val SEARCH_RADIUS = 12

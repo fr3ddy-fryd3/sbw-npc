@@ -13,6 +13,7 @@ import com.sbwnpc.squad.domain.port.KitOption
 import com.sbwnpc.squad.domain.port.PlayerSupply
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.util.SaveableStacks
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
@@ -226,7 +227,7 @@ object SbwPlayerSupply : PlayerSupply {
         var missing = count - player.inventory.countItem(item)
         if (missing <= 0) return false
         while (missing > 0) {
-            val batch = minOf(missing, item.getDefaultMaxStackSize())
+            val batch = minOf(missing, item.getDefaultMaxStackSize(), SaveableStacks.MAX_COUNT)
             give(player, ItemStack(item, batch))
             missing -= batch
         }

@@ -21,7 +21,7 @@ import net.minecraft.world.phys.Vec3
  * Two callers: [com.sbwnpc.squad.entity.ai.GunAttackBehaviour] raises this every time it actually
  * fires (hearOrigin = the shooter, investigatePos = the target it's shooting at), and
  * [NpcEntity.die] raises it at the death position for both (no better lead available) when the
- * killer can't be resolved into a proper [TeamAwareness] report.
+ * killer can't be named.
  */
 object Alarm {
     /**

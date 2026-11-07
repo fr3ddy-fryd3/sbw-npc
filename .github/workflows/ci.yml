@@ -49,7 +49,7 @@ jobs:
       - name: Verify production artifact and pinned input
         run: python3 scripts/verify-release-artifact.py
 
-  # The Fabric module builds the shared sources with Loom (preview: not part of a release yet).
+  # The Fabric module builds the shared sources with Loom; its jar is verified like the NeoForge one.
   fabric:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -63,16 +63,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Build the Fabric jar
-        run: ./gradlew --console=plain -Ploader=fabric :fabric:build
+        run: ./gradlew --console=plain -Ploader=fabric build
 
-      - name: Check the jar name
-        run: |
-          version=$(sed -n 's/^mod_version=//p' gradle.properties)
-          minecraft=$(sed -n 's/^minecraft_version=//p' gradle.properties)
-          test -f "fabric/build/libs/sbwnpc-${version}-mc${minecraft}-fabric.jar"
+      - name: Verify production artifact and pinned input
+        run: python3 scripts/verify-release-artifact.py --loader fabric
 
-  # The Forge module builds the shared sources for Minecraft 1.20.1 (preview: not part of a release yet).
+  # The Forge module builds the shared sources for Minecraft 1.20.1; its jar is verified like the NeoForge one.
   forge:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -86,10 +87,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build the Forge jar
-        run: ./gradlew --console=plain -Ploader=forge :forge:build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      - name: Check the jar name
-        run: |
-          version=$(sed -n 's/^mod_version=//p' gradle.properties)
-          test -f "forge/build/libs/sbwnpc-${version}-mc1.20.1-forge.jar"
+      - name: Build the Forge jar
+        run: ./gradlew --console=plain -Ploader=forge build
+
+      - name: Verify production artifact and pinned input
+        run: python3 scripts/verify-release-artifact.py --loader forge

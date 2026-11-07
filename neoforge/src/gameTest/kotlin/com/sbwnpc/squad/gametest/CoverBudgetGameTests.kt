@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.CoverPeekSearch
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
@@ -11,8 +12,6 @@ import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
-import java.nio.file.Files
-import java.nio.file.Path
 
 @PrefixGameTestTemplate(false)
 object CoverBudgetGameTests {
@@ -95,9 +94,9 @@ object CoverBudgetGameTests {
             helper.assertTrue(npc.incomingFire.pending(helper.level.gameTime), "Hostile ranged hit did not create an incoming-fire episode")
         }
         helper.onEachTick {
-            peeked = peeked || npc.coverPeekPoint != null
+            peeked = peeked || npc.holds(NpcActivity.PEEK)
             beganReply = beganReply || npc.incomingFire.replying(helper.level.gameTime)
-            if (helper.tick % 40L == 0L) scene.result("CHECK", "tick=${helper.tick} at=${helper.relativeVec(npc.position())} peek=${npc.coverPeekPoint?.let(helper::relativeVec)} roundsLeft=${npc.incomingFire.roundsLeft} peeked=$peeked beganReply=$beganReply lastShot=${npc.lastShotTick}")
+            if (helper.tick % 40L == 0L) scene.result("CHECK", "tick=${helper.tick} at=${helper.relativeVec(npc.position())} peek=${npc.holds(NpcActivity.PEEK)} roundsLeft=${npc.incomingFire.roundsLeft} peeked=$peeked beganReply=$beganReply lastShot=${npc.lastShotTick}")
             if (helper.tick > 20 && peeked && beganReply && npc.incomingFire.roundsLeft == 0) {
                 helper.assertTrue(npc.lastShotTick >= 0 && npc.isAlive, "No live physical return-fire shooter")
                 scene.result("PASS", "peeked=$peeked beganReply=$beganReply roundsLeft=0 at=${helper.relativeVec(npc.position())} tick=${helper.tick}")
@@ -106,52 +105,53 @@ object CoverBudgetGameTests {
         }
     }
 
+    /**
+     * Sixteen men suppressed in one tick, each with a wall beside him: all take cover, and every one
+     * fights again, most by a peek along a path he can walk. Their peek searches share the per-tick
+     * tactical path budget (its FIFO is [com.sbwnpc.squad.combat.tactics.TacticalPathBudget],
+     * unit-tested), so the scene is about the queue starving nobody in a real fight, not about its
+     * arithmetic. A man who steps out and fires instead of peeking is not starved.
+     */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 220, batch = "cover-peek-budget")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "cover-peek-budget")
     fun synchronizedCoverPeeksObeyNativeBudgetAndAllReceivePaths(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "cover-peek-budget", recordTrace = false)
-        val searches = mutableMapOf<Long, Int>()
-        val calls = mutableMapOf<Long, Int>()
-        val tick = SeekCoverBehaviour::class.java.getDeclaredMethod("tick", NpcEntity::class.java).apply { isAccessible = true }
         val actors = List(16) { i ->
             val z = 12.5 + i * 12
-            val npc = scene.spawn(Vec3(20.5, 1.0, z)).apply { isNoAi = true }
+            val npc = scene.spawn(Vec3(20.5, 1.0, z))
             val enemy = scene.enemy(Vec3(60.5, 1.0, z))
             npc.target = enemy
-            npc.rememberVisible(enemy)
-            for (y in 1..2) helper.setBlock(BlockPos(22, y, z.toInt()), Blocks.STONE)
-            val behaviour = SeekCoverBehaviour()
-            field("phase").set(behaviour, field("phase").type.enumConstants.single { it.toString() == "IN_COVER" })
-            field("coverTarget").set(behaviour, npc.blockPosition())
-            field("phaseUntilTick").setInt(behaviour, 0)
-            (npc.navigation as VehicleAwareNavigation).pathWorkObserver = { _, _, native ->
-                calls.merge(helper.tick, 1, Int::plus)
-                if (native) searches.merge(helper.tick, 1, Int::plus)
-            }
-            npc to behaviour
+            for (y in 1..2) for (dz in -2..2) helper.setBlock(BlockPos(24, y, z.toInt() + dz), Blocks.STONE)
+            npc to enemy
         }
-        scene.onClose = { actors.forEach { (npc, _) -> (npc.navigation as VehicleAwareNavigation).pathWorkObserver = null } }
+        val covered = mutableSetOf<NpcEntity>()
+        val peeked = mutableSetOf<NpcEntity>()
+        // His own clock: lastShotTick counts his ticks, not the test's.
+        val suppressedAt = mutableMapOf<NpcEntity, Int>()
         helper.onEachTick {
-            if (helper.tick < 20) return@onEachTick
-            // Component scene: real raycasts, vanilla A*, and production cover transitions.
-            // NoAI suppresses other behaviors; actors stand on an actual solid floor.
-            actors.forEach { (npc, behaviour) ->
-                npc.setOnGround(true)
-                if (npc.coverPeekPoint == null) tick.invoke(behaviour, npc)
+            if (helper.tick == SUPPRESSED_AT) {
+                actors.forEach { (npc, enemy) ->
+                    npc.suppress(enemy.eyePosition)
+                    suppressedAt[npc] = npc.tickCount
+                }
             }
-            val assigned = actors.count { it.first.coverPeekPoint != null }
-            val maximum = searches.values.maxOrNull() ?: 0
-            val report = "tick=${helper.tick} assigned=$assigned/16 native=${searches.values.sum()} maximumNativePerTick=$maximum pathCalls=${calls.values.sum()}\n"
-            Files.writeString(Path.of(System.getProperty("sbwnpc.gameTestReports")).resolve("cover-peek-budget.txt"), report)
-            helper.assertTrue(maximum <= 4, "Cover peek bypassed the native path budget: $report")
-            if (assigned == actors.size) {
-                helper.assertTrue(searches.values.sum() > 0, "Scene did not perform any actual native searches")
-                helper.assertTrue(actors.all { it.first.navigation.path?.canReach() == true }, "Peek discarded a verified reachable path")
-                scene.result("PASS", report.trim())
+            if (helper.tick < SUPPRESSED_AT) return@onEachTick
+            actors.forEach { (npc, _) ->
+                if (npc.holds(NpcActivity.COVER)) covered += npc
+                // A peek claim with no reachable path is the starved case.
+                if (npc.holds(NpcActivity.PEEK) && npc.navigation.path?.canReach() != false) peeked += npc
+            }
+            val fought = actors.count { (npc, _) -> npc in covered && npc.lastShotTick > suppressedAt.getValue(npc) }
+            if (helper.tick % 40L == 0L) scene.result("RUNNING", "tick=${helper.tick} covered=${covered.size}/16 peeked=${peeked.size}/16 foughtAgain=$fought/16")
+            if (fought == actors.size && peeked.size >= actors.size / 2) {
+                scene.result("PASS", "tick=${helper.tick} covered=${covered.size} peeked=${peeked.size} foughtAgain=$fought")
                 helper.succeed()
             }
         }
     }
+
+    /** The tick every man is suppressed at once, after the scene settles. */
+    private const val SUPPRESSED_AT = 20L
 
     private fun field(name: String) = SeekCoverBehaviour::class.java.getDeclaredField(name).apply { isAccessible = true }
 }

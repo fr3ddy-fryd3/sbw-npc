@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.SafeSpawn
 import com.sbwnpc.squad.team.SquadTeams
@@ -22,7 +23,7 @@ object MortarDeployment {
         carrier.packedMortarState = MortarCycle.pack(mortar)
         MortarClaims.releaseMortar(mortar.uuid)
         mortar.discard()
-        carrier.carryingMortar = true
+        carrier.claim(NpcActivity.CARRYING_MORTAR, this)
         return true
     }
 
@@ -32,7 +33,7 @@ object MortarDeployment {
      * there is nowhere alongside the operator it could stand.
      */
     fun deploy(level: ServerLevel, carrier: NpcEntity, facing: Vec3?): Entity? {
-        if (!carrier.carryingMortar) return null
+        if (!carrier.holds(NpcActivity.CARRYING_MORTAR)) return null
         val yaw = facing?.let { aim ->
             val dx = aim.x - carrier.x
             val dz = aim.z - carrier.z
@@ -62,12 +63,12 @@ object MortarDeployment {
         carrier.packedMortarState = net.minecraft.nbt.CompoundTag()
         level.addFreshEntity(mortar)
         SquadTeams.factionOf(carrier)?.let { SquadTeams.assign(mortar, it) }
-        carrier.carryingMortar = false
+        carrier.release(NpcActivity.CARRYING_MORTAR, this)
     }
 
     /** A carrier that dies sets its load down rather than taking it with it. */
     fun dropOnDeath(level: ServerLevel, carrier: NpcEntity) {
-        if (!carrier.carryingMortar) return
+        if (!carrier.holds(NpcActivity.CARRYING_MORTAR)) return
         // Straight down where it fell — no side offset, and no safe-spot search worth failing on.
         val mortar = Ports.mortars.create(level, carrier.yRot)
         mortar.moveTo(carrier.x, carrier.y, carrier.z, carrier.yRot, 0f)

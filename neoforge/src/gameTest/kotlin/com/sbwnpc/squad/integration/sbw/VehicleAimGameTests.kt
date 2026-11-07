@@ -9,6 +9,7 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.SquadTargetSensor
 import com.sbwnpc.squad.entity.ai.VehicleCombatSupportBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
+import com.sbwnpc.squad.entity.ai.WeaponStationScan
 import com.sbwnpc.squad.gametest.CombatIdleGameTests
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
@@ -160,17 +161,11 @@ object VehicleAimGameTests {
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
         manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, man.blockPosition())
-        val behaviour = VehicleCombatSupportBehaviour()
-        val check = VehicleCombatSupportBehaviour::class.java.getDeclaredMethod("checkExtraStartConditions", ServerLevel::class.java, NpcEntity::class.java).apply { isAccessible = true }
-        val (start, tick, stop) = listOf("start", "tick", "stop").map { name ->
-            VehicleCombatSupportBehaviour::class.java.getDeclaredMethod(name, NpcEntity::class.java).apply { isAccessible = true }
-        }
-        var started = false
         scene.onClose = {
-            if (started) stop.invoke(behaviour, man)
             manager.deleteSquad(helper.level, squad.id)
             gun.discard()
         }
+        // The team gives a man a gun only if it bears on his enemy (#255): its scan is where that is checked.
         helper.onEachTick {
             if (helper.tick == 40L) {
                 val reachable = helper.absoluteVec(Vec3(24.5, 1.0, 58.5))
@@ -178,14 +173,10 @@ object VehicleAimGameTests {
             }
             BrainUtils.setTargetOfEntity(man, enemy)
             man.sensing.tick()
-            if (!started && check.invoke(behaviour, helper.level, man) == true) {
-                start.invoke(behaviour, man)
-                started = true
-            }
-            if (started) tick.invoke(behaviour, man)
+            val offered = WeaponStationScan.stations(listOf(man), helper.level).any { it.vehicle == gun.uuid }
             if (helper.tick < 40) {
-                helper.assertTrue(VehicleTransportClaims.vehicleOf(man.uuid) == null, "The man claimed a gun that cannot elevate to its visible target")
-            } else if (man.vehicle === gun) {
+                helper.assertTrue(!offered, "The team was offered a gun that cannot elevate to its visible target")
+            } else if (offered) {
                 scene.result("PASS", "tick=${helper.tick} nativeElevation=${gun.turretMaxPitch}")
                 helper.succeed()
             }

@@ -122,10 +122,10 @@ class AttackProgressTest {
         val progress = assaulting(ready = 20, enemies = 4)
         val movers = ids(4)
         assertTrue(progress.roles(400, objective, movers, at(movers, 30.0), listOf(defender)).closing.isNotEmpty())
-        // On their closing posts (half way to the defender) from tick 410.
-        assertTrue(progress.roles(410, objective, movers, at(movers, 80.0), listOf(defender)).assault.isEmpty())
-        assertTrue(progress.roles(809, objective, movers, at(movers, 80.0), listOf(defender)).assault.isEmpty())
-        val roles = progress.roles(810, objective, movers, at(movers, 80.0), listOf(defender))
+        // At their stand-off from the defender from tick 410.
+        assertTrue(progress.roles(410, objective, movers, at(movers, 106.0), listOf(defender)).assault.isEmpty())
+        assertTrue(progress.roles(809, objective, movers, at(movers, 106.0), listOf(defender)).assault.isEmpty())
+        val roles = progress.roles(810, objective, movers, at(movers, 106.0), listOf(defender))
         assertTrue(progress.occupying)
         assertEquals(movers.toSet(), roles.assault.keys)
         assertTrue(roles.closing.isEmpty())
@@ -246,5 +246,54 @@ class AttackProgressTest {
         assertEquals(AttackPhase.ASSAULT, progress.phase)
         assertTrue(progress.bounds(600, objective, ids(2).toSet(), at(ids(2), 60.0), listOf(defender)).isEmpty())
         assertTrue(progress.bounders.isEmpty())
+    }
+
+    @Test fun `an assault closes in by halves, each rush covered by the other half`() {
+        val progress = assaulting(ready = 20, enemies = 4)
+        val movers = ids(4)
+        val roles = progress.roles(400, objective, movers, at(movers, 80.0), listOf(defender))
+        assertEquals(2, roles.closing.size)
+        assertEquals(movers.toSet() - roles.closing.keys, roles.holding)
+        roles.closing.keys.forEach { assertEquals(roles.holding, roles.covers[it]) }
+    }
+
+    @Test fun `the turn passes only once the closing half stands on its posts`() {
+        val progress = assaulting(ready = 20, enemies = 4)
+        val movers = ids(4)
+        val first = progress.roles(400, objective, movers, at(movers, 80.0), listOf(defender)).closing.keys
+        // Half way there: the rushing men are not stopped in the open.
+        val midway = movers.map { AttackMember(it, Point3(100.0, 64.0, if (it in first) 92.0 else 80.0), true) }
+        assertEquals(first, progress.roles(600, objective, movers, midway, listOf(defender)).closing.keys)
+        val there = movers.map { AttackMember(it, Point3(100.0, 64.0, if (it in first) 105.0 else 80.0), true) }
+        assertEquals(movers.toSet() - first, progress.roles(700, objective, movers, there, listOf(defender)).closing.keys)
+    }
+
+    @Test fun `out of range of the defenders nobody waits to be covered`() {
+        val progress = assaulting(ready = 20, enemies = 4)
+        val movers = ids(4)
+        val roles = progress.roles(400, objective, movers, at(movers, 30.0), listOf(defender))
+        assertEquals(movers.toSet(), roles.closing.keys)
+        assertTrue(roles.holding.isEmpty())
+        roles.covers.values.forEach { assertTrue(it.isEmpty()) }
+    }
+
+    @Test fun `a man is covered by his own squad, and with none of it left he goes from cover to cover`() {
+        val progress = assaulting(ready = 20, enemies = 4)
+        val movers = ids(3)
+        val squads = listOf(UUID(1, 1), UUID(1, 1), UUID(1, 2))
+        val members = movers.mapIndexed { i, id -> AttackMember(id, Point3(100.0, 64.0, 80.0), true, squad = squads[i]) }
+        val roles = progress.roles(400, objective, movers, members, listOf(defender))
+        val alone = movers[2]
+        assertTrue(alone in roles.closing.keys)
+        assertTrue(alone !in roles.covers)
+        roles.covers.forEach { (id, cover) -> cover.forEach { assertEquals(squads[movers.indexOf(id)], squads[movers.indexOf(it)]) } }
+    }
+
+    @Test fun `a shotgunner closes in nearer than the others`() {
+        val from = Point3(100.0, 64.0, 100.0)
+        val rifleman = OperationTactics.closingPost(from, listOf(defender), assaultStandoff(closeQuarters = false))
+        val shotgunner = OperationTactics.closingPost(from, listOf(defender), assaultStandoff(closeQuarters = true))
+        assertEquals(OperationTactics.ASSAULT_STANDOFF, defender.z - rifleman.post.z, 1.0E-6)
+        assertEquals(OperationTactics.CLOSE_QUARTERS_STANDOFF, defender.z - shotgunner.post.z, 1.0E-6)
     }
 }

@@ -1,7 +1,9 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.sbwnpc.squad.ai.tactics.FireSupport
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -25,10 +27,19 @@ object MortarClaims {
     fun isOperatorClaimedByOther(mortar: UUID, npc: UUID) = operators[mortar]?.let { it != npc } == true
     fun isLoaderClaimedByOther(mortar: UUID, npc: UUID) = loaders[mortar]?.let { it != npc } == true
 
-    fun available(npc: NpcEntity): Boolean =
-        npc.npcClass == com.sbwnpc.squad.npc.NpcClass.MORTAR && npc.isAlive && !npc.isRemoved && !npc.isPassenger && !npc.vehicleTransport &&
-            !npc.diggedIn && !npc.movementLockedByCover() && !npc.combatLockedByMedic() && !npc.evadingGrenade() &&
-            npc.target?.let { it.isAlive && npc.distanceToSqr(it) <= 36.0 } != true
+    /** Posts per tube: an operator and a loader. */
+    const val POSTS = 2
+
+    /** He may hold a post: free to serve and not defending himself. */
+    fun available(npc: NpcEntity): Boolean = free(npc) && !threatened(npc)
+
+    /** No cover, evasion, peek, treatment, vehicle or foxhole has him: what the crew plan's `crew.free` reads (#258). */
+    fun free(npc: NpcEntity): Boolean =
+        npc.npcClass == com.sbwnpc.squad.npc.NpcClass.MORTAR && npc.isAlive && !npc.isRemoved && !npc.isPassenger && !npc.holds(NpcActivity.VEHICLE) &&
+            !npc.holds(NpcActivity.DUG_IN) && !npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)
+
+    /** The one self-defence rule: his target alive within [FireSupport.SELF_DEFENCE_RANGE] of him. */
+    fun threatened(npc: NpcEntity): Boolean = npc.target?.let { it.isAlive && npc.distanceTo(it) <= FireSupport.SELF_DEFENCE_RANGE } == true
 
     fun refresh(level: ServerLevel) {
         for (map in listOf(operators, loaders)) {
@@ -71,7 +82,7 @@ object MortarClaims {
         trace(mortar, away, Role.LOADER, "supply_errand")
     }
 
-    fun atPost(npc: NpcEntity, mortar: Entity): Boolean = available(npc) && !npc.mortarErrand && npc.distanceToSqr(mortar) <= 6.25
+    fun atPost(npc: NpcEntity, mortar: Entity): Boolean = available(npc) && !npc.holds(NpcActivity.MORTAR_ERRAND) && npc.distanceToSqr(mortar) <= 6.25
 
     fun activeCrew(mortar: Entity): Int {
         val level = mortar.level() as ServerLevel

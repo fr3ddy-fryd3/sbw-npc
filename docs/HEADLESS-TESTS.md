@@ -45,6 +45,7 @@ bash setup-minecraft-headless.sh --unit
 bash setup-minecraft-headless.sh --filter attackPastRidgeUnderFire,blockedMinorityResumesFireOnUnevenGround --report attack
 bash setup-minecraft-headless.sh --group overwatch --report overwatch
 bash setup-minecraft-headless.sh --all --report full
+bash setup-minecraft-headless.sh --all --parallel 3 --report full
 
 # Repeat already prepared scenes without the network:
 bash setup-minecraft-headless.sh --offline --report repeat
@@ -58,6 +59,7 @@ bash setup-minecraft-headless.sh --offline --report repeat
 | `--filter METHODS` | Run the GameTest methods with these exact names, comma-separated. An unknown name stops the run with `Unknown GameTest` and the list of available ones |
 | `--group GROUPS` | Run the GameTests of these domains, comma-separated (see below). An unknown name stops the run with `Unknown GameTest group` and the list of known ones. Not combined with `--filter` |
 | `--report NAME` | Report directory name (default `cloud-YYYYmmdd-HHMMSS`). ASCII letters, digits, `-` and `_` only; a repeated name overwrites the report, so give runs you want to compare different names |
+| `--parallel N` | Split the selected scenes (`--all`, `--group` or `--filter`) into N servers that run at once. See below |
 | `--offline` | Use cached downloads and Gradle dependencies only |
 | `--no-system-install` | Don't install missing base tools through `apt-get` |
 
@@ -67,11 +69,26 @@ sessions, set `GRADLE_USER_HOME` before running. Local tools and archives live i
 `HEADLESS_GRADLE_HEAP=4G` sets Gradle's memory, `HEADLESS_GRADLE_BIN=/path/gradle` uses an existing
 Gradle 9.5.0. The script limits the build to two workers and no parallel tasks.
 
+### Parallel shards
+
+`--parallel N` reads the selected scenes from the sources and splits them by batch, never inside
+one, since the scenes of a batch run side by side in one server. A batch weighs its longest
+timeout, and the heaviest go first, each into the lightest shard. Each shard runs
+`setup-minecraft-headless.sh --filter` in its own worktree, `.worktrees/headless-shard-K`. The
+worktree is reused between runs and checked out at the committed `HEAD`, so commit or stash your
+changes first: the run refuses a dirty tree. It links `SuperbWarfare/` and the downloads and tools
+from `build/headless/`, so prepare the main checkout once before the first run.
+
+Shard logs go to `build/headless/logs/<report>-sK.log`. Reports go to
+`neoforge/build/reports/gameTest/<report>/shard-K/`, next to `summary.txt`, which lists every
+failed scene and every shard whose server did not finish. Each server takes about 4 GB for Gradle
+and as much again for the game, so three shards suit a 16-core machine with 27 GB.
+
 Domains for `--group`, to run what a change touches (a class may sit in several):
 
 | Group | Scenes about |
 |---|---|
-| `overwatch` | Towers, sentries, far defence, scaffolding, observers' gaze |
+| `overwatch` | Towers, sentries, far defence, scaffolding |
 | `orders` | Attack, defend, patrol, follow, withdrawal, manoeuvres, areas, the HTN |
 | `posts` | Searching firing posts and cover, firing lines, target memory |
 | `movement` | Infantry marches, ladders, routes |
@@ -109,7 +126,7 @@ To check the bench can fail at all:
 ```
 
 This switches off the AI of the NPC on the flat route only. Expected: `moveAcrossFlatGround` fails its
-progress check, the platform scene passes, and Gradle reports a failure.
+progress check and Gradle reports a failure.
 
 ## Output
 
@@ -136,8 +153,6 @@ and harmless.
 - **The test world persists between runs** in `neoforge/build/gametest/server/`. Entities a run
   left behind (for example after an interrupted run) can load into the next one; a scene that
   spawns NPCs should clear its area first.
-- **Combat scenes pace ticks to real time** (`CombatTickPacer`, at least 50 ms a tick): SBW weapon
-  timers run on wall-clock time, and an unpaced server ticks faster than they can fire.
 - **Real projectiles need an observer.** With no player near a fight, the mod resolves shots as a
   hitscan roll (`OffscreenFire`) instead of real SBW rounds. Combat scenes that measure rounds add a
   fake player (`FakePlayerFactory`) near the fight and check `OffscreenFire.hasWitness`.
@@ -168,6 +183,5 @@ prove a whole battle or a player's case is fixed.
 | [SavedBattleGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/SavedBattleGameTests.kt), [SavedBattleReplay.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/SavedBattleReplay.kt), [CombatParticipationTrace.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatParticipationTrace.kt) | Replaying a battle saved from a real world (`gameTestReplay`) and why men idled in it |
 | [CombatPerformanceGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatPerformanceGameTests.kt), [NativeCombatWork.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/NativeCombatWork.kt) | Server cost of large fights and counting search work |
 | Other `*GameTests.kt` | Supply, vehicles, mortars, helicopters, sidearms, ammunition, experience, squad areas, progression |
-| [CombatTickPacer.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatTickPacer.kt) | The real-time tick pacing described above |
 | [structure/](../neoforge/src/gameTest/resources/data/sbwnpc/structure/) | Empty arena templates (`movement_arena`, `attack_arena`, `terrain_arena`, ...); floors and obstacles are placed by the scenes |
 | [neoforge/build.gradle.kts](../neoforge/build.gradle.kts) | The `gameTest` source set, `runGameTestServer`, the mods loaded and archiving the log |

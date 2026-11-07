@@ -12,6 +12,7 @@ import com.sbwnpc.squad.combat.SpottingTime
 import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.DroneRegistry
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.entity.NpcRegistry
@@ -53,7 +54,7 @@ import kotlin.math.roundToInt
  *    answer to an FPV); inside [HIDER_PANIC_RANGE] with the drone closing, run instead.
  *  - An operator flying its own drone stays on the monitor (not eligible).
  *
- * `NpcEntity.antiDroneEngaged` locks GunAttack/grenades/orders/investigating/vehicles for the
+ * the [NpcActivity.ANTI_DRONE] claim locks GunAttack/grenades/orders/investigating/vehicles for the
  * duration, and keeps the AI LOD at full rate. The threat is dropped when the drone is dead,
  * gone, out of range, or the memory expires.
  */
@@ -76,11 +77,11 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    private fun eligible(entity: NpcEntity): Boolean = !entity.vehicleTransport && !entity.operatingDrone
+    private fun eligible(entity: NpcEntity): Boolean = !entity.holdsAny(NpcActivity.VEHICLE, NpcActivity.DRONE)
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         startCheck.check(entity) {
-            eligible(entity) && alarm(entity, level)?.let { it.seen || !isShooter(entity) || entity.tickCount >= searchAgainTick } == true
+            eligible(entity) && MandatoryRules.may(MandatoryRule.ANTI_DRONE, entity) && alarm(entity, level)?.let { it.seen || !isShooter(entity) || entity.tickCount >= searchAgainTick } == true
         }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
@@ -96,7 +97,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun start(entity: NpcEntity) {
-        entity.antiDroneEngaged = true
+        entity.claim(NpcActivity.ANTI_DRONE, this)
         entity.navigation.stop()
         evadeUntilTick = 0
         evadeTarget = null
@@ -105,7 +106,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
-        entity.antiDroneEngaged = false
+        entity.release(NpcActivity.ANTI_DRONE, this)
         entity.stopUsingItem()
         entity.navigation.stop()
     }
@@ -207,6 +208,8 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
+        // A live grenade outranks a drone (#257): he runs from it, and takes the drone up again after.
+        if (!MandatoryRules.may(MandatoryRule.ANTI_DRONE, entity)) return
         val alarm = alarm(entity, level) ?: return
         val drone = alarm.drone
         val dist = entity.distanceTo(drone).toDouble()
@@ -214,7 +217,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         val shooter = isShooter(entity)
 
         val panicRange = if (shooter) SHOOTER_PANIC_RANGE else HIDER_PANIC_RANGE
-        val canRun = shooter || !entity.combatLockedByCover()
+        val canRun = shooter || !entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE)
         if (dist <= panicRange && closing && canRun) {
             evade(entity, drone)
             return

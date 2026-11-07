@@ -20,6 +20,7 @@ import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.network.*
 import com.sbwnpc.squad.npc.*
 import com.sbwnpc.squad.squad.*
+import com.sbwnpc.squad.util.StackData
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
@@ -258,7 +259,7 @@ object FactionLogisticsGameTests {
             if (group.members.size == 32) {
                 helper.assertTrue(helper.tick - firstReplacement >= interval - 1, "Second casualty skipped its interval")
                 helper.assertTrue(group.members.containsAll(survivors) && group.members.none { it in dead }, "Replacement resurrected the dead or lost survivors")
-                helper.assertTrue(veteran!!.experience == 37.0, "Deploy or replacement reset veteran experience")
+                helper.assertTrue(veteran!!.experience == 37.0 * SquadConfig.experienceMultiplier(veteran!!.npcClass), "Deploy or replacement reset veteran experience")
                 val recruits = group.members.filter { it !in survivors }.map { helper.level.getEntity(it) as NpcEntity }
                 helper.assertTrue(recruits.map { it.npcClass }.toSet() == setOf(NpcClass.SHOTGUNNER, NpcClass.RIFLEMAN), "Casualty replacements lost the shotgunner's roster slot")
                 helper.assertTrue(recruits.all { it.spawnFaction == SquadFaction.COW && it.experience == 0.0 && it.npcRank == NpcRank.RECRUIT }, "Automatic replacements changed faction or inherited the dead's XP")
@@ -396,6 +397,67 @@ object FactionLogisticsGameTests {
             spawns.set(player, helper.level, pos)
             player.setRespawnPosition(Level.OVERWORLD, helper.absolutePos(BlockPos(2, 1, 2)), 0f, true, false)
             helper.assertTrue(spawns.of(player.uuid) == null, "A later vanilla spawn point did not replace Supply")
+            helper.succeed()
+        }
+    }
+
+    /** A player who stands at the west end of a stone strip, tool in hand, looking along it at ground [distance] blocks away. */
+    private fun deployer(helper: GameTestHelper, name: String, distance: Double): ServerPlayer {
+        for (x in 0 until 100) for (z in 56 until 72) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val player = player(helper, name)
+        val at = helper.absoluteVec(Vec3(3.5, 1.0, 64.5))
+        player.moveTo(at.x, at.y, at.z, -90f, Math.toDegrees(Math.atan2(player.eyeHeight.toDouble(), distance)).toFloat())
+        PlayerFactionRegistry.get(helper.level).set(player.uuid, SquadFaction.PIG)
+        val tool = ItemStack(ModItems.SQUAD_TOOL.get())
+        SquadToolItem.writeConfig(tool, SquadToolItem.Config(NpcClass.RIFLEMAN, NpcRank.RECRUIT, SquadFaction.PIG, SquadPreset.SINGLE))
+        player.setItemInHand(InteractionHand.MAIN_HAND, tool)
+        return player
+    }
+
+    private fun deployedNear(helper: GameTestHelper, x: Double): List<NpcEntity> = helper.level.getEntitiesOfClass(NpcEntity::class.java, AABB(helper.absoluteVec(Vec3(x, 1.0, 64.5)), helper.absoluteVec(Vec3(x, 1.0, 64.5))).inflate(3.0, 3.0, 8.0))
+
+    /**
+     * Deploying with the squad tool (#208). The column that marks the spot shows for the tool in
+     * Recruit mode, and not while sneaking, in Command mode or with nothing in hand. Sneaking opens
+     * the config instead of deploying, and ground past 64 blocks is out of range. Plain right-click
+     * deploys at the spot looked at 40 blocks away, beyond arm's reach; and with a wall in the way,
+     * in front of the wall, not on the ground behind it.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 40, batch = "deploy-reach")
+    fun rightClickDeploysAtTheSpotLookedAtBeyondArmsReach(helper: GameTestHelper) {
+        val player = deployer(helper, "deploy-far", 40.0)
+        val lookingAt40 = player.xRot
+        cleanup(helper) { listOf(43.5, 24.5).forEach { x -> deployedNear(helper, x).forEach { it.discard() } } }
+        helper.runAtTickTime(5) {
+            helper.assertTrue(DeployPreview.shows(player), "No preview for the tool in Recruit mode")
+            player.isShiftKeyDown = true
+            helper.assertTrue(!DeployPreview.shows(player), "Preview shown while sneaking, which opens the config instead")
+            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
+            helper.assertTrue(deployedNear(helper, 43.5).isEmpty(), "Sneak + right-click deployed instead of opening the config")
+            player.isShiftKeyDown = false
+            StackData.update(player.mainHandItem) { it.putInt(SquadToolItem.KEY_MODE, SquadToolItem.MODE_COMMAND) }
+            helper.assertTrue(!DeployPreview.shows(player), "Preview shown in Command mode")
+            val tool = player.mainHandItem
+            player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY)
+            helper.assertTrue(!DeployPreview.shows(player), "Preview shown with nothing in hand")
+            player.setItemInHand(InteractionHand.MAIN_HAND, tool)
+            StackData.update(tool) { it.putInt(SquadToolItem.KEY_MODE, SquadToolItem.MODE_RECRUIT) }
+
+            player.xRot = Math.toDegrees(Math.atan2(player.eyeHeight.toDouble(), 90.0)).toFloat()
+            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
+            helper.assertTrue(deployedNear(helper, 93.5).isEmpty(), "Ground 90 blocks away is out of the 64-block range")
+
+            player.xRot = lookingAt40
+            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
+            val deployed = deployedNear(helper, 43.5)
+            helper.assertTrue(deployed.size == 1, "Right-click at ground 40 blocks away deployed ${deployed.size} men near the spot")
+            deployed.forEach { it.discard() }
+
+            for (z in 56 until 72) for (y in 1..6) helper.setBlock(BlockPos(25, y, z), Blocks.STONE)
+            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
+            helper.assertTrue(deployedNear(helper, 43.5).isEmpty(), "He was deployed behind the wall")
+            helper.assertTrue(deployedNear(helper, 24.5).size == 1, "He was not deployed in front of the wall")
             helper.succeed()
         }
     }

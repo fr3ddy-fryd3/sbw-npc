@@ -1,9 +1,8 @@
-import java.security.MessageDigest
-
 plugins {
     idea
     id("net.neoforged.moddev")
     id("sbwnpc.jvm-conventions")
+    id("sbwnpc.sbw-input")
 }
 
 version = rootProject.version
@@ -335,54 +334,8 @@ kotlin {
     }
 }
 
-/** Verifies the selected dependency and records its effective inputs for build audits. */
-abstract class VerifySbwInput : DefaultTask() {
-    @get:Input abstract val provenance: MapProperty<String, String>
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val artifacts: ConfigurableFileCollection
-    @get:OutputFile abstract val report: RegularFileProperty
-
-    @TaskAction
-    fun verify() {
-        val details = provenance.get().toMutableMap()
-        if (details.getValue("mode") == "published") {
-            val artifact = artifacts.singleFile
-            val digest = MessageDigest.getInstance("SHA-512")
-            artifact.inputStream().use { input ->
-                val buffer = ByteArray(8192)
-                var count = input.read(buffer)
-                while (count != -1) {
-                    digest.update(buffer, 0, count)
-                    count = input.read(buffer)
-                }
-            }
-            val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
-            check(actual == details.getValue("profile.sha512")) {
-                "SBW SHA-512 mismatch: expected ${details["profile.sha512"]}, got $actual"
-            }
-            details["artifact.sha512"] = actual
-        }
-        report.get().asFile.apply {
-            parentFile.mkdirs()
-            writeText(details.toSortedMap().entries.joinToString("\n", postfix = "\n") { "${it.key}=${it.value}" })
-        }
-    }
-}
-
-val sbwVerification by configurations.creating { isTransitive = false }
-if (sbwInput.getValue("mode") == "published") {
-    dependencies.add(sbwVerification.name, sbwCoordinate)
-}
-val verifySbwInput = tasks.register<VerifySbwInput>("verifySbwInput") {
-    group = "verification"
-    description = "Verify the pinned SBW artifact and record the effective input."
-    provenance.set(sbwInput)
-    artifacts.from(sbwVerification)
-    report.set(rootProject.layout.buildDirectory.file("reports/sbw/input.txt"))
-}
-tasks.withType<JavaCompile>().configureEach { dependsOn(verifySbwInput) }
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach { dependsOn(verifySbwInput) }
+val sbwVerification = configurations.getByName("sbwVerification")
+val verifySbwInput = tasks.named("verifySbwInput")
 // Resource regression tests must read the same SBW input as the compiled addon.
 val sbwTestResources = layout.buildDirectory.dir("sbw-test-resources")
 val prepareSbwTestResources = tasks.register<Sync>("prepareSbwTestResources") {
@@ -399,8 +352,6 @@ tasks.withType<Test>().configureEach {
     inputs.dir(sbwTestResources).withPropertyName("sbwResources")
     systemProperty("sbwnpc.sbwResources", sbwTestResources.get().asFile.absolutePath)
 }
-tasks.withType<Jar>().configureEach { dependsOn(verifySbwInput) }
-tasks.matching { it.name.startsWith("run") }.configureEach { dependsOn(verifySbwInput) }
 
 tasks.named<Jar>("jar") { archiveClassifier.set("neoforge") }
 val modJar by configurations.creating {

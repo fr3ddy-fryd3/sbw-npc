@@ -26,12 +26,15 @@ object DetectionSightline {
 
     private const val FOLIAGE_BLOCKS_TO_HIDE = 3
 
+    /** Nobody sees anybody farther than this, whatever the weapon or the post: the longest ordinary reach is aircrew's, twice the ground range. */
+    const val MAX_SIGHT = 256.0
+
     // The shared `c:` convention tags, the ones NeoForge's Tags.Blocks names, read by id so the
     // check does not depend on a loader's tag class.
     private val GLASS_BLOCKS: TagKey<Block> = TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath("c", "glass_blocks"))
     private val GLASS_PANES: TagKey<Block> = TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath("c", "glass_panes"))
 
-    fun trace(observer: Entity, target: Entity): Visibility = if (observer.level() === target.level()) trace(observer.level(), observer.eyePosition, target.eyePosition, CollisionContext.of(observer)) else Visibility.OBSTACLE
+    fun trace(observer: Entity, target: Entity): Visibility = if (observer.level() === target.level() && observer.distanceToSqr(target) <= MAX_SIGHT * MAX_SIGHT) trace(observer.level(), observer.eyePosition, target.eyePosition, CollisionContext.of(observer)) else Visibility.OBSTACLE
 
     fun canSeeWithin(observer: Entity, target: Entity, range: Double): Boolean = observer.distanceToSqr(target) <= range * range && canSee(observer, target)
 
@@ -46,7 +49,7 @@ object DetectionSightline {
     /** What [visibility] the line gives and how many blocks of grass it passes through on the way. */
     data class Sighting(val visibility: Visibility, val grassBlocks: Int)
 
-    fun sight(observer: Entity, target: Entity): Sighting = if (observer.level() === target.level()) sight(observer.level(), observer.eyePosition, target.eyePosition, CollisionContext.of(observer)) else Sighting(Visibility.OBSTACLE, 0)
+    fun sight(observer: Entity, target: Entity): Sighting = if (observer.level() === target.level() && observer.distanceToSqr(target) <= MAX_SIGHT * MAX_SIGHT) sight(observer.level(), observer.eyePosition, target.eyePosition, CollisionContext.of(observer)) else Sighting(Visibility.OBSTACLE, 0)
 
     internal fun sight(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Sighting {
         if (level is net.minecraft.world.level.Level && SmokeClouds.blocks(level, from, to)) return Sighting(Visibility.OBSTACLE, 0)

@@ -24,6 +24,7 @@ import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.util.StackData
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.ChatFormatting
+import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
 import net.minecraft.network.chat.Component
@@ -38,14 +39,17 @@ import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.UseOnContext
+import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
+import net.minecraft.world.phys.HitResult
 
 /**
  * One item, two modes (ctrl + right-click air cycles RECRUIT → COMMAND → ...; caught client-side
  * in [com.sbwnpc.squad.client.ToolInputEvents] since ctrl isn't synced player state the way
  * sneaking is, so it can never reach here as `player.isShiftKeyDown` did before).
  *
- * RECRUIT: right-click air → config GUI; right-click block → deploy.
+ * RECRUIT: right-click → deploy where the player looks (a block in reach, or the first block hit up to
+ *          [DEPLOY_RANGE]); sneak + right-click → config GUI.
  * COMMAND: right-click air → command GUI (or, if a "set objective" was just armed in the GUI,
  *          raycast where you're looking and set that squad's objective).
  *          right-click NPC → select it / its squad (shift → clear selection).
@@ -68,13 +72,13 @@ class SquadToolItem : VersionedItem(Properties().stacksTo(1)) {
         }
 
         if (mode(stack) == MODE_RECRUIT) {
-            // Round-trips through the server (same pattern as Command mode below) purely so the
-            // faction-lock check has somewhere to run before the GUI opens — the client can't
-            // know on its own whether this player has picked a faction yet.
             if (!level.isClientSide && player is ServerPlayer) {
-                val serverLevel = player.level() as ServerLevel
-                if (PlayerFactionRegistry.get(serverLevel).requireOrPrompt(player) != null) {
-                    sendToClient(player, OpenRecruitScreenPayload)
+                // Sneaking opens the config; a plain click deploys where the player looks, up to
+                // DEPLOY_RANGE away, so a click out of arm's reach is not the way to the config any more (#208).
+                if (player.isShiftKeyDown) {
+                    openRecruitConfig(player)
+                } else {
+                    deployLookedAt(player, stack)
                 }
             }
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide)
@@ -135,13 +139,43 @@ class SquadToolItem : VersionedItem(Properties().stacksTo(1)) {
             return InteractionResult.CONSUME
         }
 
-        // RECRUIT: deploy — a single NPC, or a whole preset squad lined up abreast of the click point.
+        // RECRUIT: sneaking opens the config, a plain click deploys where the click landed.
+        if (serverPlayer.isShiftKeyDown) {
+            openRecruitConfig(serverPlayer)
+            return InteractionResult.CONSUME
+        }
+        return deploy(serverPlayer, stack, context.clickedPos.relative(context.clickedFace))
+    }
+
+    /**
+     * Round-trips through the server (same pattern as Command mode) purely so the faction-lock check has
+     * somewhere to run before the GUI opens: the client can't know on its own whether this player has
+     * picked a faction yet.
+     */
+    private fun openRecruitConfig(player: ServerPlayer) {
+        if (PlayerFactionRegistry.get((player.level() as ServerLevel)).requireOrPrompt(player) != null) {
+            sendToClient(player, OpenRecruitScreenPayload)
+        }
+    }
+
+    /** Deploys at the spot [player] looks at, [DEPLOY_RANGE] blocks at most and only what he can see (#208). */
+    private fun deployLookedAt(player: ServerPlayer, stack: ItemStack) {
+        val pos = deployTarget(player)
+        if (pos == null) {
+            actionbar(player, "Nothing to deploy on within ${DEPLOY_RANGE.toInt()} blocks", ChatFormatting.GRAY)
+            return
+        }
+        deploy(player, stack, pos)
+    }
+
+    /** A single NPC, or a whole preset squad lined up abreast of [pos], from the tool's config. */
+    private fun deploy(player: ServerPlayer, stack: ItemStack, pos: BlockPos): InteractionResult {
+        val serverLevel = (player.level() as ServerLevel)
         val configured = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
-        val faction = PlayerFactionRegistry.get(serverLevel).recruitmentFaction(serverPlayer, configured.faction)
+        val faction = PlayerFactionRegistry.get(serverLevel).recruitmentFaction(player, configured.faction)
             ?: return InteractionResult.CONSUME
         val cfg = configured.copy(faction = faction)
         if (cfg != configured) writeConfig(stack, cfg)
-        val pos = context.clickedPos.relative(context.clickedFace)
         val deployed = SquadDeployment.deploy(serverLevel, pos, player.yRot, cfg, player.uuid)
             ?: return InteractionResult.FAIL
         if (deployed.vehicleBlocked) {
@@ -259,6 +293,22 @@ class SquadToolItem : VersionedItem(Properties().stacksTo(1)) {
         const val KEY_HELI_MODEL = "HeliModel"
         const val MODE_RECRUIT = 0
         const val MODE_COMMAND = 1
+
+        /** How far from the player a squad can be deployed (#208). */
+        const val DEPLOY_RANGE = 64.0
+
+        /**
+         * The spot a deployment from [player] lands on: the cell in front of the first block his look
+         * direction hits within [DEPLOY_RANGE], so cover in the line of sight takes the squad and the
+         * ground behind it is out of reach. Null when the look ends in the air. The preview shows the
+         * same spot.
+         */
+        fun deployTarget(player: Player): BlockPos? {
+            val eye = player.eyePosition
+            val end = eye.add(player.lookAngle.scale(DEPLOY_RANGE))
+            val hit = player.level().clip(ClipContext(eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player))
+            return if (hit.type == HitResult.Type.BLOCK) hit.blockPos.relative(hit.direction) else null
+        }
 
         fun mode(stack: ItemStack) = StackData.read(stack).getInt(KEY_MODE)
 

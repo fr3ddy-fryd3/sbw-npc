@@ -36,14 +36,14 @@ class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        entity.vehicle == null && entity.seatFreeFor(this) && !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn &&
+        entity.vehicle == null && entity.freeFor(NpcActivity.SEAT, this) && !entity.holdsAny(NpcActivity.VEHICLE, NpcActivity.DRONE, NpcActivity.ANTI_DRONE, NpcActivity.DUG_IN) &&
             ownerVehicle(level, entity)?.let { boardable(entity, it) } == true
 
     override fun start(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         val vehicle = ownerVehicle(level, entity) ?: return
-        if (!entity.claimSeat(this)) return
-        if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), vehicle.passengers.map { it.uuid })) {
+        if (!entity.claimAlone(NpcActivity.SEAT, this)) return
+        if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), SeatHold.heldFor(vehicle, entity), vehicle.passengers.map { it.uuid })) {
             entity.release(NpcActivity.SEAT, this)
             return
         }
@@ -114,7 +114,7 @@ class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun boardable(entity: NpcEntity, vehicle: Entity): Boolean =
         entity.distanceTo(vehicle) <= BOARD_RANGE && Ports.vehicles.isOperational(vehicle) && !Ports.vehicles.isLocked(vehicle) &&
-            VehicleTransportClaims.occupiedOrClaimedSeats(vehicle.uuid, vehicle.passengers.map { it.uuid }) < Ports.vehicles.seatCount(vehicle)
+            VehicleTransportClaims.occupiedOrClaimedSeats(vehicle.uuid, vehicle.passengers.map { it.uuid }) + SeatHold.heldFor(vehicle, entity) < Ports.vehicles.seatCount(vehicle)
 
     private companion object {
         /** How far from the owner's vehicle a man still tries to get in. */

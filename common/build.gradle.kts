@@ -130,4 +130,6 @@ tasks.withType<Test> {
     useJUnitPlatform()
     // ScreenBaseTest reads the screens' source text, so the test reruns when one changes.
     inputs.dir("src/client/kotlin/com/sbwnpc/squad/client/screen").withPropertyName("screenSources")
+    // NoticingRuleTest counts the bare sightline checks in the shared sources.
+    inputs.dir("src/main/kotlin").withPropertyName("sharedSources")
 }

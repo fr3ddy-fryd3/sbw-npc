@@ -112,10 +112,17 @@ object VehicleTargeting {
         return occupant.takeIf { DetectionSightline.visible(level, entity.eyePosition, heli.boundingBox.center, entity) }
     }
 
+    /** Operational ground armour is addressed through its occupant by the weapon ports. */
+    fun isGroundArmour(target: Entity): Boolean =
+        target.vehicle?.let {
+            Ports.vehicles.isOperational(it) && (Ports.vehicles.modelOf(it) is com.sbwnpc.squad.npc.TankModel || Ports.vehicles.modelOf(it) is com.sbwnpc.squad.npc.TransportVehicle)
+        } == true
+
     /** Whether [target] is flying one, for callers that range-check a target they were handed. */
     fun isAircrew(target: Entity): Boolean = target.vehicle?.let { Helicopters.isHelicopter(it) } == true
 
-    const val AIR_RANGE_FACTOR = 2.0
+    /** Twice the ground's saw too far from the air for a fair fight (in-game 01.11). */
+    const val AIR_RANGE_FACTOR = 1.5
     const val AIR_SEARCH_HEIGHT = 100.0
     private const val VEHICLE_REFRESH_TICKS = 10L
 

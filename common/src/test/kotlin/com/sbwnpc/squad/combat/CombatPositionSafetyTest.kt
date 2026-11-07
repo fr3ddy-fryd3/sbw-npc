@@ -52,13 +52,13 @@ class CombatPositionSafetyTest {
     }
 
     @Test fun `an assault cuts the clearance to a short standoff but never lifts it`() {
-        assertEquals(CombatPositionSafety.ASSAULT_CLEARANCE, CombatPositionSafety.clearance(NpcClass.RIFLEMAN, assault = true))
+        assertEquals(com.sbwnpc.squad.ai.tactics.OperationTactics.ASSAULT_STANDOFF, CombatPositionSafety.clearance(NpcClass.RIFLEMAN, assault = true))
         assertEquals(CombatPositionSafety.clearance(NpcClass.SHOTGUNNER), CombatPositionSafety.clearance(NpcClass.SHOTGUNNER, assault = true))
         assertTrue(CombatPositionSafety.clearance(NpcClass.RIFLEMAN, assault = true) > 0.0)
         // A man already inside the standoff may hold but not come nearer.
         val enemy = Vec3(0.0, 64.0, 0.0)
         val from = Vec3(10.0, 64.0, 0.0)
-        assertTrue(CombatPositionSafety.permits(from, Vec3(12.0, 64.0, 0.0), enemy, CombatPositionSafety.ASSAULT_CLEARANCE))
-        assertFalse(CombatPositionSafety.permits(from, Vec3(4.0, 64.0, 0.0), enemy, CombatPositionSafety.ASSAULT_CLEARANCE))
+        assertTrue(CombatPositionSafety.permits(from, Vec3(12.0, 64.0, 0.0), enemy, com.sbwnpc.squad.ai.tactics.OperationTactics.ASSAULT_STANDOFF))
+        assertFalse(CombatPositionSafety.permits(from, Vec3(4.0, 64.0, 0.0), enemy, com.sbwnpc.squad.ai.tactics.OperationTactics.ASSAULT_STANDOFF))
     }
 }
