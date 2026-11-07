@@ -355,6 +355,7 @@ object AttackDeploymentGameTests {
      * while a second squad attacks the same point: in a playtest men of the two stood on
      * neighbouring blocks. Reports the closest pair of standing men, within a squad and between them.
      */
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1300, batch = "joint-attack-post-spacing")
     fun squadsAttackingOnePointHoldPostsApart(helper: GameTestHelper) {
         for (x in 0..159) {
