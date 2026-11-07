@@ -19,34 +19,50 @@ import net.minecraft.world.phys.shapes.CollisionContext
 /** Local positions are validated through the existing navigation and collider raycasts. */
 object TacticalPositions {
     enum class Outcome { FOUND, DEFERRED, UNREACHABLE }
-    data class Result(val outcome: Outcome, val position: Vec3? = null, val rejections: Map<String, Int> = emptyMap(), val coarseExhausted: Boolean = false)
+
+    /**
+     * [deferral] says why a [Outcome.DEFERRED] search did not finish this turn, for the decision
+     * trace: waiting for a ray turn or the path budget is a queue, the rest is the search's own
+     * progress between turns.
+     */
+    data class Result(val outcome: Outcome, val position: Vec3? = null, val rejections: Map<String, Int> = emptyMap(), val coarseExhausted: Boolean = false, val deferral: String? = null)
+
+    private fun deferred(reason: String) = Result(Outcome.DEFERRED, deferral = reason)
 
     /** Optional work counter; disabled during ordinary gameplay. True marks a fresh cursor. */
     internal var searchWorkObserver: ((NpcEntity, Boolean) -> Unit)? = null
 
+    /** Optional result counter for load scenes; disabled during ordinary gameplay. */
+    internal var resultObserver: ((NpcEntity, Result) -> Unit)? = null
+
+    /** Optional counter of why searches start over; disabled during ordinary gameplay. */
+    internal var restartObserver: ((NpcEntity, String) -> Unit)? = null
+
     data class Query(val policy: TacticalPositionPolicy, val claimOwner: java.util.UUID? = null)
 
-    fun find(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, query: Query = Query(DefaultTacticalPositions)): Result {
+    fun find(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, query: Query = Query(DefaultTacticalPositions)): Result = search(entity, task, view, query).also { result -> resultObserver?.invoke(entity, result) }
+
+    private fun search(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, query: Query): Result {
         searchWorkObserver?.invoke(entity, false)
         val search = task.search
         val pending = search?.pendingPath
         if (pending != null) {
             // Native A* admission is independent of the raycast queue. A request that only
             // reappears on its next ray turn can expire and block every successor meanwhile.
-            if ((entity.navigation as? PositionPaths)?.canPlan == false) return Result(Outcome.DEFERRED)
+            if ((entity.navigation as? PositionPaths)?.canPlan == false) return deferred("navigation_busy")
             val overwatch = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery
             if (search.needsRestart(entity.position(), if (overwatch) null else TacticalAim.resolve(entity, task))) {
                 task.search = null
             } else {
-                if (!TacticalBudget.path(entity)) return Result(Outcome.DEFERRED)
+                if (!TacticalBudget.path(entity)) return deferred("path_budget")
                 val path = pathToCandidates(entity, pending, task.expandedFireSearch || task.job == TacticalJob.OVERWATCH)
                 recordPath(entity, task, search, pending, path)
                 // Recheck bodies, aim, cover and every route node in the normal ray turn.
                 // A queued proposal never directly commits navigation or skips live safety.
-                return Result(Outcome.DEFERRED)
+                return deferred("path_checked")
             }
         }
-        return TickBudget.search(entity, TickBudget.Work.POSITIONS, Result(Outcome.DEFERRED)) { findInTurn(entity, task, view, query) }
+        return TickBudget.search(entity, TickBudget.Work.POSITIONS, deferred("ray_turn")) { findInTurn(entity, task, view, query) }
     }
 
     private fun recordPath(entity: NpcEntity, task: TacticalTask, search: TacticalPositionSearch, batch: List<Vec3>, path: Path?) {
@@ -63,7 +79,7 @@ object TacticalPositions {
 
     private fun findInTurn(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, query: Query): Result {
         val level = entity.level() as ServerLevel
-        if ((entity.navigation as? PositionPaths)?.canPlan == false) return Result(Outcome.DEFERRED)
+        if ((entity.navigation as? PositionPaths)?.canPlan == false) return deferred("navigation_busy")
         val overwatch = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery
         val homeRadius = SquadFormation.perimeterRadius(view.members.size) + 10.0 +
             if (task.job == TacticalJob.OVERWATCH) DefensiveOverwatch.RADIUS else 0.0
@@ -72,10 +88,10 @@ object TacticalPositions {
             DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=position_kept position={} reason=usable_nearby_cover", entity.uuid, task.plan, heldPosition)
             return finish(task, heldPosition)
         }
-        if (!TickBudget.hasRaycasts(level)) return Result(Outcome.DEFERRED)
+        if (!TickBudget.hasRaycasts(level)) return deferred("ray_budget")
 
         val context = prepareSearch(entity, task, view, level, homeRadius, overwatch, query)
-        if (!collectCandidates(context)) return Result(Outcome.DEFERRED)
+        if (!collectCandidates(context)) return deferred("candidates")
         return findReachablePosition(context)
     }
 
@@ -129,6 +145,7 @@ object TacticalPositions {
         // Terrain and protection define a sentry post. Switching reported targets must not
         // restart its multi-tick height scan before it ever reaches the ladder.
         val searchAim = if (overwatch) null else aim
+        restartObserver?.invoke(entity, if (oldSearch == null) "new" else oldSearch.restartReason(entity.position(), searchAim) ?: "kept")
         if (oldSearch?.needsRestart(entity.position(), searchAim) == true) task.search = null
         if (overwatch && task.search == null) entity.navigation.stop()
         if (task.search == null) searchWorkObserver?.invoke(entity, true)
@@ -292,7 +309,7 @@ object TacticalPositions {
             .also { search.destinations = it }
         search.skipRejectedRoutes()
         while (search.destinationIndex < destinations.size) {
-            if (!TickBudget.hasRaycasts(context.level)) return Result(Outcome.DEFERRED)
+            if (!TickBudget.hasRaycasts(context.level)) return deferred("ray_budget")
             if (search.routeValidation?.fresh(context.level.gameTime) == false) search.routeValidation = null
             var candidate = search.routeValidation?.candidate ?: destinations[search.destinationIndex]
             val mustShoot = requiresFiringLane(context, candidate)
@@ -339,10 +356,10 @@ object TacticalPositions {
             }
             if (search.routeValidation == null) {
                 val batch = routeBatch(context, candidate, destinations)
-                if (batch.isEmpty()) return Result(Outcome.DEFERRED)
+                if (batch.isEmpty()) return deferred("route_batch")
                 if (!TacticalBudget.path(entity)) {
                     search.pendingPath = batch
-                    return Result(Outcome.DEFERRED)
+                    return deferred("path_budget")
                 }
                 val path = pathToCandidates(entity, batch, task.expandedFireSearch || task.job == TacticalJob.OVERWATCH)
                 recordPath(entity, task, search, batch, path)
@@ -374,7 +391,7 @@ object TacticalPositions {
         }
         if (search.probeIndex < search.probes.size) {
             search.clearCandidates()
-            return Result(Outcome.DEFERRED)
+            return deferred("next_probes")
         }
         val coarseExhausted = search.scored.isEmpty()
         if (task.expandedFireSearch && search.extendRecovery(task.localFirePost!!)) {
@@ -387,7 +404,7 @@ object TacticalPositions {
                 TacticalFirePosts.RECOVERY_RADIUS,
                 search.probes.size,
             )
-            return Result(Outcome.DEFERRED, coarseExhausted = coarseExhausted)
+            return Result(Outcome.DEFERRED, coarseExhausted = coarseExhausted, deferral = "dense_search")
         }
         task.search = null
         return Result(Outcome.UNREACHABLE, rejections = search.rejections.toMap())

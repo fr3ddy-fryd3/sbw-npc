@@ -159,7 +159,7 @@ internal class NativePositionAction(
         if (task.position == null || task.search != null) {
             val result = TacticalPositions.find(npc, task, view, TacticalPositions.Query(policy, claimOwner))
             when (result.outcome) {
-                TacticalPositions.Outcome.DEFERRED -> return deferred(now, "position_query_budget")
+                TacticalPositions.Outcome.DEFERRED -> return deferred(now, "position_query_budget:${result.deferral}")
 
                 TacticalPositions.Outcome.UNREACHABLE -> {
                     exhausted(intent, result.rejections, task.anchor)

@@ -113,6 +113,16 @@ class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: Tact
      * Height searches still finish their full scan before ranking the highest protected floor. */
     internal fun readyBatch(overwatch: Boolean): Boolean = !overwatch && scored.values.any { !it.open }
 
+    /** Why [needsRestart] would restart this search, or null when it would not. */
+    fun restartReason(position: Vec3, currentAim: TacticalAim?): String? =
+        when {
+            origin.distanceTo(position) > 4.0 -> "moved"
+            aim?.target != currentAim?.target -> "target"
+            aim == null || currentAim == null -> if (aim != currentAim) "aim" else null
+            aim.eye.distanceTo(currentAim.eye) > 2.0 -> "aim_moved"
+            else -> null
+        }
+
     fun needsRestart(position: Vec3, currentAim: TacticalAim?): Boolean {
         if (origin.distanceTo(position) > 4.0 || aim?.target != currentAim?.target) return true
         if (aim == null || currentAim == null) return aim != currentAim
