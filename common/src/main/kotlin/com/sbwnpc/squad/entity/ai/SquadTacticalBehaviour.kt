@@ -21,11 +21,11 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
     // whose crew agent gets made (#258); any man with an NPC agent,
     // an engage-only one too (a crewman or a squadless man in a fight, #251 step B), keeps it so
     // his plan ticks. A helicopter's pilot and gunner run their aircraft's plan from the seat
-    // (#260, #261), every tick, as it flies the aircraft. A drone operator's plan flies his drone
+    // (#260, #261), every tick, as it flies the aircraft, and so does a tank's driver (#185). A drone operator's plan flies his drone
     // (#259), a squadless one's too.
     private fun eligible(entity: NpcEntity) =
         if (entity.vehicle != null) {
-            NativeTactics.aircrew(entity)
+            NativeTactics.aircrew(entity) || NativeTactics.drivesTank(entity)
         } else {
             NativeTactics.planned(entity) || NativeTactics.crewed(entity) || NativeTactics.operatesDrone(entity) || NativeTactics.hasAgent(entity)
         }

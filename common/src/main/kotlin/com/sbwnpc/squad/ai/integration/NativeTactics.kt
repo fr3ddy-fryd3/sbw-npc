@@ -4,7 +4,6 @@ import com.sbwnpc.squad.ai.coordination.*
 import com.sbwnpc.squad.ai.diagnostics.DecisionTrace
 import com.sbwnpc.squad.ai.planning.*
 import com.sbwnpc.squad.ai.tactics.*
-import com.sbwnpc.squad.ai.tactics.Tank
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.combat.tactics.*
 import com.sbwnpc.squad.compat.VersionCompat
@@ -157,6 +156,9 @@ object NativeTactics {
 
     /** Whether [npc] flies a helicopter or works its turret: his aircraft's plan runs him (#260, #261). */
     fun aircrew(npc: NpcEntity) = AirRoster.aircrew(npc)
+
+    /** Whether [npc] holds the wheel of his own tank, whose plan he runs from the seat (#185). */
+    fun drivesTank(npc: NpcEntity) = TankRoster.atWheel(npc)
 
     /** Whether [npc] is a mortarman on foot: his crew's plan, not his squad's ground plan, runs his tube (#258). */
     fun crewed(npc: NpcEntity) = npc.vehicle == null && npc.npcClass == NpcClass.MORTAR
@@ -1338,7 +1340,7 @@ object NativeTactics {
             }
         }
 
-        /** [aircraft]'s team agent and its men's, kept as [desired]. */
+        /** [tank]'s team agent and its driver's, kept as [desired]. */
         private fun ensureTank(tank: Tank, desired: MutableSet<AgentId>) {
             children[tank.agent] = setOf(tank.driver)
             desired += tank.agent
@@ -1347,6 +1349,7 @@ object NativeTactics {
             ensure(tank.driver)
         }
 
+        /** [aircraft]'s team agent and its men's, kept as [desired]. */
         private fun ensureAircraft(aircraft: Aircraft, desired: MutableSet<AgentId>) {
             val men = listOfNotNull(aircraft.pilot) + aircraft.gunners
             children[aircraft.agent] = men.toSet()

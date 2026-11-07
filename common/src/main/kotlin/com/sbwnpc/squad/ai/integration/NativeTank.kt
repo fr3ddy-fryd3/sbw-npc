@@ -46,7 +46,9 @@ internal class TankRoster(private val level: ServerLevel) {
             val agent = AgentId(AgentLevel.TEAM, UUID.nameUUIDFromBytes("tank:$vehicle".toByteArray()))
             TankUnit(Tank(agent, AgentId(AgentLevel.NPC, driver.uuid)), squad, vehicle)
         }
-        units = found.associateBy { it.tank.agent }
+        val next = found.associateBy { it.tank.agent }
+        if (next.keys != units.keys) DebugFlags.log(LogGroup.VEHICLE, "[tank] event=roster tanks={}", found.map { "${it.vehicle}:${it.squad}" })
+        units = next
         byMan = found.associateBy { it.tank.driver.id }
     }
 
@@ -99,8 +101,9 @@ internal class TankWorld(private val level: ServerLevel) {
     fun manFacts(facts: FactSnapshot, npc: NpcEntity): FactSnapshot = facts.observe(TankFacts.AT_WHEEL, TankRoster.atWheel(npc))
 
     /**
-     * Whether [squad]'s command has met the enemy, latched once it has. Checked again every tick
-     * from [holdsPace], so the tank opens up the tick contact is made, not at the next replan.
+     * Whether [squad]'s command has met the enemy, latched once it has. The plan reads it to choose
+     * the escort; [holdsPace] checks it again every tick, and that check is the one that lets the
+     * tank go the tick contact is made, not at the next replan.
      */
     private fun engaged(squad: Squad, partners: List<Squad>): Boolean {
         val command = squad.command?.id ?: return false
@@ -119,9 +122,9 @@ internal class TankWorld(private val level: ServerLevel) {
      */
     fun holdsPace(driver: NpcEntity, vehicle: Vec3, destination: Vec3): Boolean {
         val duty = duties[driver.uuid]?.takeIf { it.mode == DriveMode.PACE } ?: return false
-        val manager = SquadManager.get(level)
         val squad = driver.currentSquad() ?: return false
-        val partners = duty.escorted.mapNotNull(manager::get)
+        // The infantry still attacking under the command now: one that left it since the plan stops counting at once.
+        val partners = FireSupport.infantry(level, squad).filter { it.id in duty.escorted }
         if (partners.isEmpty() || engaged(squad, partners)) return false
         val lead = partners.flatMap { it.members }.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
             .minOfOrNull { horizontal(it.position(), destination) } ?: return false
