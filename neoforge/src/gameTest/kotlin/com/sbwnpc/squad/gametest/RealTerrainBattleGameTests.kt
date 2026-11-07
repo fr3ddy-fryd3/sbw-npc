@@ -255,7 +255,10 @@ object RealTerrainBattleGameTests {
                     for (other in a.drop(j + 1)) {
                         val d = man.position().subtract(other.position()).horizontalDistance()
                         nearestWithin = minOf(nearestWithin, d)
-                        if (d < TIGHT) tightWithin++
+                        if (d < TIGHT) {
+                            tightWithin++
+                            LOGGER.info("[battle-spacing] squad={} d={} a={} {} at {} b={} {} at {}", i, "%.2f".format(d), man.uuid, man.npcClass, man.blockPosition().toShortString(), other.uuid, other.npcClass, other.blockPosition().toShortString())
+                        }
                     }
                     for (other in standing.drop(i + 1).flatten()) {
                         val d = man.position().subtract(other.position()).horizontalDistance()
