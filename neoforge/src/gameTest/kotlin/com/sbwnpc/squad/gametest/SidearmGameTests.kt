@@ -42,6 +42,9 @@ import java.util.function.Consumer
 
 @PrefixGameTestTemplate(false)
 object SidearmGameTests {
+    /** Shots are timed in game ticks: the firing cadence counts them, not wall time. */
+    private const val TICK_MILLIS = 50.0
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "primary-gun-variety")
     fun rifleVariantsAndShotgunFireReloadAndKeepTheirSavedWeapon(helper: GameTestHelper) {
@@ -201,7 +204,7 @@ object SidearmGameTests {
             val index = shooters.indexOf(projectile.owner)
             if (event.level === helper.level && index >= 0 && Ports.guns.isRound(projectile) && lastVolley[index] != helper.tick) {
                 lastVolley[index] = helper.tick // All twelve shotgun pellets are one shot.
-                shots[index].add(System.nanoTime())
+                shots[index].add(helper.tick)
             }
         }
         NeoForge.EVENT_BUS.addListener(listener)
@@ -215,13 +218,13 @@ object SidearmGameTests {
             Files.writeString(
                 report,
                 shots.mapIndexed { index, times ->
-                    "${roles[index]} weapon=${weapons[index]} sidearm=${index in 2..3} npcTicks=${shooters[index].tickCount} target=${shooters[index].target?.uuid} intervals_ms=${times.zipWithNext { a, b -> (b - a) / 1_000_000.0 }}"
+                    "${roles[index]} weapon=${weapons[index]} sidearm=${index in 2..3} npcTicks=${shooters[index].tickCount} target=${shooters[index].target?.uuid} intervals_ms=${times.zipWithNext { a, b -> (b - a) * TICK_MILLIS }}"
                 }.joinToString("\n"),
             )
         }
         helper.onEachTick {
             if (shots.all { it.size >= 5 }) {
-                val intervals = shots.map { times -> times.zipWithNext { a, b -> (b - a) / 1_000_000.0 }.sorted().let { it[it.size / 2] } }
+                val intervals = shots.map { times -> times.zipWithNext { a, b -> (b - a) * TICK_MILLIS }.sorted().let { it[it.size / 2] } }
                 helper.assertTrue(intervals[1] / intervals[0] in 1.8..2.2, "Sniper primary cadence did not halve: $intervals")
                 helper.assertTrue(intervals[3] / intervals[2] in 0.85..1.15, "Sniper class slowed the same backup pistol: $intervals")
                 helper.assertTrue(intervals[5] / intervals[4] in 1.8..2.2, "Sniper bolt-action cadence did not halve: $intervals")

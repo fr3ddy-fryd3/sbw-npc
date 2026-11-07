@@ -32,7 +32,9 @@ object HtnTacticsGameTests {
 
     /** The light a lantern two blocks off gives the spot it lights: the BRIGHT band. */
     private const val LANTERN_LIGHT = 12
-    private const val LIGHT_SETTLE_TICKS = 5L
+
+    /** How long the light engine may take to light the enemy's spot after the lantern is set. */
+    private const val LIGHT_SETTLE_TICKS = 100L
     private const val TICKS_PER_SECOND = 20.0
 
     /** How long the original attack is watched after a reinforcement leaves it, and how far it may sway back meanwhile. */
@@ -329,7 +331,7 @@ object HtnTacticsGameTests {
      * the dark, so without its light the scene fails.
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-night-lantern")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "spot-night-lantern")
     fun enemyByALanternIsNoticedAtNightAsByDay(helper: GameTestHelper) = spotting(helper, "spot-night-lantern", Lighting.LANTERN, distance = 70.0)
 
     @JvmStatic
@@ -349,7 +351,6 @@ object HtnTacticsGameTests {
         shooter.moveTo(shooter.x, shooter.y, shooter.z, -90f, 0f)
         shooter.yHeadRot = -90f
         shooter.yBodyRot = -90f
-        val enemy = scene.enemy(Vec3(20.5 + distance, 1.0, 60.5))
         val lamp = BlockPos(20 + distance.toInt(), 1, 62)
         if (lantern) helper.setBlock(lamp, net.minecraft.world.level.block.Blocks.LANTERN)
         val squad = manager.create(helper.level, UUID(90, 12), requireNotNull(shooter.spawnFaction), listOf(shooter.uuid))
@@ -360,29 +361,40 @@ object HtnTacticsGameTests {
             helper.level.setDayTime(oldTime)
             if (lantern) helper.setBlock(lamp, net.minecraft.world.level.block.Blocks.AIR)
         }
+        val at = helper.absolutePos(BlockPos(20 + distance.toInt(), 1, 60))
+        var enemy: NpcEntity? = null
+        var since = 0L
         var noticedAt: Long? = null
         helper.onEachTick {
             shooter.yHeadRot = -90f
-            // Light spreads a few ticks after the block is set.
-            if (lantern && helper.tick == LIGHT_SETTLE_TICKS) {
-                val light = helper.level.getMaxLocalRawBrightness(enemy.blockPosition())
-                helper.assertTrue(light >= LANTERN_LIGHT, "The lantern lights the enemy only to $light")
+            if (enemy == null) {
+                // The light engine runs on its own thread, behind an unpaced server: the enemy
+                // steps out only once the lantern lights his spot, and spotting is timed from then.
+                val light = helper.level.getMaxLocalRawBrightness(at)
+                if (lantern && light < LANTERN_LIGHT) {
+                    helper.assertTrue(helper.tick < LIGHT_SETTLE_TICKS, "The lantern lights the enemy only to $light")
+                    return@onEachTick
+                }
+                enemy = scene.enemy(Vec3(20.5 + distance, 1.0, 60.5))
+                since = helper.tick
             }
-            if (noticedAt == null && shooter.target?.uuid == enemy.uuid) noticedAt = helper.tick
-            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} light=${helper.level.getMaxLocalRawBrightness(enemy.blockPosition())} noticedAt=$noticedAt")
+            val seen = enemy!!
+            val elapsed = helper.tick - since
+            if (noticedAt == null && shooter.target?.uuid == seen.uuid) noticedAt = elapsed
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} since=$since light=${helper.level.getMaxLocalRawBrightness(seen.blockPosition())} noticedAt=$noticedAt")
             // The window follows the spotting table, so retuning it moves the scene with it; the
             // slack covers the sensor's scan interval and the brain's reaction to a new target.
-            val light = helper.level.getMaxLocalRawBrightness(enemy.blockPosition())
+            val light = helper.level.getMaxLocalRawBrightness(seen.blockPosition())
             val eyes = SpottingTime.Observer.of(shooter.npcRank, shooter.npcClass)
             val seconds = SpottingTime.seconds(eyes, SpottingTime.Target(distance, light))
             if (seconds == null) {
-                helper.assertTrue(noticedAt == null, "Noticed an enemy beyond the dark range at tick $noticedAt")
-                if (helper.tick >= 400) helper.succeed()
+                helper.assertTrue(noticedAt == null, "Noticed an enemy beyond the dark range $noticedAt ticks after he stepped out")
+                if (elapsed >= 400) helper.succeed()
             } else {
                 val expected = (seconds * TICKS_PER_SECOND).toLong()
                 val window = expected / 2..expected * 3 / 2 + SPOTTING_SLACK_TICKS
                 noticedAt?.let {
-                    helper.assertTrue(it in window, "Noticed at tick $it, the table gives $expected (window $window, light $light)")
+                    helper.assertTrue(it in window, "Noticed $it ticks after he stepped out, the table gives $expected (window $window, light $light)")
                     helper.succeed()
                 }
             }
