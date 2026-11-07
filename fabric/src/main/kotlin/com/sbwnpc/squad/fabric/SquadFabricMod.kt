@@ -48,9 +48,11 @@ class SquadFabricMod : ModInitializer {
 
         NeoForgeConfigRegistry.INSTANCE.register(ModIdentity.MODID, ModConfig.Type.SERVER, SquadConfig.SPEC)
         if (BuildFlags.DEBUG_ENABLED) {
-            NeoForgeConfigRegistry.INSTANCE.register(ModIdentity.MODID, ModConfig.Type.COMMON, DebugConfig.SPEC, DebugConfig.FILE)
+            // Listeners first: Forge Config API Port loads a common config inside register(), so a
+            // listener added after it never saw the file and every trace group stayed off.
             NeoForgeModConfigEvents.loading(ModIdentity.MODID).register(DebugConfig::onConfig)
             NeoForgeModConfigEvents.reloading(ModIdentity.MODID).register(DebugConfig::onConfig)
+            NeoForgeConfigRegistry.INSTANCE.register(ModIdentity.MODID, ModConfig.Type.COMMON, DebugConfig.SPEC, DebugConfig.FILE)
         }
 
         ModBlocks.init()
