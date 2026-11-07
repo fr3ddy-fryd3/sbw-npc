@@ -115,11 +115,15 @@ object LadderNavigationGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "scaffolding_arena", timeoutTicks = 40, batch = "broken-ladder")
     fun brokenLadderDoesNotInventClimbingEdges(helper: GameTestHelper) {
         tower(helper)
-        for (y in 4..6) helper.setBlock(BlockPos(11, y, 6), Blocks.AIR)
         val npc = AttackDeploymentGameTests.spawn(helper, Vec3(4.5, 1.0, 6.5), SquadFaction.PIG).apply { isNoAi = true }
         helper.runAtTickTime(10) {
             npc.setOnGround(true)
-            val path = (npc.navigation as VehicleAwareNavigation).createPositionPath(helper.absolutePos(BlockPos(14, 11, 6)))
+            val navigation = npc.navigation as VehicleAwareNavigation
+            val goal = helper.absolutePos(BlockPos(14, 11, 6))
+            // Control: the whole ladder is climbable, so a refusal below is the gap's doing.
+            helper.assertTrue(navigation.createPositionPath(goal)?.canReach() == true, "Control: no route up the intact ladder")
+            for (y in 4..6) helper.setBlock(BlockPos(11, y, 6), Blocks.AIR)
+            val path = navigation.createPositionPath(goal)
             helper.assertTrue(path?.canReach() != true, "Path crossed three missing ladder blocks")
             npc.discard()
             helper.succeed()

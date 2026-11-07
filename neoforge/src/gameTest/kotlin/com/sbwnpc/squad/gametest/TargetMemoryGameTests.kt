@@ -3,6 +3,7 @@ package com.sbwnpc.squad.gametest
 import com.mojang.authlib.GameProfile
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FiringOpportunity
+import com.sbwnpc.squad.combat.SquadKnowledge
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.combat.tactics.TacticalSnapshotCollector
@@ -32,7 +33,7 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object TargetMemoryGameTests {
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 60, batch = "target-life-memory")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "target-life-memory")
     fun distantPlayerRespawnRequiresFreshDetectionWithoutErasingOtherEnemies(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "player-respawn-memory", recordTrace = false)
         val npc = scene.spawn(Vec3(20.5, 1.0, 45.5)).apply { isNoAi = true }
@@ -43,14 +44,7 @@ object TargetMemoryGameTests {
         for (x in 54..56) for (z in 59..69) for (y in 1..3) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
         val squad = scene.squad(listOf(npc), contact = other, order = SquadOrder.DEFEND)
         val profile = GameProfile(UUID.randomUUID(), "respawn-target")
-        var player = ServerPlayer(helper.level.server, helper.level, profile, ClientInformation.createDefault()).apply {
-            connection = FakePlayerFactory.get(helper.level, profile).connection
-            gameMode.changeGameModeForPlayer(GameType.SURVIVAL)
-            ServerPlayer::class.java.getDeclaredField("spawnInvulnerableTime").apply { isAccessible = true }.setInt(this, 0)
-            setPos(helper.absoluteVec(Vec3(140.5, 1.0, 45.5)))
-            helper.level.addNewPlayer(this)
-            SquadTeams.assign(this, SquadFaction.COW)
-        }
+        var player = survivalPlayer(helper, profile, Vec3(140.5, 1.0, 45.5))
         // Vanilla respawn queries NeoForge channel attributes even with FakePlayer's no-op sender.
         // Supply a local channel for that query; no client or socket is involved.
         val connection = player.connection.connection
@@ -73,6 +67,9 @@ object TargetMemoryGameTests {
         }
         helper.runAtTickTime(5) {
             SquadTactics.observe(npc, player) // A prior scout sighting, beyond this member's detection range.
+        }
+        // The squad acts on the report once the call is through.
+        helper.runAtTickTime(REPORTED) {
             npc.rememberVisible(player)
             crew.rememberVehicleAttacker(player)
             BrainUtils.setTargetOfEntity(crew, other)
@@ -93,7 +90,7 @@ object TargetMemoryGameTests {
             SquadTeams.assign(player, SquadFaction.COW)
             helper.assertTrue(player.uuid == profile.id && player.isAlive && npc.distanceTo(player) > 100, "Vanilla respawn must replace the life with the same UUID far away")
         }
-        helper.runAtTickTime(6) {
+        helper.runAtTickTime(REPORTED + 1) {
             // This member is acquiring from a squad report, rather than holding the removed
             // entity object. Other members need not have personally targeted the old life.
             BrainUtils.setTargetOfEntity(npc, null)
@@ -107,7 +104,8 @@ object TargetMemoryGameTests {
             helper.assertTrue(!npc.lastSeenFire.observed(player.uuid), "Personal sighting followed the UUID into a new life")
             helper.assertTrue(npc.rememberedEye(player) == null, "Remembered eye point followed the UUID into a new life")
             helper.assertTrue(crew.vehicleAttacker() == null && crew.target === other, "Crew retaliation rebound to the new life or erased an unrelated current target")
-            helper.assertTrue(other.uuid in squad.tactics.contacts && npc.target === other, "Cleanup erased another enemy or disabled target sensing")
+            // The other enemy stands behind solid cover, so he is a contact, not a target to shoot.
+            helper.assertTrue(other.uuid in squad.tactics.contacts && npc.target !== player, "Cleanup erased another enemy")
             player.setPos(helper.absoluteVec(Vec3(40.5, 1.0, 45.5)))
             npc.yHeadRot = -90f
             SquadTargetSensor().tick(helper.level, npc)
@@ -187,4 +185,18 @@ object TargetMemoryGameTests {
             }
         }
     }
+
+    /** A real survival player of the enemy faction, added to the level at [at]. */
+    private fun survivalPlayer(helper: GameTestHelper, profile: GameProfile, at: Vec3) =
+        ServerPlayer(helper.level.server, helper.level, profile, ClientInformation.createDefault()).apply {
+            connection = FakePlayerFactory.get(helper.level, profile).connection
+            gameMode.changeGameModeForPlayer(GameType.SURVIVAL)
+            ServerPlayer::class.java.getDeclaredField("spawnInvulnerableTime").apply { isAccessible = true }.setInt(this, 0)
+            setPos(helper.absoluteVec(at))
+            helper.level.addNewPlayer(this)
+            SquadTeams.assign(this, SquadFaction.COW)
+        }
+
+    // A scout's report reaches the squad SquadKnowledge.SHARE_TICKS after the sighting.
+    private const val REPORTED = 5 + SquadKnowledge.SHARE_TICKS + 1
 }

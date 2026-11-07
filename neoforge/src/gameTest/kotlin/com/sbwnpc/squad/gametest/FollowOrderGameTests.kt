@@ -27,7 +27,8 @@ object FollowOrderGameTests {
         val start = helper.absoluteVec(Vec3(30.5, 1.0, 80.5))
         owner.moveTo(start.x, start.y, start.z, 0f, 0f)
         helper.level.addNewPlayer(owner)
-        val groups = (0..1).map { group -> (0 until 4).map { index -> scene.spawn(Vec3(24.5 + index * 2, 1.0, 70.5 + group * 20)) } }
+        // The followers start 40 blocks off, twice the near distance, so gathering is a walk.
+        val groups = (0..1).map { group -> (0 until 4).map { index -> scene.spawn(Vec3(24.5 + index * 2, 1.0, 70.5 + group * 50)) } }
         val squads = groups.map { group -> manager.create(helper.level, owner.uuid, requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
         scene.onClose = {
             squads.forEach { manager.deleteSquad(helper.level, it.id) }
@@ -40,7 +41,7 @@ object FollowOrderGameTests {
         var walkStart: Long? = null
         var gone: Long? = null
         helper.onEachTick {
-            val near = followers.count { it.position().distanceTo(owner.position()) <= 20 }
+            val near = followers.count { it.position().distanceTo(owner.position()) <= com.sbwnpc.squad.combat.FollowFormation.NEAR_DISTANCE }
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} near=$near order=${squads[1].order} owner=${helper.relativeVec(owner.position())}")
             if (gone == null) {
                 if (walkStart == null && helper.tick >= 300) {

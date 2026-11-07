@@ -13,6 +13,9 @@ Default: install missing tools, prepare dependencies, run three smoke GameTests.
   --filter METHODS    Run exact GameTest method names, separated by commas
   --group GROUPS      Run the GameTests of these domains, separated by commas
   --report NAME       Report directory name (default: cloud-YYYYmmdd-HHMMSS)
+  --parallel N        Split the selected scenes by batch into N servers, each in its
+                      own worktree (.worktrees/headless-shard-K) on the committed HEAD;
+                      needs --all, --group or --filter and a prepared checkout
   --offline           Use cached downloads and Gradle dependencies only
   --no-system-install Do not install missing base tools through apt-get
   -h, --help          Show this help
@@ -34,6 +37,7 @@ group=
 report="cloud-$(date -u +%Y%m%d-%H%M%S)"
 offline=false
 system_install=true
+parallel=
 while (($#)); do
     case "$1" in
         --prepare) mode=prepare; shift ;;
@@ -42,6 +46,7 @@ while (($#)); do
         --filter) (($# >= 2)) || die '--filter requires method names'; [[ $mode != group ]] || die '--filter and --group are alternatives'; mode=filter; filter=$2; shift 2 ;;
         --group) (($# >= 2)) || die '--group requires group names'; [[ $mode != filter ]] || die '--filter and --group are alternatives'; mode=group; group=$2; shift 2 ;;
         --report) (($# >= 2)) || die '--report requires a name'; report=$2; shift 2 ;;
+        --parallel) (($# >= 2)) || die '--parallel requires a shard count'; parallel=$2; shift 2 ;;
         --offline) offline=true; shift ;;
         --no-system-install) system_install=false; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -51,6 +56,15 @@ done
 [[ $report =~ ^[A-Za-z0-9_-]+$ ]] || die 'Report name must contain only ASCII letters, digits, _ and -'
 [[ $filter =~ ^[A-Za-z0-9_]+(,[A-Za-z0-9_]+)*$ ]] || die 'Filter must contain exact method names separated by commas'
 [[ -z $group || $group =~ ^[a-z-]+(,[a-z-]+)*$ ]] || die 'Groups must be lowercase names separated by commas'
+if [[ -n $parallel ]]; then
+    [[ $parallel =~ ^[1-9][0-9]*$ ]] || die '--parallel needs a positive shard count'
+    [[ $mode == all || $mode == group || $mode == filter ]] || die '--parallel needs --all, --group or --filter'
+    shard_args=(--shards "$parallel" --report "$report")
+    [[ $mode == group ]] && shard_args+=(--group "$group")
+    [[ $mode == filter ]] && shard_args+=(--filter "$filter")
+    $offline && shard_args+=(--offline)
+    exec python3 "$(dirname -- "${BASH_SOURCE[0]}")/scripts/headless_shards.py" "${shard_args[@]}"
+fi
 [[ $(uname -s) == Linux ]] || die 'This bootstrap supports Linux only'
 case "$(uname -m)" in
     x86_64) architecture=x64 ;;

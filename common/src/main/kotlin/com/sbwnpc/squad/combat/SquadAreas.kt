@@ -31,9 +31,12 @@ object SquadAreas {
         var cursor = 0
     }
     private val worlds = WeakHashMap<ServerLevel, World>()
-    private val roles = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
 
-    private fun eligible(squad: Squad) =
+    /** Ground infantry; vehicle and crew roles keep their own order point. */
+    internal val roles = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
+
+    /** Orders that hold ground take a shared local area; MOVE, attacks and patrol routes keep their exact point. */
+    internal fun eligible(squad: Squad) =
         squad.order in setOf(SquadOrder.DEFEND, SquadOrder.PATROL, SquadOrder.RETREAT) &&
             squad.focusEntity == null && (squad.order != SquadOrder.PATROL || squad.routeId == null)
 

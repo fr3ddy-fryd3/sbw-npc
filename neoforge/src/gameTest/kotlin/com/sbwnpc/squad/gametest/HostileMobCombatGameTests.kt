@@ -225,33 +225,33 @@ object HostileMobCombatGameTests {
         }
     }
 
-    /** A zombie picks a squad NPC as it would a player, and the squad shoots it. */
+    /**
+     * A zombie picks a squad NPC as it would a player, and the squad shoots it, while a wild wolf
+     * nobody provoked, off to the side, is no enemy: nobody aims at it and it goes for nobody.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "mob-combat-zombie")
     fun zombieGoesForASquadNpcAndTheSquadShootsIt(helper: GameTestHelper) {
         val probe = MobScene(helper, "mob-combat-zombie", EntityType.ZOMBIE)
+        // Ten blocks off the line of fire, so a miss at the zombie does not provoke it.
+        val wolf = requireNotNull(EntityType.WOLF.create(helper.level)).also {
+            val at = helper.absoluteVec(Vec3(54.5, 1.0, 51.5))
+            it.moveTo(at.x, at.y, at.z, 90f, 0f)
+            helper.level.addFreshEntity(it)
+        }
+        val close = probe.scene.onClose
+        probe.scene.onClose = {
+            wolf.discard()
+            close()
+        }
         var targeted = false
         helper.onEachTick {
+            helper.assertTrue(probe.men.none { it.target === wolf }, "The squad aimed at an unprovoked wolf")
+            helper.assertTrue(wolf.target !is NpcEntity, "An unprovoked wolf went for a squad NPC")
             if (probe.mob.target is NpcEntity) targeted = true
             if (helper.tick % 100L == 0L) probe.scene.result("RUNNING", "tick=${helper.tick} targeted=$targeted shooters=${probe.shots.size} zombieAlive=${probe.mob.isAlive}")
             if (targeted && (probe.shots.isNotEmpty() || !probe.mob.isAlive)) {
                 probe.scene.result("PASS", "tick=${helper.tick} shooters=${probe.shots.size} zombieAlive=${probe.mob.isAlive}")
-                helper.succeed()
-            }
-        }
-    }
-
-    /** A wild wolf nobody provoked is no enemy: the squad leaves it alone. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "mob-combat-wolf")
-    fun unprovokedWolfIsLeftAlone(helper: GameTestHelper) {
-        val probe = MobScene(helper, "mob-combat-wolf", EntityType.WOLF)
-        helper.onEachTick {
-            helper.assertTrue(probe.shots.isEmpty(), "The squad shot at an unprovoked wolf")
-            helper.assertTrue(probe.mob.target !is NpcEntity, "An unprovoked wolf went for a squad NPC")
-            if (helper.tick >= 300) {
-                helper.assertTrue(probe.mob.isAlive, "The wolf died")
-                probe.scene.result("PASS", "tick=${helper.tick}")
                 helper.succeed()
             }
         }

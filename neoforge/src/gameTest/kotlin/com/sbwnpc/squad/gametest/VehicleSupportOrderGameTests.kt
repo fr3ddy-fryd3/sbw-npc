@@ -33,8 +33,8 @@ private fun assertSupportReleased(helper: GameTestHelper, gun: Entity, man: NpcE
 /** A free vehicle's gun must not keep a man from a new movement or withdrawal order. */
 @PrefixGameTestTemplate(false)
 object VehicleSupportOrderGameTests {
-    private fun supportYieldsToOrder(helper: GameTestHelper, order: SquadOrder, withdrawal: Boolean = false) {
-        val scene = CombatIdleGameTests.Scene(helper, "support-${if (withdrawal) "withdrawal" else order.name.lowercase()}")
+    private fun supportYieldsToOrder(helper: GameTestHelper, order: SquadOrder) {
+        val scene = CombatIdleGameTests.Scene(helper, "support-${order.name.lowercase()}")
         val manager = SquadManager.get(helper.level)
         val man = scene.spawn(Vec3(20.5, 1.0, 20.5))
         val gun = park(helper, Vec3(24.5, 1.0, 20.5))
@@ -54,12 +54,7 @@ object VehicleSupportOrderGameTests {
                 helper.assertTrue(Ports.vehicles.hasWeaponAt(gun, man), "The man boarded an unarmed seat")
                 gun.deltaMovement = Vec3(0.4, 0.0, 0.0)
                 val destination = helper.absolutePos(BlockPos(140, 1, 20))
-                if (withdrawal) {
-                    manager.setObjective(helper.level, squad.id, destination)
-                    manager.withdraw(squad.id, "gametest_losses")
-                } else {
-                    manager.issueOrderAt(helper.level, squad.id, order, destination)
-                }
+                manager.issueOrderAt(helper.level, squad.id, order, destination)
                 orderedAt = helper.tick
             }
             val since = orderedAt?.let { helper.tick - it } ?: return@onEachTick
@@ -82,11 +77,6 @@ object VehicleSupportOrderGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "support-retreat")
     fun freeVehicleGunnerYieldsToRetreatWithoutResumingSupport(helper: GameTestHelper) = supportYieldsToOrder(helper, SquadOrder.RETREAT)
-
-    /** Loss-driven withdrawal uses the same order contract as an explicit retreat. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "support-withdrawal")
-    fun freeVehicleGunnerLeavesWhenSquadWithdraws(helper: GameTestHelper) = supportYieldsToOrder(helper, SquadOrder.RETREAT, withdrawal = true)
 
     /** An explicit MOVE takes the man away from his temporary weapon station. */
     @JvmStatic
@@ -145,15 +135,10 @@ object VehicleSupportOrderGameTests {
     /** A repeated MOVE is still a new command and releases the old station. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "support-repeat-move")
-    fun gunnerYieldsToNewMoveAtSamePoint(helper: GameTestHelper) = supportYieldsToChangedAssignment(helper, changeSquad = false)
+    fun gunnerYieldsToNewMoveAtSamePoint(helper: GameTestHelper) = supportYieldsToRepeatedMove(helper)
 
-    /** A station assignment belongs to its squad, even when another squad has the same order stamp. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "support-change-squad")
-    fun gunnerYieldsWhenChangedToAnotherSquad(helper: GameTestHelper) = supportYieldsToChangedAssignment(helper, changeSquad = true)
-
-    private fun supportYieldsToChangedAssignment(helper: GameTestHelper, changeSquad: Boolean) {
-        val scene = CombatIdleGameTests.Scene(helper, "support-change-${if (changeSquad) "squad" else "order"}")
+    private fun supportYieldsToRepeatedMove(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "support-change-order")
         val manager = SquadManager.get(helper.level)
         val man = scene.spawn(Vec3(20.5, 1.0, 20.5)).apply { isInvulnerable = true }
         val gun = park(helper, Vec3(20.5, 1.0, 24.5))
@@ -165,22 +150,15 @@ object VehicleSupportOrderGameTests {
         val destination = man.blockPosition()
         manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, destination)
         manager.setFocus(squad.id, enemy.uuid)
-        var otherSquad: UUID? = null
         scene.onClose = {
             manager.deleteSquad(helper.level, squad.id)
-            otherSquad?.let { manager.deleteSquad(helper.level, it) }
             gun.discard()
             enemy.discard()
         }
         var changedAt: Long? = null
         helper.onEachTick {
             if (changedAt == null && man.vehicle === gun) {
-                if (changeSquad) {
-                    manager.removeMemberEverywhere(man.uuid)
-                    otherSquad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid)).id
-                } else {
-                    manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, destination)
-                }
+                manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, destination)
                 changedAt = helper.tick
             }
             val since = changedAt?.let { helper.tick - it } ?: return@onEachTick

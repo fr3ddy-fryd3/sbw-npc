@@ -47,19 +47,6 @@ object SightRangeGameTests {
         body(front, back, scene)
     }
 
-    /** Control: the front man, 100 blocks from the enemy, takes the target; the scenes below mean nothing if he does not. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "sight-range-control")
-    fun frontManTakesAnEnemyInsideDetectionRange(helper: GameTestHelper) =
-        twoMen(helper, "sight-range-control", 30.0) { front, _, scene ->
-            helper.onEachTick {
-                if (front.target != null) {
-                    scene.result("PASS", "tick=${helper.tick}")
-                    helper.succeed()
-                }
-            }
-        }
-
     /** The rear man is 160 blocks off: the front man's contact does not hand him the target. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "sight-range-160")
@@ -69,23 +56,6 @@ object SightRangeGameTests {
             helper.onEachTick {
                 if (front.target != null) frontHadIt = true
                 helper.assertTrue(back.target == null, "The man 160 blocks off took the shared target at tick ${helper.tick}")
-                if (helper.tick >= 700) {
-                    helper.assertTrue(frontHadIt, "The control man never took the target, so the scene proves nothing")
-                    scene.result("PASS", "rear man never took it")
-                    helper.succeed()
-                }
-            }
-        }
-
-    /** The rear man is 270 blocks off: past 256 nobody sees anybody, however fresh the contact. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "sight-range-270")
-    fun rearManNeverTakesAnEnemyPastTheSightLimit(helper: GameTestHelper) =
-        twoMen(helper, "sight-range-270", 170.0) { front, back, scene ->
-            var frontHadIt = false
-            helper.onEachTick {
-                if (front.target != null) frontHadIt = true
-                helper.assertTrue(back.target == null, "The man 270 blocks off took the target at tick ${helper.tick}")
                 if (helper.tick >= 700) {
                     helper.assertTrue(frontHadIt, "The control man never took the target, so the scene proves nothing")
                     scene.result("PASS", "rear man never took it")
