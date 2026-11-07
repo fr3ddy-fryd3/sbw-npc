@@ -357,13 +357,21 @@ object AttackDeploymentGameTests {
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1300, batch = "joint-attack-post-spacing")
-    fun squadsAttackingOnePointHoldPostsApart(helper: GameTestHelper) {
+    fun squadsAttackingOnePointHoldPostsApart(helper: GameTestHelper) = jointAttackSpacing(helper, size = 4, wall = false)
+
+    /** The same with six men a squad and a knee-high wall across the point: cover pulls posts together. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1300, batch = "joint-attack-post-spacing-wall")
+    fun squadsAttackingOneCoveredPointHoldPostsApart(helper: GameTestHelper) = jointAttackSpacing(helper, size = 6, wall = true)
+
+    private fun jointAttackSpacing(helper: GameTestHelper, size: Int, wall: Boolean) {
         for (x in 0..159) {
             for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         }
+        if (wall) for (z in 48..80) helper.setBlock(BlockPos(88, 1, z), Blocks.STONE)
         val objective = BlockPos(84, 1, 64)
-        val first = (0..3).map { spawn(helper, Vec3(80.5 + (it / 2) * 2, 1.0, 62.5 + (it % 2) * 2), SquadFaction.PIG) }
-        val second = (0..3).map { spawn(helper, Vec3(20.5 + (it / 2) * 3, 1.0, 60.5 + (it % 2) * 3), SquadFaction.PIG) }
+        val first = (0 until size).map { spawn(helper, Vec3(80.5 + (it / 2) * 2, 1.0, 62.5 + (it % 2) * 2), SquadFaction.PIG) }
+        val second = (0 until size).map { spawn(helper, Vec3(20.5 + (it / 2) * 3, 1.0, 60.5 + (it % 2) * 3), SquadFaction.PIG) }
         val targets = (0..3).map { index ->
             spawn(helper, Vec3(116.5, 1.0, 55.5 + index * 6), SquadFaction.COW).apply {
                 isNoAi = true
