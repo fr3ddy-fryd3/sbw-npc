@@ -293,7 +293,8 @@ internal abstract class EngageAction(protected val npc: NpcEntity, protected val
 /**
  * Holds a nearby spot that keeps a clear shot on the target while hiding as much of him as the
  * terrain allows, and fires from it. The spot is looked at again every 3-5 s ([EngageAction.HOLD_MIN_TICKS]
- * and jitter): he really holds a chosen spot and fires, no endless micro-shuffling. Each look ends
+ * and jitter): he really holds a chosen spot and fires, no endless micro-shuffling. A look that
+ * finds only the shot gone waits one more look ([LostShotGrace]) before he leaves. Each look ends
  * the unit, so the plan sees the fight again between holds.
  *
  * With [research] a hull stands in his line of fire, which no sidestep clears: he looks for
