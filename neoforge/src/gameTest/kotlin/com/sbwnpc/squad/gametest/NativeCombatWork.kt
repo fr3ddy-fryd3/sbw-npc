@@ -38,7 +38,7 @@ internal class NativeCombatWork(private val helper: GameTestHelper, members: Lis
     private var closed = false
     private val pre = Consumer<ServerTickEvent.Pre> { started = System.nanoTime() }
     private val post = Consumer<ServerTickEvent.Post> {
-        // Scene registered its wall-clock gun pacer before this listener. Sleep is excluded.
+        // Tick time from the scene's first listener to the last.
         if (helper.tick >= 200 && started != 0L) tickTimes += System.nanoTime() - started
     }
     private val damageTrace = Files.newBufferedWriter(Path.of(System.getProperty("sbwnpc.gameTestReports"), "operation-damage.csv"))

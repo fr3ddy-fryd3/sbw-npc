@@ -34,7 +34,6 @@ import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
@@ -83,12 +82,9 @@ object SidearmGameTests {
             val index = shooters.indexOf(round.owner)
             if (event.level === helper.level && index >= 0 && Ports.guns.isRound(round)) rounds[index]++
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(listener)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         cleanup(helper) {
             NeoForge.EVENT_BUS.unregister(listener)
-            NeoForge.EVENT_BUS.unregister(pacer)
             (shooters + enemies).forEach { it.discard() }
             helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
             val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "primary-variants.txt")
@@ -138,12 +134,9 @@ object SidearmGameTests {
                 if (attack && shooter.distanceTo(enemy) <= NpcClass.SHOTGUNNER.maxFireDistance) closeShots++
             }
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(listener)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         cleanup(helper) {
             NeoForge.EVENT_BUS.unregister(listener)
-            NeoForge.EVENT_BUS.unregister(pacer)
             manager.deleteSquad(helper.level, squad.id)
             listOf(shooter, enemy).forEach { it.discard() }
             helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
@@ -211,13 +204,10 @@ object SidearmGameTests {
                 shots[index].add(System.nanoTime())
             }
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(listener)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         cleanup(helper) {
             DebugFlags.enabledGroups = oldGroups
             NeoForge.EVENT_BUS.unregister(listener)
-            NeoForge.EVENT_BUS.unregister(pacer)
             (shooters + enemies).forEach { it.discard() }
             helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
             val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "sniper-cadence.txt")
@@ -328,12 +318,9 @@ object SidearmGameTests {
             val index = shooters.indexOf(projectile.owner)
             if (event.level === helper.level && index >= 0 && Ports.guns.isRound(projectile)) rounds[index]++
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(listener)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         cleanup(helper) {
             NeoForge.EVENT_BUS.unregister(listener)
-            NeoForge.EVENT_BUS.unregister(pacer)
             (shooters + enemies).forEach { it.discard() }
             helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
             val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "sidearm-fire.txt")

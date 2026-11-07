@@ -36,7 +36,6 @@ import net.minecraft.world.phys.shapes.CollisionContext
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
@@ -145,7 +144,6 @@ object DefensiveOverwatchGameTests {
                 roundsFromTower++
             }
         }
-        val pacer = CombatTickPacer()
         if (contact) NeoForge.EVENT_BUS.addListener(rounds)
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
@@ -155,7 +153,6 @@ object DefensiveOverwatchGameTests {
             private fun cleanup() {
                 DebugFlags.enabledGroups = oldGroups
                 NeoForge.EVENT_BUS.unregister(rounds)
-                NeoForge.EVENT_BUS.unregister(pacer)
                 enemy?.discard()
                 witness?.let { helper.level.removePlayerImmediately(it, Entity.RemovalReason.DISCARDED) }
                 manager.disband(helper.level, squad.id)
@@ -238,7 +235,6 @@ object DefensiveOverwatchGameTests {
                         Files.writeString(report.resolve("$name-initial-ray.txt"), "from=${helper.relativeVec(holder!!.eyePosition)}\nto=${helper.relativeVec(enemy!!.eyePosition)}\nhit=${hit.type} pos=${helper.relativePos(hit.blockPos)} block=${helper.level.getBlockState(hit.blockPos)}\n")
                         // The downhill ray is visible standing but crosses the far edge of the
                         // parapet crouched. Natural perception must stand the sentry up first.
-                        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
                         return@onEachTick
                     }
                     // Death releases the high slot before any later plan cleanup runs.

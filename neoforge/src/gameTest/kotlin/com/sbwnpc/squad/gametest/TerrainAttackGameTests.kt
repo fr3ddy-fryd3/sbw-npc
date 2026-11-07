@@ -30,7 +30,6 @@ import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
@@ -174,17 +173,14 @@ object TerrainAttackGameTests {
                 if (enemies.any { it.uuid == owner }) enemyRounds++
             }
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(bullets)
         NeoForge.EVENT_BUS.addListener(damage)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         var cleaned = false
         fun cleanup() {
             if (cleaned) return
             cleaned = true
             NeoForge.EVENT_BUS.unregister(bullets)
             NeoForge.EVENT_BUS.unregister(damage)
-            NeoForge.EVENT_BUS.unregister(pacer)
             manager.deleteSquad(helper.level, squad.id)
             if (defenders != null) manager.deleteSquad(helper.level, defenders.id)
             (members + enemies).forEach { it.discard() }

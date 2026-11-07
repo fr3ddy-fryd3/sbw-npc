@@ -27,7 +27,6 @@ import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import net.tslat.smartbrainlib.util.BrainUtils
 import java.nio.file.Files
@@ -180,9 +179,6 @@ object FoliageCombatGameTests {
             if (event.level === helper.level && round?.owner?.uuid == shooter.uuid) onRound(round!!)
         }
 
-        // Firing is still paced by wall-clock time; the pacer keeps a tick at 50 ms.
-        private val pacer = CombatTickPacer()
-
         // With nobody to see or hear it, a shot is a hitscan stand-in with no round to count
         // (OffscreenFire): a player nearby makes the gun fire real rounds.
         private val witness = FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "foliage-observer"))
@@ -199,11 +195,9 @@ object FoliageCombatGameTests {
             // No squad paces him: his own refresh builds his engage-only plan, as the engage scenes do.
             helper.onEachTick { if (helper.tick % 10L == 0L) SquadTactics.refresh(shooter) }
             NeoForge.EVENT_BUS.addListener(rounds)
-            NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
             AmmunitionTacticsGameTests.cleanup(helper) {
                 onClose()
                 NeoForge.EVENT_BUS.unregister(rounds)
-                NeoForge.EVENT_BUS.unregister(pacer)
                 (enemies + shooter).forEach(Entity::discard)
                 helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
             }

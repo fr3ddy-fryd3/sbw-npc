@@ -30,7 +30,6 @@ import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.util.UUID
 import java.util.function.Consumer
@@ -61,8 +60,6 @@ object AttackDeploymentGameTests {
         witness.moveTo(observer.x, observer.y, observer.z, 0.0f, 0.0f)
         witness.setNoGravity(true)
         helper.level.addNewPlayer(witness)
-        val pacer = CombatTickPacer()
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         val rounds = mutableSetOf<UUID>()
         val ids = rear.map { it.uuid }.toSet()
         val listener = Consumer<EntityJoinLevelEvent> { event ->
@@ -77,7 +74,6 @@ object AttackDeploymentGameTests {
             override fun testAddedForRerun(oldTest: net.minecraft.gametest.framework.GameTestInfo, newTest: net.minecraft.gametest.framework.GameTestInfo, runner: net.minecraft.gametest.framework.GameTestRunner) = cleanup()
             private fun cleanup() {
                 DebugFlags.enabledGroups = oldGroups
-                NeoForge.EVENT_BUS.unregister(pacer)
                 NeoForge.EVENT_BUS.unregister(listener)
                 manager.deleteSquad(helper.level, squad.id)
                 (rear + scouts + enemy).forEach { it.discard() }
@@ -321,11 +317,9 @@ object AttackDeploymentGameTests {
         val deaths = Consumer<LivingDeathEvent> { event ->
             if (event.entity.uuid in attackerIds) trace.damage(event.entity, event.source, 0.0f, death = true)
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(projectiles)
         NeoForge.EVENT_BUS.addListener(damage)
         NeoForge.EVENT_BUS.addListener(deaths)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         manager.setOrder(squad.id, SquadOrder.ATTACK)
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(96, 1, 64)))
         helper.onEachTick {
@@ -349,7 +343,6 @@ object AttackDeploymentGameTests {
                 NeoForge.EVENT_BUS.unregister(projectiles)
                 NeoForge.EVENT_BUS.unregister(damage)
                 NeoForge.EVENT_BUS.unregister(deaths)
-                NeoForge.EVENT_BUS.unregister(pacer)
                 manager.deleteSquad(helper.level, squad.id)
                 (attackers + targets).forEach { it.discard() }
                 helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
