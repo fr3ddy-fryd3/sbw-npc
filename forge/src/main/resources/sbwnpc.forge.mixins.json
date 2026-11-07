@@ -24,6 +24,10 @@
   ],
   "refmap": "sbwnpc.forge.refmap.json",
   "client": [
-    "KeyMappingMixin"
+    "KeyMappingMixin",
+    "AircraftRendererMixin",
+    "AircraftModelEntriesMixin",
+    "AircraftModelReloadMixin",
+    "AircraftWorldRenderMixin"
   ]
 }
