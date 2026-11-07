@@ -113,8 +113,8 @@ data class BoundTurn(val number: Int, val moving: Set<java.util.UUID>, val posts
 data class SquadShaping(val turn: BoundTurn? = null, val rally: Point3? = null, val retreating: Boolean = false)
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
 
-/** A squad's [teams] of ground men, its mortar crews ([support], #258) and its helicopters ([air], #260), which the squad's strategy never shapes. */
-data class SquadMission(val agent: AgentId, val teams: List<TeamMission>, val support: List<SupportCrew> = emptyList(), val air: List<Aircraft> = emptyList())
+/** A squad's [teams] of ground men, its mortar crews ([support], #258), its helicopters ([air], #260) and its tanks ([tanks], #185), which the squad's strategy never shapes. */
+data class SquadMission(val agent: AgentId, val teams: List<TeamMission>, val support: List<SupportCrew> = emptyList(), val air: List<Aircraft> = emptyList(), val tanks: List<Tank> = emptyList())
 
 /** A squad's [mission] under the [strategy] its method chose, for the choice of its [SquadApproach]. */
 data class StrategyMission(val mission: SquadMission, val strategy: CombatStrategy)
@@ -377,6 +377,9 @@ object TacticalDomain {
 
     /** The helicopter's tasks, joined the same way. */
     private val airTasks = AirSupport.tasks(::children)
+
+    /** The tank's tasks, joined the same way. */
+    private val tankTasks = TankSupport.tasks(::children)
     private fun coordinate(mission: OperationMission, roles: AttackRoles): TaskNetwork {
         val nodes = mission.squads.map { squad -> NetworkNode(squad.agent.id.toString(), DELEGATE.call(DelegationTask(squad.agent, SQUAD.call(OperationTactics.apply(squad, roles))))) }
         return TaskNetwork(nodes + listOfNotNull(mission.secure?.let { NetworkNode("secure", SECURE_TASK.call(it)) }))
@@ -432,14 +435,14 @@ object TacticalDomain {
                 // A squad of crews or aircraft alone has no ground men to shape: it only supports.
                 listOf(
                     Method<SquadMission>("support_only", eligible = { mission ->
-                        Condition { if (mission.teams.isEmpty() && (mission.support.isNotEmpty() || mission.air.isNotEmpty())) Verdict.Allowed else Verdict.Rejected("has_ground_teams") }
-                    }, decompose = { mission, facts -> TaskNetwork(children(FireSupport.delegations(mission) + AirSupport.delegations(mission)).nodes + listOfNotNull(boarding(mission, facts))) }),
+                        Condition { if (mission.teams.isEmpty() && (mission.support + mission.air + mission.tanks).isNotEmpty()) Verdict.Allowed else Verdict.Rejected("has_ground_teams") }
+                    }, decompose = { mission, facts -> TaskNetwork(children(FireSupport.delegations(mission) + AirSupport.delegations(mission) + TankSupport.delegations(mission)).nodes + listOfNotNull(boarding(mission, facts))) }),
                     // A squad travelling to its objective (#255) is no squad in a fight: its men make
                     // for the vehicles or the objective as their order says, and no strategy shapes them.
                     Method<SquadMission>("travel", eligible = { mission ->
                         Condition { facts -> if (mission.teams.isNotEmpty() && facts.value(TacticalFacts.TRAVELLING) == true) Verdict.Allowed else Verdict.Rejected("not_travelling") }
                     }, decompose = { mission, facts ->
-                        val teams = children(mission.teams.map { DelegationTask(it.agent, TEAM.call(it)) } + FireSupport.delegations(mission) + AirSupport.delegations(mission))
+                        val teams = children(mission.teams.map { DelegationTask(it.agent, TEAM.call(it)) } + FireSupport.delegations(mission) + AirSupport.delegations(mission) + TankSupport.delegations(mission))
                         TaskNetwork(teams.nodes + listOfNotNull(boarding(mission, facts)))
                     }),
                 ) + CombatStrategy.entries.map { strategy ->
@@ -478,7 +481,7 @@ object TacticalDomain {
                                 )
                                 DelegationTask(team.agent, TEAM.call(selected))
                             }
-                            children(tasks + FireSupport.delegations(mission) + AirSupport.delegations(mission))
+                            children(tasks + FireSupport.delegations(mission) + AirSupport.delegations(mission) + TankSupport.delegations(mission))
                         },
                     )
                 },
@@ -513,7 +516,7 @@ object TacticalDomain {
             PrimitiveTask(MAN_STATIONS_TASK) { manning ->
                 PrimitiveSpec("man_stations", ActionSpec(MAN_STATIONS, manning, timeoutTicks = Long.MAX_VALUE), TaskContract())
             },
-        ) + crewTasks.first + airTasks.first,
+        ) + crewTasks.first + airTasks.first + tankTasks.first,
     )
     val COVER_MOVE = ActionKey("npc.cover_move", CoverMove::class.java)
     val COVER_CYCLE = ActionKey("npc.cover_cycle", CoverCycle::class.java)
@@ -755,7 +758,7 @@ object TacticalDomain {
                     planning = ownActor(pause.actor),
                 )
             },
-        ) + ArmourResponse.tasks() + crewTasks.second + airTasks.second + DroneStrike.tasks { call -> TaskNetwork.sequence(ENGAGE_TASK.call(EngageTask(call.actor))) },
+        ) + ArmourResponse.tasks() + crewTasks.second + airTasks.second + tankTasks.second + DroneStrike.tasks { call -> TaskNetwork.sequence(ENGAGE_TASK.call(EngageTask(call.actor))) },
     )
     private const val NEIGHBOR_ATTEMPTS = 4
 
