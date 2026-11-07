@@ -73,6 +73,9 @@ internal class EngageState(private val npc: NpcEntity) {
     /** Until when his last search for a spot clear of a hull stands, kept across units like [sidestepRestUntil]. */
     var researchRestUntil = 0
 
+    /** When a look last found the held spot without a shot, for [LostShotGrace]; a new spot clears it. */
+    var lostShotAt: Int? = null
+
     private var orderStamp: Int? = null
     private var sidearm: Boolean? = null
 
@@ -98,11 +101,13 @@ internal class EngageState(private val npc: NpcEntity) {
     /** He holds [at] from now; others' searches keep off it. */
     fun hold(at: Vec3) {
         spot = at
+        lostShotAt = null
         FiringSpots.claim(npc.uuid, at)
     }
 
     /** He holds no spot: a move takes him off it, or his engage ended. */
     fun letGo() {
+        lostShotAt = null
         if (spot == null) return
         spot = null
         search.clear()
@@ -335,10 +340,7 @@ private class HoldSpot(npc: NpcEntity, state: EngageState, sidearm: Boolean, pri
         // A useful firing post is kept in every order. An enemy moving farther away is no reason
         // to abandon a clear shot in favour of slightly better concealment.
         val held = state.spot
-        if (held != null && clock >= state.nextCheck && stillGood(level, target, held)) {
-            state.nextCheck = clock + HOLD_MIN_TICKS + npc.random.nextInt(HOLD_JITTER_TICKS)
-            return true
-        }
+        if (held != null && clock >= state.nextCheck) recheck(level, target, held)?.let { return it }
         val pos = state.spot
         if (pos != null && clock < state.nextCheck) {
             state.walkTo(target, pos)
@@ -368,16 +370,46 @@ private class HoldSpot(npc: NpcEntity, state: EngageState, sidearm: Boolean, pri
         return true
     }
 
+    /** The due look at the spot he holds: true to keep it, false to wait out a lost shot, null to search for another. */
+    private fun recheck(level: ServerLevel, target: LivingEntity, held: Vec3): Boolean? =
+        when (verdict(level, target, held)) {
+            Verdict.GOOD -> {
+                state.lostShotAt = null
+                state.nextCheck = clock + HOLD_MIN_TICKS + npc.random.nextInt(HOLD_JITTER_TICKS)
+                true
+            }
+
+            // A shot lost for a moment (a man or a vehicle crossing his lane) is no reason to
+            // leave a good spot: he stays and looks once more. A hull search wants a new spot now.
+            Verdict.NO_SHOT -> if (!research && LostShotGrace.grants(state.lostShotAt, clock)) {
+                state.lostShotAt = clock
+                state.nextCheck = clock + LostShotGrace.RECHECK_TICKS
+                state.walkTo(target, held)
+                false
+            } else {
+                null
+            }
+
+            Verdict.UNSAFE -> null
+        }
+
     /** Whether the spot he holds still serves: he stands on it, out of any blast, still a shot, not crowded, his lane clear. */
-    private fun stillGood(level: ServerLevel, target: LivingEntity, held: Vec3): Boolean {
-        if (!FiringPostArrival.reached(npc.position(), held) || GrenadeHazard.threatens(level, held) || !TickBudget.hasRaycasts(level)) return false
+    private fun verdict(level: ServerLevel, target: LivingEntity, held: Vec3): Verdict {
+        if (!FiringPostArrival.reached(npc.position(), held) || GrenadeHazard.threatens(level, held) || !TickBudget.hasRaycasts(level)) return Verdict.UNSAFE
         // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer
         // "still has a shot", and keeping it had defenders standing behind a hull, never firing.
         val score = state.search.concealmentAt(FiringSpotSearch.Shot(level, npc, target, state.bounds()), held)
-        if (score == null || score <= 0.0) return false
-        return !FiringSpots.crowded(held, FiringSpots.nearbyWithBodies(level, npc, FiringSpotSearch.STUCK_SEARCH_RADIUS)) &&
+        val clear = !FiringSpots.crowded(held, FiringSpots.nearbyWithBodies(level, npc, FiringSpotSearch.STUCK_SEARCH_RADIUS)) &&
             FriendlyFireGuard.assess(npc, target.eyePosition, npc.spread, target.position(), 0.0).lineClear
+        return when {
+            !clear -> Verdict.UNSAFE
+            score == null || score <= 0.0 -> Verdict.NO_SHOT
+            else -> Verdict.GOOD
+        }
     }
+
+    /** What a look found at the held spot: [NO_SHOT] alone may wait out a moment, [UNSAFE] never does. */
+    private enum class Verdict { GOOD, NO_SHOT, UNSAFE }
 
     private companion object {
         /** A search the tick's budget cut short resumes this soon. */
@@ -386,6 +418,21 @@ private class HoldSpot(npc: NpcEntity, state: EngageState, sidearm: Boolean, pri
         /** A search for a spot clear of a hull at most this often, 3 s: the shortest hold. */
         const val RESEARCH_REST_TICKS = HOLD_MIN_TICKS
     }
+}
+
+/**
+ * How long a held spot may stay without a shot before he looks for another: one more look
+ * [RECHECK_TICKS] later. A miss long after the last one (his fight moved on to other units since)
+ * starts a fresh grace rather than counting as that second look.
+ */
+internal object LostShotGrace {
+    const val RECHECK_TICKS = 30
+
+    /** A look counts as the second one within this much of the first; the hold's own cadence keeps it near [RECHECK_TICKS]. */
+    const val SECOND_LOOK_WINDOW = RECHECK_TICKS + EngageAction.HOLD_JITTER_TICKS
+
+    /** Whether a look at [clock] that found no shot may keep the spot and look again, given the last such look [lostAt]. */
+    fun grants(lostAt: Int?, clock: Int): Boolean = lostAt == null || clock - lostAt > SECOND_LOOK_WINDOW
 }
 
 /**
