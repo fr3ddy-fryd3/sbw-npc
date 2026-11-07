@@ -17,14 +17,16 @@ interface Grenades {
     fun blastRadius(kind: GrenadeKind): Double
 
     /** Throws a [kind] hand grenade to land on [target], leading it by [targetVelocity]. */
-    fun throwAt(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3 = Vec3.ZERO, kind: GrenadeKind = GrenadeKind.OFFENSIVE)
+    fun throwAt(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double): Boolean
 
     /**
-     * Whether a [kind] grenade thrown at [target] flies clear all the way: nothing it would touch —
-     * a block, or anyone but the enemy — before it gets within [nearTarget] of the point.
-     * Rejects impossible ballistic solutions for both grenade types.
+     * Where a [kind] grenade thrown at [target] first strikes, or null when it cannot get there clear:
+     * nothing it would touch — a block, a hull, or anyone but the enemy — before it gets within
+     * [nearTarget] of the point. With [lobs], higher throws over cover are tried too, and those count
+     * only when they strike within [nearTarget]. Rejects impossible ballistic solutions.
      */
-    fun arcClear(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double): Boolean
+    @Suppress("LongParameterList")
+    fun landing(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double, lobs: Boolean): Vec3?
 
     /** One [kind] hand grenade as the item a player throws. */
     fun item(kind: GrenadeKind): net.minecraft.world.item.ItemStack
