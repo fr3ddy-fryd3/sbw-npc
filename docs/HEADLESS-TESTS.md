@@ -153,8 +153,6 @@ and harmless.
 - **The test world persists between runs** in `neoforge/build/gametest/server/`. Entities a run
   left behind (for example after an interrupted run) can load into the next one; a scene that
   spawns NPCs should clear its area first.
-- **Combat scenes pace ticks to real time** (`CombatTickPacer`, at least 50 ms a tick): SBW weapon
-  timers run on wall-clock time, and an unpaced server ticks faster than they can fire.
 - **Real projectiles need an observer.** With no player near a fight, the mod resolves shots as a
   hitscan roll (`OffscreenFire`) instead of real SBW rounds. Combat scenes that measure rounds add a
   fake player (`FakePlayerFactory`) near the fight and check `OffscreenFire.hasWitness`.
@@ -185,6 +183,5 @@ prove a whole battle or a player's case is fixed.
 | [SavedBattleGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/SavedBattleGameTests.kt), [SavedBattleReplay.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/SavedBattleReplay.kt), [CombatParticipationTrace.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatParticipationTrace.kt) | Replaying a battle saved from a real world (`gameTestReplay`) and why men idled in it |
 | [CombatPerformanceGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatPerformanceGameTests.kt), [NativeCombatWork.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/NativeCombatWork.kt) | Server cost of large fights and counting search work |
 | Other `*GameTests.kt` | Supply, vehicles, mortars, helicopters, sidearms, ammunition, experience, squad areas, progression |
-| [CombatTickPacer.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatTickPacer.kt) | The real-time tick pacing described above |
 | [structure/](../neoforge/src/gameTest/resources/data/sbwnpc/structure/) | Empty arena templates (`movement_arena`, `attack_arena`, `terrain_arena`, ...); floors and obstacles are placed by the scenes |
 | [neoforge/build.gradle.kts](../neoforge/build.gradle.kts) | The `gameTest` source set, `runGameTestServer`, the mods loaded and archiving the log |

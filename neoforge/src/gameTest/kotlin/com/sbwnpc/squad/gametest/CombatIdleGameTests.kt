@@ -30,7 +30,6 @@ import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
@@ -170,7 +169,6 @@ object CombatIdleGameTests {
         private val oldGroups = DebugFlags.enabledGroups
         private var manager = SquadManager.get(helper.level)
         private val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
-        private val pacer = CombatTickPacer()
         private val witness = FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "idle-observer"))
         private var cleaned = false
         var onClose: () -> Unit = {}
@@ -184,7 +182,6 @@ object CombatIdleGameTests {
             witness.moveTo(at.x, at.y, at.z, 0f, 0f)
             witness.setNoGravity(true)
             helper.level.addNewPlayer(witness)
-            NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
             helper.testInfo.addListener(object : GameTestListener {
                 override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
                 override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
@@ -286,7 +283,6 @@ object CombatIdleGameTests {
             cleaned = true
             DebugFlags.enabledGroups = oldGroups
             onClose()
-            NeoForge.EVENT_BUS.unregister(pacer)
             squads.forEach { manager.deleteSquad(helper.level, it.id) }
             entities.forEach {
                 FiringSpots.release(it.uuid)

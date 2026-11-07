@@ -31,7 +31,6 @@ import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import net.tslat.smartbrainlib.util.BrainUtils
 import java.nio.file.Files
@@ -670,7 +669,6 @@ object HelicopterOrbitGameTests {
         val airborne: Boolean get() = heli.y - Helicopters.groundY(helper.level, heli.x, heli.z) >= 8.0
         var onClose: () -> Unit = {}
         val trace = StringBuilder("tick,x,y,z,yaw,pitch,roll,speed,radius,seats,target,health,order\n")
-        private val pacer = CombatTickPacer()
         private val witness = FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "flight-observer"))
         init {
             // Vanilla test barriers must not become heightmap terrain or a false ceiling for aircraft.
@@ -700,7 +698,6 @@ object HelicopterOrbitGameTests {
             witness.moveTo(point.x, point.y, point.z, 0f, 0f)
             witness.setNoGravity(true)
             helper.level.addNewPlayer(witness)
-            NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
             helper.testInfo.addListener(object : GameTestListener {
                 override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
                 override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = close()
@@ -740,7 +737,6 @@ object HelicopterOrbitGameTests {
         fun result(content: String) = write("${helper.testInfo.testName}-result.txt", content)
         private fun close() {
             onClose()
-            NeoForge.EVENT_BUS.unregister(pacer)
             write("${helper.testInfo.testName}.csv", trace.toString())
             manager.deleteSquad(helper.level, squad.id)
             crew.forEach { it.discard() }

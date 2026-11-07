@@ -18,7 +18,6 @@ import net.minecraft.nbt.Tag
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
-import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.util.UUID
 import kotlin.math.abs
@@ -80,10 +79,7 @@ object SquadProgressionGameTests {
         var enemy: NpcEntity? = null
         var advanced = false
         val trace = StringBuilder("tick,advanced,actor,x,y,z,done,target,shots,order,health\n")
-        val pacer = CombatTickPacer()
-        NeoForge.EVENT_BUS.addListener(pacer)
         cleanup(helper) {
-            NeoForge.EVENT_BUS.unregister(pacer)
             manager.disband(helper.level, destination.id)
             manager.disband(helper.level, source.id)
             listOfNotNull(moved, sleeping, receiver, restored, enemy).forEach { it.discard() }

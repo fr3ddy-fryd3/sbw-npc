@@ -25,7 +25,7 @@ import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.team.SquadTeams
-import com.sbwnpc.squad.util.MillisTimer
+import com.sbwnpc.squad.util.TickStopwatch
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -55,7 +55,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private var aimTime = 0
-    private val shootTimer = MillisTimer()
+    private val shootTimer = TickStopwatch()
 
     private var lineIsClear = true
     private var blastClear = true
@@ -376,11 +376,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (entity.fireIntervalMultiplier > 1 && entity.tickCount - entity.lastShotTick < kotlin.math.ceil(cooldown / 50.0).toInt()) return
 
             if (!shootTimer.started()) {
-                shootTimer.start()
-                shootTimer.progress = cooldown + 1
+                shootTimer.start(entity.tickCount)
+                shootTimer.setProgress(entity.tickCount, cooldown + 1)
             }
 
-            if (shootTimer.progress >= cooldown) {
+            if (shootTimer.progress(entity.tickCount) >= cooldown) {
                 val from = entity.eyePosition
                 val direction = ShotAim.direction(from, target.eyePosition, gun.arcPitch(from, rocketAimPoint(target)))
                 val laneLength = SquadTactics.firingLaneEnd(entity, target).distanceTo(from)
@@ -403,7 +403,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // degrees either way — three blocks over or under a tank at thirty — so launchers
                 // fire with a fraction of it. The arc itself (arcPitch) was already on target.
                 val spread = if (gun.explosionRadius > 0.0) shotSpread * LAUNCHER_SPREAD_FACTOR else shotSpread
-                var newProgress = shootTimer.progress
+                var newProgress = shootTimer.progress(entity.tickCount)
+                // A gun faster than one round a tick (1200 rpm and up), or one between whole ticks
+                // (900 rpm), fires the rounds its cadence owes this tick.
                 do {
                     if (simulate) {
                         OffscreenFire.fire(entity, gun, target, spread)
@@ -414,7 +416,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     if (fireMode == TriggerMode.AUTO) automaticBurst.fired(entity.npcClass, entity.tickCount, entity.random)
                     entity.fireObservation.fired()
                 } while (newProgress - cooldown > 0 && (fireMode != TriggerMode.AUTO || !automaticBurst.paused(entity.tickCount)))
-                shootTimer.progress = newProgress
+                shootTimer.setProgress(entity.tickCount, newProgress)
                 entity.lastShotTick = entity.tickCount
                 entity.firingObstruction.reset()
                 entity.lastFireAt = target.position()

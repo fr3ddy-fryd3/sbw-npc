@@ -26,7 +26,6 @@ import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
@@ -67,13 +66,10 @@ object AmmunitionTacticsGameTests {
             val projectile = event.entity as? Projectile ?: return@Consumer
             if (event.level === helper.level && projectile.owner === npc && Ports.guns.isRound(projectile)) rounds++
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(listener)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         cleanup(helper) {
             supplyScope.close()
             NeoForge.EVENT_BUS.unregister(listener)
-            NeoForge.EVENT_BUS.unregister(pacer)
             manager.deleteSquad(helper.level, squad.id)
             npc.discard()
             enemy.discard()
