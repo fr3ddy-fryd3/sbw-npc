@@ -40,7 +40,6 @@ object AircraftLods {
                 loadVariants(path)?.let { generated[path] = it }
             }
         }
-        ModIdentity.LOGGER.info("NPC aircraft LODs: simplified {} of {} vehicle models", generated.size, models.size)
     }
 
     @JvmStatic
