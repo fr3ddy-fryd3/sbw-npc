@@ -196,8 +196,10 @@ data class HoldHole(val actor: AgentId, val digs: Int)
 /** Climb out of the hole he dug. */
 data class LeaveHole(val actor: AgentId)
 
-/** Typed observations are scoped by FactSnapshot.owner; no world queries live in this domain. */
-/** The post searches round [anchor] that failed; [spreadTried] once the step off a squadmate failed there too. */
+/**
+ * The post searches round [anchor] that failed; [spreadTried] once the step off a squadmate failed there too.
+ * Typed observations are scoped by FactSnapshot.owner; no world queries live in this domain.
+ */
 data class LocalPositionFailure(val anchor: Point3, val failedAt: Long, val attempts: Int, val rejections: Map<String, Int>, val spreadTried: Boolean = false)
 
 object TacticalFacts {
@@ -800,15 +802,6 @@ object TacticalDomain {
     private val CLOSER_STEPS = listOf(12.0 to 0.0, 24.0 to 0.0, 12.0 to 16.0, 12.0 to -16.0, 24.0 to 16.0, 24.0 to -16.0, 36.0 to 0.0)
 
     /** Whether [closerAnchors] still has a step to try after [failure], the neighbours being exhausted. */
-    /** Whether a man whose search failed steps off a squadmate's block (spread_post) before any other post method. */
-    private fun spreads(intent: PositionIntent, failure: LocalPositionFailure, facts: FactView): Verdict = when {
-        failure.spreadTried -> Verdict.Rejected("spread_failed")
-        !intent.duty.commandsMovement -> Verdict.Rejected("feet_not_his")
-        facts.value(TacticalFacts.UNDER_FIRE) == true -> Verdict.Rejected("under_fire")
-        facts.value(TacticalFacts.CROWDED) != true -> Verdict.Rejected("not_crowded")
-        else -> Verdict.Allowed
-    }
-
     private fun closer(intent: PositionIntent, failure: LocalPositionFailure): Verdict {
         val step = failure.attempts - NEIGHBOR_ATTEMPTS - 1
         return when {
@@ -1035,3 +1028,17 @@ object TeamRushes {
     /** A leg this long or longer counts as long. */
     private const val LONG_LEG = 32.0
 }
+
+/**
+ * Whether a man whose search failed steps off a squadmate's block (spread_post) before any other
+ * post method. A step that ends still crowded is taken again: only a failed one is remembered,
+ * so the steps last at most until the failure is forgotten.
+ */
+private fun spreads(intent: PositionIntent, failure: LocalPositionFailure, facts: FactView): Verdict =
+    when {
+        failure.spreadTried -> Verdict.Rejected("spread_failed")
+        !intent.duty.commandsMovement -> Verdict.Rejected("feet_not_his")
+        facts.value(TacticalFacts.UNDER_FIRE) == true -> Verdict.Rejected("under_fire")
+        facts.value(TacticalFacts.CROWDED) != true -> Verdict.Rejected("not_crowded")
+        else -> Verdict.Allowed
+    }

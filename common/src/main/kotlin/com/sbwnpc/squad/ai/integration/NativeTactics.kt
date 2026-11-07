@@ -80,7 +80,11 @@ object NativeTactics {
 
     /** How long a failed post search is remembered, 10 s. */
     private const val FAILURE_MEMORY_TICKS = 200L
+
+    /** How often a man's squadmate spacing is measured, half a second. */
     private const val CROWDING_CHECK_TICKS = 10L
+
+    /** How much further than the spacing his nearest squadmate must stand before he is no longer crowded. */
     private const val CROWDING_RELEASE = 0.5
 
     /** A squad smaller than this is never counted as scattered. */
@@ -738,7 +742,11 @@ object NativeTactics {
                             NativePositionAction(intent, npc, { npc.squadId?.let(::combatView) }, heldPost = heldPosts[intent.actor.id], exhausted = { failed, rejections, searched ->
                                 val previous = failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }
                                 // A failed spread keeps the round's count: it must not restart the post chain (#299).
-                                failures[failed.actor.id] = if (failed.spread && previous != null) previous.copy(failedAt = level.gameTime, spreadTried = true) else LocalPositionFailure(original.anchor, level.gameTime, (previous?.attempts ?: 0) + 1, rejections.toMap(), previous?.spreadTried == true)
+                                failures[failed.actor.id] = if (failed.spread && previous != null) {
+                                    previous.copy(failedAt = level.gameTime, spreadTried = true)
+                                } else {
+                                    LocalPositionFailure(original.anchor, level.gameTime, (previous?.attempts ?: 0) + 1, rejections.toMap(), previous?.spreadTried == true)
+                                }
                                 // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
                                 // The planned anchor is put on the ground before the search; searched is where it looked.
                                 val ground = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, net.minecraft.util.Mth.floor(searched.x), net.minecraft.util.Mth.floor(searched.z))
@@ -936,12 +944,15 @@ object NativeTactics {
             var near = false
             if (npc.npcClass != NpcClass.MEDIC && npc.vehicle == null) {
                 NpcRegistry.forEachWithin(npc.level() as ServerLevel, npc.position(), reach, exclude = npc) {
-                    if (!near && it.isAlive && it.vehicle == null && it.npcClass != NpcClass.MEDIC && it.squadId == npc.squadId) near = true
+                    if (!near && spacedFrom(npc, it)) near = true
                 }
             }
             crowding[npc.uuid] = now to near
             return near
         }
+
+        /** Whether [other] is a squadmate on foot whose post must keep its distance from [npc]'s. */
+        private fun spacedFrom(npc: NpcEntity, other: NpcEntity) = other.isAlive && other.vehicle == null && other.npcClass != NpcClass.MEDIC && other.squadId == npc.squadId
 
         /**
          * A live target he sees, or one not shooting at him now: the cover behaviour's test for
