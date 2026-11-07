@@ -24,15 +24,32 @@ data class EntryArea(val center: Point3, val radius: Double, val verticalToleran
     }
     fun contains(position: Point3) = center.horizontalDistanceSquared(position) <= radius * radius && abs(center.y - position.y) <= verticalTolerance
 }
-data class SquadParticipant(val id: UUID, val principal: UUID, val faction: String, val dimension: String, val orderVersion: Long)
+
+/**
+ * What a squad is to an operation: GROUND fights for the objective and is counted in its strength,
+ * losses and arrival; SUPPORT (mortar crews alone, #258) only fires for it, never manoeuvres, and
+ * shares the operation's phase and withdrawal.
+ */
+enum class ParticipantRole { GROUND, SUPPORT }
+
+data class SquadParticipant(val id: UUID, val principal: UUID, val faction: String, val dimension: String, val orderVersion: Long, val role: ParticipantRole = ParticipantRole.GROUND)
 data class CommandBatch(val id: UUID, val principal: UUID, val order: TacticalOrder, val objective: ObjectiveKey, val participants: List<SquadParticipant>, val issuedAt: Long, val entry: EntryArea)
 enum class OperationStatus { ACTIVE, COMPLETED, CANCELLED }
-data class OperationView(val id: UUID, val principal: UUID, val order: TacticalOrder, val objective: ObjectiveKey, val issuedAt: Long, val entry: EntryArea, val members: Map<UUID, SquadParticipant>, val status: OperationStatus)
+data class OperationView(val id: UUID, val principal: UUID, val order: TacticalOrder, val objective: ObjectiveKey, val issuedAt: Long, val entry: EntryArea, val members: Map<UUID, SquadParticipant>, val status: OperationStatus) {
+    /** The members that fight for the objective: what its strength, losses and arrival count. */
+    val ground get() = members.filterValues { it.role == ParticipantRole.GROUND }
+
+    /** The members that only fire for it. */
+    val support get() = members.filterValues { it.role == ParticipantRole.SUPPORT }
+}
 data class PendingReinforcement(val participant: SquadParticipant, val command: UUID, val operation: UUID, val issuedAt: Long)
 data class ArrivalReport(val squad: UUID, val orderVersion: Long, val operation: UUID, val observedAt: Long, val position: Point3, val safe: Boolean, val combatReady: Boolean)
 sealed interface OperationCommandResult {
     data class Started(val operation: OperationView) : OperationCommandResult
     data class Reinforcement(val pending: PendingReinforcement) : OperationCommandResult
+
+    /** A support squad joined a running operation at once: it has no entry to reach. */
+    data class Joined(val operation: OperationView) : OperationCommandResult
     data class Rejected(val reason: String) : OperationCommandResult
 }
 
@@ -70,6 +87,14 @@ class OperationRegistry(
         }
         squads.forEach { detach(it.id) }
         if (joining != null && operations.getValue(joining.id).status == OperationStatus.ACTIVE) {
+            val squad = squads.single()
+            if (squad.role == ParticipantRole.SUPPORT) {
+                val current = operations.getValue(joining.id)
+                val joined = current.copy(members = current.members + (squad.id to squad))
+                operations[joined.id] = joined
+                membership[squad.id] = joined.id
+                return OperationCommandResult.Joined(joined)
+            }
             val pending = PendingReinforcement(squads.single(), batch.id, joining.id, batch.issuedAt)
             reinforcements[pending.participant.id] = pending
             return OperationCommandResult.Reinforcement(pending)

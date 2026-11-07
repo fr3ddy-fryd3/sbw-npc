@@ -24,7 +24,7 @@ object SmokeClouds {
      * How long a cloud hangs after its grenade is gone. SBW discards an M18 200 ticks after the
      * throw, while its smoke particles live 600 to 800 ticks.
      */
-    private const val LINGER_TICKS = 600L
+    internal const val LINGER_TICKS = 600L
 
     /** Smoke hangs a little above the ground it came to rest on. */
     private const val CLOUD_HEIGHT = 1.0
@@ -32,16 +32,14 @@ object SmokeClouds {
     /** A segment shorter than this is a point. */
     private const val EMPTY_SEGMENT = 1e-9
 
-    private class Lingering(val centre: Vec3, val until: Long)
-
     /** The clouds of grenades that have gone, per level, until their smoke clears. */
-    private val lingering = IdentityHashMap<ServerLevel, MutableList<Lingering>>()
+    private val lingering = IdentityHashMap<ServerLevel, Lingering>()
 
     /** Whether smoke lies across the line from [from] to [to]. */
     fun blocks(level: Level, from: Vec3, to: Vec3): Boolean {
         val server = level as? ServerLevel ?: return false
         return SmokeCloudRegistry.all(server).any { Ports.grenades.smokeIsOut(it) && crosses(from, to, it.position()) } ||
-            lingering(server).any { crosses(from, to, it.centre) }
+            lingering[server]?.crosses(from, to, server.gameTime) == true
     }
 
     /**
@@ -52,18 +50,26 @@ object SmokeClouds {
     fun leave(entity: Entity, level: Level) {
         val server = level as? ServerLevel ?: return
         if (!Ports.grenades.isSmokeCloud(entity) || !Ports.grenades.smokeStarted(entity)) return
-        lingering.getOrPut(server, ::ArrayList) += Lingering(entity.position(), server.gameTime + LINGER_TICKS)
+        lingering.getOrPut(server, ::Lingering).add(entity.position(), server.gameTime)
     }
 
     /** Forgets every cloud; the server is stopping. */
     fun clearAll() = lingering.clear()
 
-    private fun lingering(level: ServerLevel): List<Lingering> {
-        val clouds = lingering[level] ?: return emptyList()
-        val now = level.gameTime
-        clouds.removeIf { it.until < now }
-        if (clouds.isEmpty()) lingering.remove(level)
-        return clouds
+    /** One level's clouds of gone grenades, each hanging [LINGER_TICKS] from the grenade's end. */
+    internal class Lingering {
+        private class Cloud(val centre: Vec3, val until: Long)
+
+        private val clouds = ArrayList<Cloud>()
+
+        fun add(centre: Vec3, now: Long) {
+            clouds += Cloud(centre, now + LINGER_TICKS)
+        }
+
+        fun crosses(from: Vec3, to: Vec3, now: Long): Boolean {
+            clouds.removeIf { it.until < now }
+            return clouds.any { crosses(from, to, it.centre) }
+        }
     }
 
     private fun crosses(from: Vec3, to: Vec3, centre: Vec3) = distanceToSegment(from, to, centre.add(0.0, CLOUD_HEIGHT, 0.0)) <= RADIUS

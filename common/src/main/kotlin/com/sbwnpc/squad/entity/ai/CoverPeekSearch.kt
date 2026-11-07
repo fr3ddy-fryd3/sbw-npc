@@ -17,13 +17,13 @@ import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /** One cover episode's bounded peek search; rejected candidates survive admission delays. */
-internal class CoverPeekSearch(private val cover: BlockPos, private val aim: Vec3, private val targetId: UUID?, private val blind: Boolean) {
+internal class CoverPeekSearch(private val cover: BlockPos, private val aim: Vec3, private val targetId: UUID?, private val blind: Boolean, backwards: Boolean = false, private val permitted: (Vec3) -> Boolean = { true }) {
     data class Result(val point: Vec3, val path: Path)
     private val base = Vec3.atBottomCenterOf(cover)
     private val forward = aim.subtract(base).multiply(1.0, 0.0, 1.0).normalize()
     private val side = Vec3(-forward.z, 0.0, forward.x)
     private val probes = listOf(0.5, 1.0, 1.5, 2.0, 2.5, 3.0).flatMap { distance ->
-        listOf(side, side.scale(-1.0), forward).map { base.add(it.scale(distance)) }
+        listOf(side, side.scale(-1.0), if (backwards) forward.scale(-1.0) else forward).map { base.add(it.scale(distance)) }
     }
     private var cursor = 0
     val exhausted get() = cursor >= probes.size
@@ -40,13 +40,13 @@ internal class CoverPeekSearch(private val cover: BlockPos, private val aim: Vec
                 val candidate = Terrain.feetAt(level, probes[cursor]) { feet ->
                     level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(feet))
                 }
-                if (candidate == null || candidate.distanceTo(base) > 3.5) {
+                if (candidate == null || candidate.distanceTo(base) > 3.5 || !permitted(candidate)) {
                     cursor++
                     continue
                 }
                 val eye = candidate.add(0.0, entity.eyeHeight.toDouble(), 0.0)
                 val lane = if (blind) IncomingFire.laneEnd(eye, aim) else aim
-                if (Sightline.blockedBy(level, eye, lane, entity, hulls, spread) ||
+                if (Sightline.blockedBy(level, eye, lane, entity, hulls) ||
                     !FriendlyFireGuard.assess(entity, aim, spread, aim, 0.0, eye).lineClear
                 ) {
                     cursor++
@@ -55,7 +55,13 @@ internal class CoverPeekSearch(private val cover: BlockPos, private val aim: Vec
                 if (!TacticalBudget.path(entity)) return@search null
                 cursor++
                 val path = TacticalPositions.pathToPosition(entity, candidate)
-                if (TacticalPositions.reaches(path, candidate)) return@search Result(candidate, path!!)
+                if (TacticalPositions.reaches(path, candidate) && (1 until path!!.nodeCount).all { index ->
+                        val node = path.getNode(index)
+                        permitted(Vec3.atBottomCenterOf(BlockPos(node.x, node.y, node.z)))
+                    }
+                ) {
+                    return@search Result(candidate, path)
+                }
                 // One native attempt per actor/tick; resume at the next probe next time.
                 return@search null
             }

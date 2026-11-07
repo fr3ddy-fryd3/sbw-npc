@@ -38,6 +38,7 @@ object SquadMerging {
         }
 
     internal fun transfer(source: Squad, destination: Squad, now: Long) {
+        val destinationSize = destination.members.size
         val members = (destination.members + source.members).toSet()
         val slots = (destination.recruitmentRoster!!.slots + source.recruitmentRoster!!.slots)
             .filter { it.occupant in members }
@@ -47,6 +48,15 @@ object SquadMerging {
         destination.members.addAll(members)
         destination.recruitmentRoster = RecruitmentRoster(slots.toMutableList())
         destination.originalComposition = slots.map { it.role }
+        // An attack measured on one side keeps measuring the merged squad: the other side's men
+        // join its base, or losing them would read as no loss at all. Merged, it is no remnant. A
+        // merged squad that is not attacking keeps no base, or its next attack would not be measured.
+        if (destination.order != SquadOrder.ATTACK) {
+            destination.attackBase = null
+        } else if (source.attackBase != null || destination.attackBase != null) {
+            destination.attackBase = (source.attackBase ?: source.members.size) + (destination.attackBase ?: destinationSize)
+        }
+        destination.attackRemnant = false
         destination.orderStamp++
         destination.moveFormationReady = false
         destination.moveRallySince = 0L

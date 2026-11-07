@@ -18,7 +18,6 @@ import net.minecraft.nbt.Tag
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
-import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.util.UUID
 import kotlin.math.abs
@@ -80,10 +79,7 @@ object SquadProgressionGameTests {
         var enemy: NpcEntity? = null
         var advanced = false
         val trace = StringBuilder("tick,advanced,actor,x,y,z,done,target,shots,order,health\n")
-        val pacer = CombatTickPacer()
-        NeoForge.EVENT_BUS.addListener(pacer)
         cleanup(helper) {
-            NeoForge.EVENT_BUS.unregister(pacer)
             manager.disband(helper.level, destination.id)
             manager.disband(helper.level, source.id)
             listOfNotNull(moved, sleeping, receiver, restored, enemy).forEach { it.discard() }
@@ -109,7 +105,7 @@ object SquadProgressionGameTests {
             }
             val npc = restored!!
             helper.assertTrue(npc.squadId == destination.id && npc.name.string == identity && npc.npcRank == sleeping.npcRank, "Late load restored the removed squad or lost identity")
-            helper.assertTrue(abs(npc.experience - xp - 10.0) < 1e-6 && Ports.guns.roundsLeft(npc.mainHandItem) == rounds, "Late load lost XP or reset ammunition")
+            helper.assertTrue(abs(npc.experience - xp - 10.0 * com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(npc.npcClass)) < 1e-6 && Ports.guns.roundsLeft(npc.mainHandItem) == rounds, "Late load lost XP or reset ammunition")
             listOf(moved, npc, receiver).forEach { it.isNoAi = false }
         }
         helper.onEachTick {

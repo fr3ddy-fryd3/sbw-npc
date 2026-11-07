@@ -23,7 +23,7 @@ import java.util.UUID
  */
 object FiringSpots {
     /** How far apart two shooters' chosen positions are kept. */
-    const val MIN_SPACING = 3.5
+    const val MIN_SPACING = 3.0
 
     private val owners = HashMap<UUID, UUID>()
     private val claims = HashMap<UUID, Vec3>()

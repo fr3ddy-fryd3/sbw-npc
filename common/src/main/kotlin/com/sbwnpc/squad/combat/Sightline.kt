@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -20,9 +21,6 @@ import net.minecraft.world.phys.Vec3
  * Every call is charged against [TickBudget] so the bulk searches can pace themselves.
  */
 object Sightline {
-    /** See [crosses]: how far past a hull's own faces a shot still counts as hitting it. */
-    private const val MAX_CONE_ALLOWANCE = 1.0
-
     /** A hull has to start ahead of the muzzle by at least this to count as being in the way. */
     private const val AHEAD_EPSILON = 1.0e-4
 
@@ -50,8 +48,7 @@ object Sightline {
         to: Vec3,
         passer: Entity,
         hulls: List<AABB>,
-        spreadDegrees: Double = 0.0,
-    ): Boolean = crosses(hulls, from, to, spreadDegrees) || blocked(level, from, to, passer)
+    ): Boolean = crosses(hulls, from, to) || blocked(level, from, to, passer)
 
     /**
      * Hulls of vehicles a shot has no business going through, for the area a shooter is working in.
@@ -85,11 +82,15 @@ object Sightline {
     }
 
     /**
-     * Whether a shot from [from] at [aim] can put rounds into a vehicle of [shooter]'s side, or an
-     * empty one, which near a squad is almost always its own: in front of the target, or within
-     * [BACKSTOP] behind it, where the misses go. [crosses] stops at the target and caps its cone at
-     * [MAX_CONE_ALLOWANCE], and in the dark a squad emptied its rifles past a zombie into its own
-     * LAV (in-game 25.10). The spread is SBW's, as in [FiringCone].
+     * Whether a shot from [from] at [aim] can put rounds into a vehicle of [shooter]'s side: in
+     * front of the target, or within [BACKSTOP] behind it, where the misses go. [crosses] stops at
+     * the target and has no cone, and in the dark a squad emptied its rifles past a zombie into its
+     * own LAV (in-game 25.10). The spread is SBW's, as in [FiringCone].
+     *
+     * A vehicle is the shooter's when one of his side rides it, or, empty, when it stands within
+     * [OWN_EMPTY_RADIUS] of him or one of his side is assigned to it. Every empty vehicle counted, and
+     * an enemy's dismounted transport among its men made the ground ten blocks in front of it
+     * unshootable from anywhere (in-game 03.11).
      */
     fun ownHullInLane(shooter: Entity, from: Vec3, aim: Vec3, spread: Double, target: Entity?): Boolean {
         val level = shooter.level() as? ServerLevel ?: return false
@@ -98,36 +99,33 @@ object Sightline {
         val ridden = shooter.vehicle
         val targetRide = target?.vehicle
         return Ports.vehicles.within(level, AABB(from, end).inflate(MAX_OWN_CONE_ALLOWANCE)) { vehicle ->
-            Ports.vehicles.isOperational(vehicle) && vehicle !== ridden && vehicle !== targetRide && vehicle !== target &&
-                (vehicle.passengers.isEmpty() || vehicle.passengers.any { SquadTeams.sameSide(it, shooter) })
+            Ports.vehicles.isOperational(vehicle) && vehicle !== ridden && vehicle !== targetRide && vehicle !== target && ours(vehicle, shooter, from, level)
         }.any { vehicle ->
             val hull = vehicle.boundingBox
             entersAhead(hull.inflate(Math.min(from.distanceTo(hull.center) * fan, MAX_OWN_CONE_ALLOWANCE)), from, end)
         }
     }
 
+    /** See [ownHullInLane]: whether [vehicle] is [shooter]'s side's. */
+    // Near him it is his whoever it is assigned to, which also spares the scan of every NPC: this
+    // runs for each candidate post. One assigned to both sides counts as ours, erring towards not firing.
+    private fun ours(vehicle: Entity, shooter: Entity, from: Vec3, level: ServerLevel): Boolean {
+        if (vehicle.passengers.isNotEmpty()) return vehicle.passengers.any { SquadTeams.sameSide(it, shooter) }
+        if (vehicle.boundingBox.distanceToSqr(from) <= OWN_EMPTY_RADIUS * OWN_EMPTY_RADIUS) return true
+        return NpcRegistry.all(level).any { it.isAlive && it.assignedVehicleId == vehicle.uuid && SquadTeams.sameSide(it, shooter) }
+    }
+
+    /** See [ownHullInLane]: how near the shooter an empty vehicle nobody is assigned to counts as his. */
+    private const val OWN_EMPTY_RADIUS = 16.0
+
     private fun keepsHull(vehicle: Entity, shooter: Entity, target: Entity?) = (target != null && SquadTeams.sideOf(target) == null) || vehicle.passengers.any { SquadTeams.sameSide(it, shooter) }
 
     /**
-     * Whether a shot from [from] at [to] runs into one of [hulls].
-     *
-     * [spreadDegrees] widens each hull a little, since rounds leave along a cone rather than the
-     * centre line. It is capped at [MAX_CONE_ALLOWANCE] on purpose: the cone really does fan out
-     * by metres over a long shot, but refusing to fire because one stray round might clip a hull
-     * forty blocks away turns every vehicle into a no-shooting bubble several blocks wide.
+     * Whether a shot from [from] at [to] runs into one of [hulls], along the line itself. A cone
+     * around it, even capped at a block, refused every shot at a man standing a couple of blocks
+     * beside a vehicle (in-game 03.11): the hull in the way is the one the line goes through.
      */
-    fun crosses(hulls: List<AABB>, from: Vec3, to: Vec3, spreadDegrees: Double = 0.0): Boolean {
-        if (hulls.isEmpty()) return false
-        val fan = if (spreadDegrees <= 0.0) 0.0 else Math.tan(Math.toRadians(spreadDegrees))
-        return hulls.any { hull ->
-            val reach = if (fan <= 0.0) {
-                0.0
-            } else {
-                Math.min(from.distanceTo(hull.center) * fan, MAX_CONE_ALLOWANCE)
-            }
-            entersAhead(hull.inflate(reach), from, to)
-        }
-    }
+    fun crosses(hulls: List<AABB>, from: Vec3, to: Vec3): Boolean = hulls.any { entersAhead(it, from, to) }
 
     /**
      * Whether the segment runs into [box] somewhere ahead of [from] and before it reaches [to].

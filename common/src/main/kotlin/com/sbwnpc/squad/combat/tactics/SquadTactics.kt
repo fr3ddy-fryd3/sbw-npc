@@ -3,6 +3,7 @@ package com.sbwnpc.squad.combat.tactics
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.domain.port.Mobility
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.TankModel
@@ -26,6 +27,7 @@ object SquadTactics {
         state.contacts[target.uuid] = TacticalContact(
             id = target.uuid,
             position = target.position(),
+            eye = target.eyePosition,
             seenAt = now,
             velocity = velocity,
             armoured = target.vehicle?.let {
@@ -37,6 +39,8 @@ object SquadTactics {
             } == true,
             priority = 1.0 + (if (dangerous) 1.0 else 0.0) + (if (target.uuid == squad.focusEntity) 5.0 else 0.0),
             airborne = target.vehicle?.let { Ports.vehicles.mobility(it) == Mobility.AIR } == true,
+            firstSeenAt = SquadKnowledge.firstSeenAt(old?.seenAt, old?.firstSeenAt, now),
+            seenBy = if (old != null && now - old.seenAt <= SquadKnowledge.KNOWN_TICKS) old.seenBy + npc.uuid else setOf(npc.uuid),
         )
         // Discovery is shared even before this observer can start its gun behavior.
         TeamAwareness.report(squad.faction, target.uuid, target.position(), now, "${npc.npcClass} ${npc.uuid.toString().take(8)}")
@@ -47,11 +51,8 @@ object SquadTactics {
     fun task(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(entity)
     fun hasTask(entity: NpcEntity): Boolean = task(entity) != null
 
-    /** A failed combat route yields local firing-position work, rather than a frontal assault. */
-    fun holdsAfterFailure(entity: NpcEntity): Boolean = false
-
     fun equip(entity: NpcEntity) {
-        if (entity.vehicle != null || entity.busyWithRole() || entity.combatLockedByMedic() || entity.resupplying) return
+        if (entity.vehicle != null || entity.busyWithRole() || entity.holdsAny(NpcActivity.HEAL, NpcActivity.RESUPPLY)) return
         val task = task(entity) ?: return
         val target = entity.target ?: return
         if (task.job == TacticalJob.ANTI_ARMOUR && AntiArmourKit.loaded(entity) &&
@@ -61,11 +62,26 @@ object SquadTactics {
         }
     }
 
+    /** He fights now: an engage-only plan moves a man with no plan of his own (#251 step B). */
+    fun engaging(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.engaging(entity)
+
     fun move(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.ownsMovement(entity)
+
+    /** A man of [entity]'s squad heard a noise at [at], a spot to [walk] to if set; see [com.sbwnpc.squad.ai.tactics.SquadAlarms]. */
+    fun heard(entity: NpcEntity, at: net.minecraft.world.phys.Vec3, walk: Boolean = false) = com.sbwnpc.squad.ai.integration.NativeTactics.heard(entity, at, walk)
+
+    /** Whether [entity]'s plan has sent him to look at a spot (a SEARCH post). */
+    fun scouting(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.scouting(entity)
+
+    /** Whether the planner plans for [entity]; his cover under fire is then his plan's (#251). */
+    fun plans(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.plans(entity)
     fun repositionForFire(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.reposition(entity)
 
     /** Runs the HTN planning this NPC takes part in, once per tick for its squad and above. */
     fun tick(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.tick(entity)
+
+    /** Whether [entity]'s plan holds him settled at his place at the rally point, firing from round it. */
+    fun settledAtRally(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.settledAtRally(entity)
 
     /** Whether the NPC's current post action aims its head, so idle looking must not. */
     fun ownsLook(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(entity)
@@ -89,6 +105,7 @@ object SquadTactics {
         val task = task(entity)
         val view = snapshot(entity) ?: return null
         val known = TacticalTargets.candidates(view, null, task?.focus ?: entity.position(), AntiArmourKit.loaded(entity)).asSequence()
+            .filter { SquadKnowledge.known(it.seenAt, it.firstSeenAt, view.now, entity.uuid in it.seenBy) }
             .mapNotNull { level.getEntity(it.id) as? LivingEntity }
             .filter { it.isAlive && entity.isEnemy(it) }
             .filter { task?.job != TacticalJob.ANTI_ARMOUR || AntiArmourKit.worthARocket(entity, it) }
@@ -104,10 +121,7 @@ object SquadTactics {
         )
     }
 
-    fun permitsFire(entity: NpcEntity, target: LivingEntity): Boolean {
-        val view = snapshot(entity) ?: return true
-        return view.visible.none { it.id == target.uuid && it.armoured } || AntiArmourKit.loaded(entity)
-    }
+    fun permitsFire(entity: NpcEntity, target: LivingEntity): Boolean = !VehicleTargeting.isGroundArmour(target) || AntiArmourKit.loaded(entity)
 
     fun firingLaneEnd(entity: NpcEntity, target: LivingEntity): Vec3 = firingLaneEnd(entity, target.eyePosition)
 

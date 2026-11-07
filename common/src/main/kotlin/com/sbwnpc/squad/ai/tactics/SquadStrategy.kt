@@ -37,15 +37,20 @@ enum class CombatStrategy(val rules: SquadStrategy) {
     REGROUP(Regroup),
 }
 
-/** Go on with the tasks the team planned, while the attack can be carried on or nobody is in contact. */
+/**
+ * Go on with the tasks the team planned, while the attack can be carried on, nobody is in contact,
+ * or the squad falls back: a retreat out of [BoundingOverwatch]'s reach is one run to the rally point.
+ */
 private object Advance : SquadStrategy {
     override val reason = "advance_capacity"
 
-    override fun allowed(situation: CombatSituation) = (situation.offensive && situation.continuation) || !situation.contact
+    override fun allowed(situation: CombatSituation) = (situation.offensive && situation.continuation) || !situation.contact || situation.retreating
 
     override fun score(situation: CombatSituation) = BASE + situation.readyFraction * READINESS
 
-    override fun shape(intent: PositionIntent, shaping: SquadShaping) = intent
+    // A retreat with no halves to cover each other runs the whole way: stopping post by post
+    // with nobody firing for him, a man of a small squad only gave the enemy more time to shoot.
+    override fun shape(intent: PositionIntent, shaping: SquadShaping) = if (shaping.retreating && intent.legs) intent.copy(legs = false) else intent
 
     private const val BASE = 0.55
 
@@ -53,11 +58,14 @@ private object Advance : SquadStrategy {
     private const val READINESS = 0.2
 }
 
-/** Fire from where the men stand instead of moving; the default when defending in contact. */
+/**
+ * Fire from where the men stand instead of moving; the default when defending in contact. Never in
+ * a retreat: it would stand the men still where they were ordered away from.
+ */
 private object Hold : SquadStrategy {
     override val reason = "hold_sector"
 
-    override fun allowed(situation: CombatSituation) = true
+    override fun allowed(situation: CombatSituation) = !situation.retreating
 
     override fun score(situation: CombatSituation) = if (!situation.offensive && situation.contact) DEFENDING else OTHERWISE
 
@@ -89,7 +97,8 @@ private object GainHeight : SquadStrategy {
 private object Withdraw : SquadStrategy {
     override val reason = "losses_without_continuation"
 
-    override fun allowed(situation: CombatSituation) = situation.incoming && situation.lossFraction >= LOSSES && !situation.continuation && !situation.reinforced
+    // A retreat already falls back, to the point it was ordered to rather than away from the threat.
+    override fun allowed(situation: CombatSituation) = situation.incoming && situation.lossFraction >= LOSSES && !situation.continuation && !situation.reinforced && !situation.retreating
 
     override fun score(situation: CombatSituation) = SCORE
 
@@ -127,8 +136,8 @@ private object Withdraw : SquadStrategy {
 }
 
 /**
- * An attack under fire advances by halves: one half rushes from post to post while the other fires
- * from where it stands, then they swap ([BoundTurn]).
+ * An attack under fire advances by halves, and a retreat in contact falls back by them (#253): one
+ * half rushes from post to post while the other fires from where it stands, then they swap ([BoundTurn]).
  *
  * Only the movers that advance by legs take part; the squad needs at least [MIN_MOVERS] of them so
  * that each half has two. Each rush of the moving half waits for the firing half's fire
@@ -139,10 +148,15 @@ private object BoundingOverwatch : SquadStrategy {
     override val reason = "bound_under_fire"
 
     // An enemy above is GAIN_HEIGHT's: held, bounding could outscore it there. A scattered squad
-    // has no halves to cover each other, and held, bounding kept it from regrouping.
-    override fun allowed(situation: CombatSituation) = situation.contact && situation.offensive && situation.continuation && !situation.higherEnemy && !situation.scattered && situation.movers >= MIN_MOVERS
+    // has no halves to cover each other, and held, bounding kept it from regrouping. A squad whose
+    // halves did not fire for a rush advances cover to cover instead of waiting on them.
+    override fun allowed(situation: CombatSituation) =
+        situation.contact && !situation.scattered && !situation.coverStalled && situation.movers >= MIN_MOVERS &&
+            (situation.retreating || (situation.offensive && situation.continuation && !situation.higherEnemy))
 
-    override fun score(situation: CombatSituation) = (if (situation.underFire) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS
+    // Falling back in contact it always outscores an Advance, hit or not: the halves covering each
+    // other is the point of a fighting withdrawal, and the run is for a squad out of contact.
+    override fun score(situation: CombatSituation) = (if (situation.underFire || situation.retreating) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS
 
     override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
         val turn = shaping.turn

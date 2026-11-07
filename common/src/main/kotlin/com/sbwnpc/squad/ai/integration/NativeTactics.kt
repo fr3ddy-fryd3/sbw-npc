@@ -1,12 +1,21 @@
 package com.sbwnpc.squad.ai.integration
 
 import com.sbwnpc.squad.ai.coordination.*
+import com.sbwnpc.squad.ai.diagnostics.DecisionTrace
 import com.sbwnpc.squad.ai.planning.*
 import com.sbwnpc.squad.ai.tactics.*
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.combat.tactics.*
+import com.sbwnpc.squad.compat.VersionCompat
+import com.sbwnpc.squad.entity.Cap
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
+import com.sbwnpc.squad.entity.ai.CoverMechanics
+import com.sbwnpc.squad.entity.ai.MandatoryRule
+import com.sbwnpc.squad.entity.ai.MandatoryRules
 import com.sbwnpc.squad.entity.ai.SquadTransit
+import com.sbwnpc.squad.entity.ai.WeaponStationScan
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.*
@@ -19,11 +28,25 @@ import net.minecraft.world.phys.shapes.CollisionContext
 import java.util.UUID
 import kotlin.math.hypot
 import kotlin.math.max
+import com.sbwnpc.squad.ai.tactics.AirSupport as AirPlan
+import com.sbwnpc.squad.ai.tactics.FireSupport as CrewPlan
 
 /** Production owner: world observation, domain evaluation and native adapters have separate boundaries. */
 object NativeTactics {
     /** Farthest fire-post anchor whose local probes still fall inside the position query's reach. */
     private const val FIRE_POST_REACH = TacticalPositions.SEARCH_REACH - CombatPosition.LOCAL_MOVE_RADIUS
+
+    /** The rises an operation remembers refusing; the oldest is forgotten, being far behind a moving front. */
+    private const val MAX_REFUSED_RISES = 8
+
+    /** How often an attack's front looks again for a rise for its height men, 5 s. */
+    private const val FRONT_RISE_TICKS = 100L
+
+    /** A man's close duty options are logged at most this often, 5 s. */
+    private const val CLOSE_DUTY_LOG_TICKS = 100L
+
+    /** How often a travelling squad looks again for seats while a man still has none: as each man did before (#255). */
+    private const val SEAT_CHECK_TICKS = 20L
 
     /** Seen enemies this close to an attacked area keep it from counting as held. */
     private const val AREA_THREAT_RADIUS = 128.0
@@ -38,13 +61,22 @@ object NativeTactics {
     private const val NO_TARGET_PAUSE_TICKS = 10L
 
     /** Duty rules whose movers advance by legs in a fight, see [PositionIntent.legs]. */
-    private val LEG_RULES = setOf("mover", "fire_approach")
+    private val LEG_RULES = setOf(DutyUtility.MOVE_TO_FRONT, "retreat_bound")
 
     /** A bounding half that has not finished a leg each by then hands over anyway, 15 s. */
     private const val BOUND_TURN_TICKS = 300L
 
-    /** A rush waits this long at most, after the leg before it, for the men covering it to fire, 3 s. */
-    private const val SUPPORT_FALLBACK_TICKS = 60L
+    /**
+     * The same for a retreat, 5 s: the old fighting withdrawal swapped its halves within 3 s, and a
+     * man who found no post back held his whole half where it was ordered away from.
+     */
+    private const val RETREAT_BOUND_TURN_TICKS = 100L
+
+    /** A rush that has waited this long for the men covering it to fire stalls its squad's cover, 5 s. */
+    private const val SUPPORT_STALL_TICKS = 100L
+
+    /** How long a stalled cover keeps the squad from rushes under covering fire, 30 s ([CombatSituation.coverStalled]). */
+    private const val COVER_STALL_TICKS = 600L
 
     /** How long a failed post search is remembered, 10 s. */
     private const val FAILURE_MEMORY_TICKS = 200L
@@ -57,6 +89,12 @@ object NativeTactics {
 
     /** How long after its incoming fire lapsed a squad still counts as under fire, see [CombatSituation.underFire]. */
     private const val UNDER_FIRE_TICKS = 200L
+
+    /**
+     * How long a retreating squad's close contact outlasts the last sight of it, 2 s. Taken as it
+     * came and went, every man's task flipped between a bound and a run, and was planned again.
+     */
+    private const val RETREAT_CONTACT_TICKS = 40L
 
     /**
      * How long after the focus was last seen well above the squad it still counts as above, see
@@ -97,14 +135,38 @@ object NativeTactics {
     internal var planResultObserver: ((AgentLevel) -> Unit)? = null
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
-        if (npc.vehicle == null && npc.npcClass in GROUND && npc.currentSquad() != null) world(npc).refresh(npc)
+        if (planned(npc) || supports(npc)) world(npc).refresh(npc)
     }
+
+    /** A mortarman, aircrew or drone operator: a support role his own plan runs, in a squad or not. */
+    private fun supports(npc: NpcEntity) = crewed(npc) || aircrew(npc) || operatesDrone(npc)
+
+    /** Whether [npc] is a drone operator on foot: his plan flies his drone, a squadless one's in a root of its own (#259). */
+    fun operatesDrone(npc: NpcEntity) = DroneWorld.operates(npc)
+
+    /** Flies [npc]'s drone on a tick his plan did not (#259). */
+    fun keepFlying(npc: NpcEntity) = world(npc).keepFlying(npc)
+
+    /** Whether [npc] flies a helicopter or works its turret: his aircraft's plan runs him (#260, #261). */
+    fun aircrew(npc: NpcEntity) = AirRoster.aircrew(npc)
+
+    /** Whether [npc] is a mortarman on foot: his crew's plan, not his squad's ground plan, runs his tube (#258). */
+    fun crewed(npc: NpcEntity) = npc.vehicle == null && npc.npcClass == NpcClass.MORTAR
+
+    /** Whether [npc] is one his squad plans for, a ground role on foot in a squad: he gets a full NPC agent. */
+    fun planned(npc: NpcEntity) = npc.vehicle == null && npc.npcClass in GROUND && npc.currentSquad() != null
     fun tick(npc: NpcEntity) = world(npc).tick(npc)
+
+    /** Holds [npc]'s aircraft in a hover on a tick his plan did not fly it (#260). */
+    fun keepAloft(npc: NpcEntity) = world(npc).keepAloft(npc)
     fun assignment(npc: NpcEntity): NativeAssignment? {
-        if (npc.vehicle != null || npc.npcClass !in GROUND || npc.currentSquad() == null) return null
+        if (!planned(npc)) return null
         refresh(npc)
         return world(npc).actions[npc.uuid]?.takeIf { it.intent.commandsMovement }?.assignment
     }
+
+    /** The team agent [npc] is planned in, or null; GameTests read it to see a team kept across a strike (#259). */
+    internal fun teamOf(npc: NpcEntity): AgentId? = worlds[npc.level()]?.teamOf(AgentId(AgentLevel.NPC, npc.uuid))
 
     /** How many of [members] hold a slot [FireSlotSight] found no point for that sees the defence; GameTests read it. */
     internal fun slotsWithoutSight(level: ServerLevel, members: Collection<UUID>): Int = worlds[level]?.slotsWithoutSight(members) ?: 0
@@ -112,11 +174,60 @@ object NativeTactics {
     fun ownsLook(npc: NpcEntity): Boolean = worlds[npc.level()]?.actions?.get(npc.uuid)?.ownsLook == true
     fun ownsMovement(npc: NpcEntity): Boolean {
         tick(npc)
-        return assignment(npc) != null && movable(npc)
+        return movable(npc) && (assignment(npc) != null || world(npc).engages(npc))
     }
+
+    /**
+     * [npc] fights with no plan of his own (a role outside [GROUND], no squad): an engage-only
+     * agent plans his moves in the fight while he keeps reporting this (#251 step B). His gun
+     * behaviour reports it every tick it fights, as it reports what it sees.
+     */
+    fun engaging(npc: NpcEntity) {
+        if (npc.vehicle == null) world(npc).engaging(npc)
+    }
+
+    /**
+     * Whether [npc]'s squad travels to its objective ([SquadJourney], #255): the one decision the
+     * vehicle and order behaviours carry out, instead of each man judging his own fight.
+     */
+    fun travelling(npc: NpcEntity): Boolean = worlds[npc.level()]?.travelling(npc) == true
+
+    /** The vehicle whose gun [npc]'s team plan sent him to man ([WeaponStations], #255), if any. */
+    fun stationOf(npc: NpcEntity): UUID? = worlds[npc.level()]?.stationOf(npc)
+
+    /** The seat in a ground vehicle [npc]'s travelling squad gave him ([SeatAllocation], #255), if any. */
+    fun seatOf(npc: NpcEntity): RideSeat? = worlds[npc.level()]?.seatOf(npc)
+
+    /** Whether [npc]'s travelling squad has no seat for him and he walks its journey. */
+    fun walks(npc: NpcEntity): Boolean = worlds[npc.level()]?.walks(npc) == true
+
+    /** [npc] could not board the seat his squad gave him in [vehicle]; see [World.seatRefused]. */
+    fun seatRefused(npc: NpcEntity, vehicle: UUID) {
+        worlds[npc.level()]?.seatRefused(npc, vehicle)
+    }
+
+    /** Whether [npc]'s plan holds him settled at his place at the rally point, firing from round it. */
+    fun settledAtRally(npc: NpcEntity): Boolean = worlds[npc.level()]?.dutyRule(npc.uuid) == MemberDuties.RETREAT_SETTLED_RULE
+
+    /** Whether [npc] has an NPC agent of either kind, full or engage-only: what ticks it. */
+    fun hasAgent(npc: NpcEntity): Boolean = worlds[npc.level()]?.agents?.containsKey(AgentId(AgentLevel.NPC, npc.uuid)) == true
+
+    /** A man of [npc]'s squad heard a noise at [at]: his squad decides whether anyone goes to look (#254). */
+    fun heard(npc: NpcEntity, at: Vec3, walk: Boolean = false) {
+        val squad = npc.squadId ?: return
+        world(npc).heard(squad, at.point(), npc.level().gameTime, walk)
+    }
+
+    /** Whether [npc]'s plan has sent him to look at a spot: his post is a SEARCH one. */
+    fun scouting(npc: NpcEntity): Boolean = worlds[npc.level()]?.actions?.get(npc.uuid)?.intent?.duty == CombatDuty.SEARCH
+
     fun reposition(npc: NpcEntity) {
         world(npc).actions[npc.uuid]?.requestFireRecovery(npc.level().gameTime)
     }
+
+    /** The point [npc]'s pending squad marches to, to join an attack ([ReinforcementMarch.marchPoint]). */
+    fun reinforcementPoint(npc: NpcEntity): Point3? = npc.squadId?.let { worlds[npc.level()]?.reinforcementPoint(it) }
+
     fun operation(npc: NpcEntity): OperationView? = npc.currentSquad()?.let { world(npc).operations.operationOf(it.id) }
     fun operationOf(level: ServerLevel, squad: UUID): OperationView? = worlds[level]?.operations?.operationOf(squad)
     fun coordinated(npc: NpcEntity) = (operation(npc)?.members?.size ?: 0) > 1
@@ -150,18 +261,50 @@ object NativeTactics {
     fun clearAll() {
         worlds.values.forEach { it.clear() }
         worlds.clear()
+        DecisionTrace.clearAll()
+        AttackStrength.clearAll()
     }
+
+    /** Every squad of every level as the decision trace shows it; records of what is gone are dropped. */
+    fun traceSections(): List<DecisionTrace.Section> {
+        val sections = worlds.values.flatMap { it.traceSections() }
+        DecisionTrace.retain(worlds.values.flatMapTo(HashSet()) { it.traceIds() })
+        return sections
+    }
+
+    /** A launch column may not expose an operator sheltering from known armour. */
+    internal fun armourSheltered(npc: NpcEntity, feet: Vec3): Boolean = worlds[npc.level()]?.armourSafe(npc, feet) ?: true
+
     fun snapshot(npc: NpcEntity): TacticalSnapshot? = npc.squadId?.let { world(npc).combatView(it) }
     fun reports(npc: NpcEntity) = world(npc).agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports.orEmpty()
 
     /** How many post searches in a row [npc] failed round his task's anchor, while remembered. */
     fun postFailures(npc: NpcEntity): Int = world(npc).postFailuresOf(npc.uuid)
-    fun movable(npc: NpcEntity) =
-        npc.isAlive && npc.vehicle == null && !npc.busyWithRole() && !npc.resupplying && !npc.diggedIn &&
-            !npc.evadingGrenade() && !npc.movementLockedByCover() && !npc.combatLockedByMedic() && npc.retreatPoint() == null
+
+    /**
+     * Whether his plan may move him. His own plan's cover actions hold his feet as his plan
+     * ([PlanExecutor]), so they do not suspend it; any other claim ranked above [NpcActivity.TACTIC] does.
+     */
+    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) { it is PlanExecutor }
+
+    /**
+     * Whether the planner plans for [npc]: he has a full NPC agent, a ground role in a loaded squad,
+     * whose plan decides his cover too. An engage-only agent plans only his moves in a fight, a crewman's only his tube (#258).
+     */
+    fun plans(npc: NpcEntity): Boolean = hasAgent(npc) && worlds[npc.level()]?.coversFor(npc.uuid) == true
     private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
 
     private class PendingDeath(val entity: LivingEntity, val cancelled: () -> Boolean)
+
+    /** A man fighting with no full agent: his engage-only agent's [command], kept until [until]; [stamp] his squad's order then. */
+    private data class Engager(val until: Long, val command: UUID, val stamp: Int)
+
+    /**
+     * An engager's agent outlives his last report by 2 s: his gun behaviour stops and starts again
+     * while a target is lost and found for a moment, and the agent, its plan and his firing spot
+     * must not be dropped and made again each time.
+     */
+    private const val ENGAGER_TICKS = 40L
 
     /** One group of an attack that takes an approach sector: a squad, or a lone squad's manoeuvre group. */
     private data class SectorGroup(val squad: UUID, val manoeuvre: Boolean)
@@ -171,13 +314,96 @@ object NativeTactics {
         fun answers(anchor: Point3, now: Long) = FireSlotSight.stillAnswers(hypot(slot.x - anchor.x, slot.z - anchor.z), sighted != null, now - searchedAt)
     }
 
+    /** A squad's [seats] for its journey under order [stamp], and by man the vehicles he failed to board. */
+    private data class SquadRide(val stamp: Int, val seats: SeatPlan, val refused: Map<UUID, Set<UUID>> = emptyMap())
+
+    /** A plan's action that keeps [given] out with [put] while it runs, revised by [read], and takes it back with [drop]. */
+    private class Allotment<T>(private var given: T, private val read: (Any) -> T?, private val put: (T) -> Unit, private val drop: () -> Unit) : ActionExecution {
+        private fun publish(): ActionUpdate {
+            put(given)
+            return ActionUpdate.Running
+        }
+        override fun start(now: Long) = publish()
+
+        // Given out once per decision: what the integration took back since (a refused seat) stays taken.
+        override fun tick(now: Long) = ActionUpdate.Running
+        override fun revise(spec: ActionSpec<*>, now: Long): Boolean {
+            given = read(spec.parameters) ?: return false
+            publish()
+            return true
+        }
+        override fun suspend(now: Long, reason: String) = Unit
+        override fun resume(now: Long) = Unit
+        override fun cancel(now: Long, reason: String) = drop()
+    }
+
     private class World(val level: ServerLevel) {
         val pendingDeaths = HashMap<UUID, PendingDeath>()
         val agents = LinkedHashMap<AgentId, PlanningAgent>()
         val actions = HashMap<UUID, NativePositionAction>()
 
+        /** Observed armour sources and execution results for the NPC domain (#237). */
+        private val armour = HashMap<UUID, ArmourState>()
+
+        /** What each man's cover actions found and did, read back as his facts (#251). */
+        private val cover = HashMap<UUID, CoverState>()
+
+        /** What each man's engage keeps across its units (#251 step B). */
+        private val engageStates = HashMap<UUID, EngageState>()
+
+        /** Men fighting with no full agent, until their last report expires; see [NativeTactics.engaging]. */
+        private val engagers = HashMap<UUID, Engager>()
+
+        /** Whether [id]'s plan decides his cover: not an engager's, nor a crewman's, whose plans have no cover (#258). */
+        fun coversFor(id: UUID) = id !in engagers && id !in loneOperators && fireSupport.roster.unitOf(id) == null
+
+        private fun engageOf(npc: NpcEntity) = engageStates.getOrPut(npc.uuid) { EngageState(npc) }
+
+        // His engage facts' band memory, dropped with his agent like [engageStates].
+        private val engageBands = HashMap<UUID, EngageBands>()
+
+        // Who may throw a grenade and at what (#263).
+        private val grenades = GrenadeChoice(level)
+
+        // The mandatory rule each man's plan was last suspended for (#257), for the decision trace.
+        private val suspendedBy = HashMap<UUID, MandatoryRule>()
+
+        /** Notes in the decision trace the mandatory rule that takes [man]'s feet from his plan, once per rule. */
+        private fun traceRule(man: UUID, rule: MandatoryRule?, now: Long) {
+            if (rule == null) {
+                suspendedBy.remove(man)?.let { DecisionTrace.man(man, now, "rule", "${it.id} lets the plan go on") }
+            } else if (suspendedBy.put(man, rule) != rule) {
+                DecisionTrace.man(man, now, "rule", "${rule.id} suspends the plan")
+                DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=rule_suspends rule={}", man, rule.id)
+            }
+        }
+
+        /** Whether one of [npc]'s engage units runs now: his plan moves him. */
+        fun engages(npc: NpcEntity): Boolean = agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports?.values?.any { Engage.isUnit(it.ticket.identity) && it.status == ExecutionStatus.RUNNING } == true
+
+        fun engaging(npc: NpcEntity) {
+            // A man with a full agent plans his fight in it; who gets one is [planned]'s alone.
+            if (AgentId(AgentLevel.NPC, npc.uuid) in agents && npc.uuid !in engagers) return
+            val known = engagers[npc.uuid]
+            val stamp = npc.currentSquad()?.orderStamp ?: 0
+            engagers[npc.uuid] = Engager(level.gameTime + ENGAGER_TICKS, known?.takeIf { it.stamp == stamp }?.command ?: UUID.nameUUIDFromBytes("engage:${npc.uuid}:$stamp".toByteArray()), stamp)
+            if (known == null) refresh(npc)
+        }
+
         // Each sentry's last height post, offered back when an OVERWATCH duty returns to him.
         private val heldPosts = HashMap<UUID, HeldPost>()
+
+        /** The level's mortar crews, their facts and their duties (#258). */
+        private val fireSupport = FireSupportWorld(level)
+
+        /** The level's helicopters, their facts and their crews' flight and turret (#260, #261). */
+        private val air = AirWorld(level)
+
+        /** The level's drone operators' stations and strike facts (#259). */
+        private val drones = DroneWorld(level)
+
+        /** The squadless drone operators, each planned in a root of his own (#259); no plan decides their cover. */
+        private val loneOperators = HashSet<UUID>()
         val operations = OperationRegistry({ a, b -> Diplomacy.allied(SquadFaction.valueOf(a), SquadFaction.valueOf(b)) }, { _, _ -> true })
         private val snapshots = HashMap<UUID, TacticalSnapshot>()
         private val sharedViews = HashMap<UUID, TacticalSnapshot>()
@@ -199,6 +425,15 @@ object NativeTactics {
         fun slotsWithoutSight(members: Collection<UUID>) = members.count { id -> slotSights[id]?.let { it.sighted == null } == true }
         private val sectorsHeld = HashMap<UUID, Boolean>()
 
+        /** Each attacking operation's rise by its front for its height men ([FrontHeights]), and when it was read. */
+        private val frontRises = HashMap<UUID, Pair<Long, Point3?>>()
+
+        /**
+         * Rises a height man of the operation found no post on ([FrontHeights] reads only the
+         * heightmap: a roof or a sheer wall counts there too), never offered to it again.
+         */
+        private val refusedRises = HashMap<UUID, MutableList<Vec3>>()
+
         // Members on the arc to their sector at the last layout: their intent is not kept once the
         // arc ends, or they would stay on its last waypoint.
         private val arcing = HashSet<UUID>()
@@ -210,7 +445,6 @@ object NativeTactics {
         // Per squad attacking alone: the members it sends round a flank, see [approachBearings].
         private val manoeuvres = HashMap<UUID, Set<UUID>>()
         private val boundTraces = HashMap<UUID, Map<UUID, ClosingPost>>()
-        private val losses = HashMap<UUID, OperationLosses>()
         private val standings = HashMap<UUID, OperationStanding>()
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
 
@@ -218,9 +452,13 @@ object NativeTactics {
         private val unverifiedSeen = HashMap<UUID, MutableMap<UUID, Long>>()
         private val completions = HashMap<UUID, AreaControlTask>()
 
+        // Per squad: the noises its men heard and the spots its scouts checked, see [SquadAlarms].
+        private val alarms = HashMap<UUID, SquadAlarms>()
+
         // Per squad on its way as a reinforcement: when it was last fired on, and whether it fights.
         private val reinforcementFire = HashMap<UUID, Long>()
         private val reinforcementEngaged = HashMap<UUID, Boolean>()
+        private val reinforcementPoints = HashMap<UUID, Pair<UUID, Point3>>()
         private val sequences = HashMap<AssignmentTicket, Long>()
         private val retiredAssignments = ArrayList<AssignmentTicket>()
         private val leases = ResourceLeases()
@@ -248,11 +486,48 @@ object NativeTactics {
         // The leg each covered mover waits to start, and since when; see supportFiring.
         private val supportWaits = HashMap<UUID, Pair<Int, Long>>()
 
+        /** By squad, when one of its rushes last waited [SUPPORT_STALL_TICKS] for covering fire. */
+        private val coverStalls = HashMap<UUID, Long>()
+
         // Where each regrouping squad gathers, fixed when it began to regroup.
         private val rallies = HashMap<UUID, Point3>()
 
         // When a man of each squad was last hit, see CombatSituation.underFire.
         private val lastHits = HashMap<UUID, Long>()
+
+        // When each squad last had a close contact, see TacticalSnapshot.closeContact.
+        private val closeContacts = HashMap<UUID, Long>()
+
+        /**
+         * The squads travelling to their objective ([SquadJourney]), by the order stamp they travel
+         * under. Kept while every man is aboard and none is planned, so it is dropped only by a new
+         * order, the squad's end or the squad's own update deciding otherwise.
+         */
+        private val journeys = HashMap<UUID, Int>()
+
+        /**
+         * A travelling squad's seats as its plan gave them out ([TacticalDomain.BOARD], #255), with
+         * the vehicles each man failed to board. Only the plan's board action writes the seats.
+         */
+        private val rides = HashMap<UUID, SquadRide>()
+
+        /** The seats each travelling squad's men are due, worked out from [rides] for its plan ([TacticalFacts.SEATS]). */
+        private val seatsDue = HashMap<UUID, SeatPlan>()
+
+        /** When each travelling squad's seats are next worked out. */
+        private val seatChecks = HashMap<UUID, Long>()
+
+        /** By ground team, the vehicle guns its plan sent its men to ([TacticalDomain.MAN_STATIONS], #255): vehicle to man. */
+        private val stations = HashMap<AgentId, Map<UUID, UUID>>()
+
+        /** By ground team, who should man which gun, worked out for its plan ([TacticalFacts.STATIONS]). */
+        private val stationsDue = HashMap<AgentId, StationPlan>()
+
+        /** By squad, the last reason its teams were given no vehicle gun, logged once per change. */
+        private val stationRefusals = HashMap<UUID, String?>()
+        private var nextStationCheck = Long.MIN_VALUE
+
+        private val retreatSmoke = RetreatSmoke(level)
 
         // When each squad's focus was last well above it, see ENEMY_ABOVE_TICKS.
         private val lastAbove = HashMap<UUID, Long>()
@@ -267,7 +542,10 @@ object NativeTactics {
         private val plannedContact = HashMap<UUID, Vec3?>()
 
         // The MemberDuties case each member's duty last came from, to log only when it changes.
-        private val dutyRules = HashMap<UUID, String>()
+        private val dutyRules = HashMap<UUID, HeldDuty>()
+
+        /** When each man's close duty options were last logged, see `duty_close`. */
+        private val closeDuties = HashMap<UUID, Long>()
         private val failures = HashMap<UUID, LocalPositionFailure>()
 
         // Legs each mover has finished of an advance by legs, see [TacticalFacts.LEGS_DONE].
@@ -308,6 +586,109 @@ object NativeTactics {
             },
         )
 
+        /** The plan's engage units (#251 step B), each run on the man's own [EngageState]. */
+        private fun engageBinding() =
+            listOf(
+                ActionBinding(TacticalDomain.ENGAGE) { ticket, unit ->
+                    require(ticket.owner.agent == unit.actor)
+                    val npc = requireNotNull(level.getEntity(unit.actor.id) as? NpcEntity)
+                    // His position action, if any, is over: the engage moves him now.
+                    actions.remove(unit.actor.id)?.overwatchPost?.let { heldPosts[unit.actor.id] = it }
+                    EngageAction.of(unit, npc, engageOf(npc))
+                },
+            )
+
+        /** A grenade throw (#263), on the aim [GrenadeChoice] observed for it. */
+        private fun grenadeBinding() =
+            listOf(
+                ActionBinding(Grenades.ACTION) { ticket, call ->
+                    require(ticket.owner.agent == call.actor)
+                    grenades.action(requireNotNull(level.getEntity(call.actor.id) as? NpcEntity))
+                },
+            )
+
+        /** A crewman's duty (#258), run on his own [CrewHand]. */
+        private fun crewBinding() =
+            listOf(
+                ActionBinding(CrewPlan.ACTION) { ticket, duty ->
+                    require(ticket.owner.agent == duty.actor)
+                    fireSupport.action(duty, requireNotNull(level.getEntity(duty.actor.id) as? NpcEntity))
+                },
+            )
+
+        /** A pilot's flight and a gunner's turret (#260, #261), each kept on its man across the plan's revisions. */
+        private fun airBindings() =
+            listOf(
+                ActionBinding(AirPlan.FLIGHT) { ticket, duty ->
+                    require(ticket.owner.agent == duty.actor)
+                    air.flight(duty, requireNotNull(level.getEntity(duty.actor.id) as? NpcEntity))
+                },
+                ActionBinding(AirPlan.TURRET) { ticket, duty ->
+                    require(ticket.owner.agent == duty.actor)
+                    air.turret(requireNotNull(level.getEntity(duty.actor.id) as? NpcEntity))
+                },
+            )
+
+        /** A drone operator's strike (#259), flown by his station. */
+        private fun droneBinding() =
+            listOf(
+                ActionBinding(DroneStrike.ACTION) { ticket, duty ->
+                    require(ticket.owner.agent == duty.actor)
+                    drones.action(duty, requireNotNull(level.getEntity(duty.actor.id) as? NpcEntity))
+                },
+            )
+
+        /**
+         * The squad's seats and the team's guns (#255): each plan's action only gives out what its
+         * plan decided, revised in place as the decision changes, and takes it back when cancelled.
+         */
+        private fun allotmentBindings() =
+            listOf(
+                ActionBinding(TacticalDomain.BOARD) { ticket, boarding ->
+                    require(ticket.owner.agent == AgentId(AgentLevel.SQUAD, boarding.squad))
+                    Allotment(boarding.seats, { (it as? Boarding)?.takeIf { next -> next.squad == boarding.squad }?.seats }, { board(boarding.squad, it) }, { rides.remove(boarding.squad) })
+                },
+                ActionBinding(TacticalDomain.MAN_STATIONS) { ticket, manning ->
+                    require(ticket.owner.agent == manning.team)
+                    Allotment(manning.plan.men, { (it as? StationManning)?.takeIf { next -> next.team == manning.team }?.plan?.men }, { stations[manning.team] = it }, { stations.remove(manning.team) })
+                },
+            )
+
+        /** The plan's cover actions (#251), each run on the man's own [CoverState]. */
+        private fun coverBindings() =
+            listOf(
+                ActionBinding(ArmourResponse.ACTION) { ticket, unit ->
+                    require(ticket.owner.agent == unit.actor)
+                    val npc = coverActor(unit.actor)
+                    NativeArmour(unit, npc, armour.getOrPut(npc.uuid, ::ArmourState))
+                },
+                ActionBinding(TacticalDomain.COVER_MOVE) { ticket, move ->
+                    require(ticket.owner.agent == move.actor)
+                    val npc = coverActor(move.actor)
+                    NativeCoverMove(move, npc, coverOf(npc)) { npc.threatPos ?: npc.incomingFire.point(level.gameTime) }
+                },
+                ActionBinding(TacticalDomain.COVER_CYCLE) { ticket, cycle ->
+                    require(ticket.owner.agent == cycle.actor)
+                    val npc = coverActor(cycle.actor)
+                    NativeCoverCycle(cycle, npc, coverOf(npc))
+                },
+                ActionBinding(TacticalDomain.DIG) { ticket, dig ->
+                    require(ticket.owner.agent == dig.actor)
+                    val npc = coverActor(dig.actor)
+                    NativeDig(dig, npc, coverOf(npc))
+                },
+                ActionBinding(TacticalDomain.HOLD_HOLE) { ticket, hold ->
+                    require(ticket.owner.agent == hold.actor)
+                    val npc = coverActor(hold.actor)
+                    NativeHoldHole(npc, coverOf(npc))
+                },
+                ActionBinding(TacticalDomain.LEAVE_HOLE) { ticket, leave ->
+                    require(ticket.owner.agent == leave.actor)
+                    val npc = coverActor(leave.actor)
+                    NativeLeaveHole(npc, coverOf(npc))
+                },
+            )
+
         private fun ensure(id: AgentId): PlanningAgent =
             agents.getOrPut(id) {
                 val factory = ActionRegistry(
@@ -328,11 +709,22 @@ object NativeTactics {
                                 override fun cancel(now: Long, reason: String) = Unit
                             }
                         },
+                        ActionBinding(TacticalDomain.CALL_OFF) { ticket, callOff ->
+                            require(ticket.owner.agent == AgentId(AgentLevel.OPERATION, callOff.operation))
+                            object : ActionExecution {
+                                override fun start(now: Long) = carryOut(callOff, now)
+                                override fun tick(now: Long) = carryOut(callOff, now)
+                                override fun suspend(now: Long, reason: String) = Unit
+                                override fun resume(now: Long) = Unit
+                                override fun cancel(now: Long, reason: String) = Unit
+                            }
+                        },
                         ActionBinding(DelegationAction.KEY) { ticket, task -> DelegationAction(ticket, task, ledger) },
                         ActionBinding(TacticalDomain.FIRE_PAUSE) { ticket, pause ->
                             require(ticket.owner.agent == pause.actor)
                             firePause(pause, requireNotNull(level.getEntity(pause.actor.id) as? NpcEntity))
                         },
+                    ) + allotmentBindings() + coverBindings() + engageBinding() + grenadeBinding() + crewBinding() + airBindings() + droneBinding() + listOf(
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
@@ -343,6 +735,7 @@ object NativeTactics {
                                 // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
                                 // The planned anchor is put on the ground before the search; searched is where it looked.
                                 val ground = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, net.minecraft.util.Mth.floor(searched.x), net.minecraft.util.Mth.floor(searched.z))
+                                DecisionTrace.man(failed.actor.id, level.gameTime, "post_failed", "${failed.duty} rejected=$rejections")
                                 DebugFlags.log(
                                     LogGroup.ORDER, "[htn] actor={} event=local_failure duty={} rejected={} anchorY={} searchedY={} groundY={} actorY={} distance={}",
                                     failed.actor.id, failed.duty, rejections, "%.0f".format(failed.anchor.y), "%.0f".format(searched.y), ground, "%.0f".format(npc.y), "%.0f".format(npc.position().distanceTo(searched)),
@@ -355,9 +748,14 @@ object NativeTactics {
                     id,
                     TacticalDomain.at(id.level),
                     PlanRuntime(factory, leases) { event ->
-                        if (event.report.status == ExecutionStatus.FAILED) DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=action_failed reason={}", id.id, event.report.reason)
+                        if (event.report.status == ExecutionStatus.FAILED) {
+                            DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=action_failed reason={}", id.id, event.report.reason)
+                            if (DecisionTrace.on) traceAction(id, event.report.reason)
+                        }
                     },
+                    events = { if (DecisionTrace.on) tracePlanning(id, it) },
                 ) { feedback ->
+                    if (DecisionTrace.on) flushPlanning(id, feedback.result)
                     planResultObserver?.invoke(id.level)
                     if (id.level == AgentLevel.SQUAD) (feedback.result as? PlanningResult.Ready)?.let { recordManner(id.id, it.plan, level.gameTime) }
                     DebugFlags.log(LogGroup.ORDER, "[htn] level={} actor={} event=plan_result result={}", id.level, id.id, feedback.result.javaClass.simpleName)
@@ -420,16 +818,33 @@ object NativeTactics {
             strategies[squad] = strategy to now
             val scores = situations[squad]?.let { situation -> CombatStrategy.entries.filter { it.rules.allowed(situation) }.associate { it.name to "%.2f".format(it.rules.score(situation)) } }
             DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=strategy from={} to={} scores={} situation={}", squad, old, strategy, scores, situations[squad])
+            DecisionTrace.group(squad, now, "squad", "strategy", "$old -> $strategy, allowed and scored: $scores")
         }
         private fun facts(id: AgentId, now: Long): FactSnapshot {
             val empty = FactSnapshot(id, now)
             return when (id.level) {
                 AgentLevel.OPERATION -> operationFacts(empty)
+
                 AgentLevel.SQUAD -> squadFacts(empty)
-                AgentLevel.TEAM -> empty
+
+                AgentLevel.TEAM -> when {
+                    fireSupport.roster.unit(id) != null -> fireSupport.teamFacts(empty)
+                    air.roster.unit(id) != null -> air.teamFacts(empty)
+                    else -> groundTeamFacts(empty)
+                }
+
                 AgentLevel.NPC -> npcFacts(empty)
             }
         }
+
+        /** A ground team's guns to man, and whether its squad's covering fire stalled. */
+        private fun groundTeamFacts(empty: FactSnapshot): FactSnapshot {
+            val id = empty.owner
+            val squad = missions.entries.firstOrNull { (_, mission) -> mission.teams.any { it.agent == id } }?.key
+            return (stationsDue[id]?.let { empty.observe(TacticalFacts.STATIONS, it) } ?: empty)
+                .observe(TacticalFacts.COVER_STALLED, squad?.let { coverStalled(it, empty.now) } == true)
+        }
+
         private fun operationFacts(empty: FactSnapshot): FactSnapshot {
             var result = empty
             val id = empty.owner.id
@@ -445,6 +860,8 @@ object NativeTactics {
             situations[id]?.let { result = result.observe(TacticalFacts.SITUATION, it) }
             boundTurns[id]?.let { result = result.observe(TacticalFacts.BOUND_TURN, it.turn) }
             rallies[id]?.let { result = result.observe(TacticalFacts.RALLY, it) }
+            if (id in journeys) result = result.observe(TacticalFacts.TRAVELLING, true)
+            seatsDue[id]?.let { result = result.observe(TacticalFacts.SEATS, it) }
             approaches[id]?.let { result = result.observe(TacticalFacts.APPROACH, it) }
             strategies[id]?.let { (strategy, since) ->
                 result = result.observe(TacticalFacts.MANNER, strategy)
@@ -452,20 +869,95 @@ object NativeTactics {
             }
             return result
         }
+
+        /** Launch paths stay hidden from known armour even before exposure starts a cover response. */
+        fun armourSafe(npc: NpcEntity, feet: Vec3): Boolean {
+            val state = armour[npc.uuid]
+            if (state?.commitment != null && !state.hidden(npc, feet)) return false
+            val contacts = npc.squadId?.let(::combatView)?.contacts.orEmpty()
+            return contacts.none { it.knownArmourTo(npc, level, level.gameTime) && !armourShelter(npc, it.eye, it.id, feet) }
+        }
+
+        private fun coverOf(npc: NpcEntity) = cover.getOrPut(npc.uuid, ::CoverState)
+
+        /**
+         * The man a cover action is for. His post action is over while it runs: dropped here, so his
+         * stale post neither answers for his assignment nor keeps his plan repairing.
+         */
+        private fun coverActor(actor: AgentId): NpcEntity {
+            actions.remove(actor.id)?.overwatchPost?.let { heldPosts[actor.id] = it }
+            return requireNotNull(level.getEntity(actor.id) as? NpcEntity)
+        }
+
+        /** His facts about fire, cover and his foxhole (#251); the costly ones only while they matter. */
+        private fun coverFacts(facts: FactSnapshot, npc: NpcEntity?, now: Long): FactSnapshot {
+            npc ?: return facts.observe(TacticalFacts.UNDER_FIRE, false).observe(TacticalFacts.DIGS, 0)
+            val underFire = npc.isSuppressed()
+            val sector = npc.threatPos?.takeIf { underFire }?.let { coverOf(npc).fireSector(it) }
+            val state = cover[npc.uuid]
+            val digs = state?.digs ?: 0
+            var result = facts.observe(TacticalFacts.UNDER_FIRE, underFire).observe(TacticalFacts.DIGS, digs)
+                .observe(TacticalFacts.COVER_CYCLES, state?.cycles ?: 0)
+                .observe(TacticalFacts.SHELTERED, state?.sheltered(npc, sector) == true)
+            sector?.let { result = result.observe(TacticalFacts.FIRE_SECTOR, it) }
+            state?.failure?.let { result = result.observe(TacticalFacts.COVER_FAILURE, it, observedAt = it.failedAt, expiresAt = it.failedAt + FAILURE_MEMORY_TICKS) }
+            // Only the answers to no cover and the hole read these, and a man peeking from cover
+            // sees his target and loses it again: observed always, they would replan him each time.
+            if ((state?.failure == null || !underFire) && digs == 0) return result
+            val level = npc.level() as ServerLevel
+            result = result.observe(TacticalFacts.ENGAGED, engaged(npc, now))
+                .observe(TacticalFacts.DIG_POSSIBLE, CoverMechanics.canDigIn(npc, level, npc.blockPosition()))
+            if (digs > 0) {
+                result = result.observe(TacticalFacts.HIT_IN_HOLE, npc.health < state!!.healthAtDig)
+                    .observe(TacticalFacts.HEALED, npc.health >= npc.maxHealth * CoverMechanics.DIG_HEALTH_FRACTION)
+            }
+            return result
+        }
+
+        /**
+         * A live target he sees, or one not shooting at him now: the cover behaviour's test for
+         * holding and firing in the open rather than falling back across it.
+         */
+        private fun engaged(npc: NpcEntity, now: Long): Boolean {
+            val target = npc.target?.takeIf { it.isAlive } ?: return false
+            return !npc.incomingFire.pending(now) || com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(npc, target, NpcEntity.DETECTION_RANGE)
+        }
+
+        private fun armourFacts(facts: FactSnapshot, npc: NpcEntity?): FactSnapshot {
+            if (npc == null || !planned(npc)) return facts
+            return armour.getOrPut(npc.uuid, ::ArmourState).observe(facts, npc, npc.squadId?.let(::combatView))
+        }
+
         private fun npcFacts(empty: FactSnapshot): FactSnapshot {
             val id = empty.owner
             val now = empty.now
             val npc = level.getEntity(id.id) as? NpcEntity
             val action = actions[id.id]
-            var result = empty.observe(TacticalFacts.MOVABLE, npc != null && movable(npc))
+            val mayMove = npc != null && movable(npc)
+            traceRule(id.id, npc?.takeUnless { mayMove }?.let(MandatoryRules::suspending), now)
+            var result = empty.observe(TacticalFacts.MOVABLE, mayMove)
                 .observe(TacticalFacts.COVER, goals[id]?.let(::covering) ?: false, expiresAt = now + 11)
                 .observe(TacticalFacts.ARRIVED, action?.reached() ?: false)
                 .observe(TacticalFacts.AT_POST, action?.atPost() ?: false)
                 .observe(TacticalFacts.LEGS_DONE, legs[id.id] ?: 0)
                 .observe(TacticalFacts.SUPPORT_FIRING, supportFiring(id, now), expiresAt = now + 11)
             failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
+            result = coverFacts(result, npc, now)
+            result = armourFacts(result, npc)
+            return if (npc != null) manFacts(result, id, npc, now) else result
+        }
+
+        /** What [npc]'s own fight, grenades and role add to his facts. */
+        private fun manFacts(facts: FactSnapshot, id: AgentId, npc: NpcEntity, now: Long): FactSnapshot {
+            var result = EngageFacts.observe(facts, npc, engageOf(npc), engageBands.getOrPut(npc.uuid, ::EngageBands), now)
+            result = grenades.observe(result, npc, now)
+            if (fireSupport.roster.unitOf(npc.uuid) != null) result = fireSupport.manFacts(result, npc)
+            if (air.roster.unitOf(npc.uuid) != null) result = air.manFacts(result, npc)
+            if (DroneWorld.operates(npc)) result = drones.manFacts(result, npc, teamTarget(id, npc), coversFor(npc.uuid))
             return result
         }
+        fun heard(squad: UUID, at: Point3, now: Long, walk: Boolean) = alarms.getOrPut(squad, ::SquadAlarms).heard(at, now, walk)
+
         fun combatView(squad: UUID): TacticalSnapshot? {
             sharedViews[squad]?.let { return it }
             val own = snapshots[squad] ?: return null
@@ -493,8 +985,8 @@ object NativeTactics {
         fun refresh(reference: NpcEntity) {
             if (refreshing) return
             val now = level.gameTime
-            val squad = reference.currentSquad() ?: return
-            if (now < nextObservation && knownOrders[squad.id] == squad.orderStamp) return
+            val squad = reference.currentSquad()
+            if (now < nextObservation && (squad == null || knownOrders[squad.id] == squad.orderStamp)) return
             refreshing = true
             try {
                 nextObservation = now + 10
@@ -511,6 +1003,22 @@ object NativeTactics {
                     if (npcs.isEmpty()) null else saved to npcs
                 }
                 val activeIds = loaded.mapTo(HashSet()) { it.first.id }
+                // Crews and aircraft join only where their squad's mission is built: none of the ground
+                // picture below (snapshots, losses, arrival, layout) counts them (#258, #260).
+                fireSupport.roster.collect(now)
+                air.roster.collect()
+                journeys.entries.removeIf { (id, stamp) -> manager.get(id)?.orderStamp != stamp }
+                // Every squad, crews and planned men alike, before anything plans with it.
+                manager.all().forEach(::journey)
+                seatsDue.keys.retainAll(journeys.keys)
+                seatChecks.keys.retainAll(journeys.keys)
+                rides.entries.removeIf { (id, ride) -> journeys[id] != ride.stamp }
+                journeys.keys.mapNotNull(manager::get).forEach { seats(it, now) }
+                if (now >= nextStationCheck) {
+                    nextStationCheck = now + SEAT_CHECK_TICKS
+                    weaponStations(manager)
+                }
+                val supportOnly = (fireSupport.roster.squads() + air.roster.squads()).filter { it !in activeIds }.mapNotNull(manager::get)
                 snapshots.keys.filter { it !in activeIds }.toList().forEach { id ->
                     snapshots.remove(id)
                     missions.remove(id)
@@ -518,8 +1026,13 @@ object NativeTactics {
                     boundTurns.remove(id)
                     rallies.remove(id)
                     lastHits.remove(id)
+                    closeContacts.remove(id)
+                    retreatSmoke.forget(id)
+                    grenades.forgetSquad(id)
                     lastAbove.remove(id)
+                    alarms.remove(id)
                     regroupEnds.remove(id)
+                    coverStalls.remove(id)
                     approaches.remove(id)
                     flankable.remove(id)
                     flankBlockedAt.remove(id)
@@ -532,7 +1045,7 @@ object NativeTactics {
                 }
                 loaded.forEach { (saved, npcs) ->
                     var view = TacticalSnapshotCollector.collect(saved, level, npcs, npcs.first())
-                    if (AttackAmmoWithdrawal.apply(saved, level, view)) view = TacticalSnapshotCollector.collect(saved, level, npcs, npcs.first())
+                    if (AttackStrength.update(saved, level, view)) view = TacticalSnapshotCollector.collect(saved, level, npcs, npcs.first())
                     snapshots[saved.id] = view
                     saved.tactics.snapshot = view
                     val goal = saved.command?.goal as? ObjectiveKey.Entity
@@ -543,21 +1056,25 @@ object NativeTactics {
                         manager.setObjective(level, saved.id, net.minecraft.core.BlockPos.containing(view.center))
                     }
                 }
-                val groups = loaded.filter { knownOrders[it.first.id] != it.first.orderStamp }.groupBy { (it.first.command?.id ?: it.first.tacticalOperation ?: it.first.id) to it.first.order }
+                val commanded = loaded.map { it.first } + supportOnly
+                val groups = commanded.filter { knownOrders[it.id] != it.orderStamp }.groupBy { (it.command?.id ?: it.tacticalOperation ?: it.id) to it.order }
                 groups.forEach { (group, selected) ->
-                    val first = selected.first().first
-                    val view = snapshots.getValue(first.id)
-                    val objective = first.tacticalObjective ?: first.objective ?: net.minecraft.core.BlockPos.containing(view.home ?: view.center)
-                    val direction = objective.center.subtract(view.center).multiply(1.0, 0.0, 1.0).normalize()
-                    // An attack is joined short of the objective, on the side it was approached from.
-                    // A held point (defence, patrol) is already occupied, so it is joined at the point.
-                    val entry = if (first.order == SquadOrder.ATTACK) objective.center.subtract(direction.scale(48.0)) else objective.center
-                    val participants = selected.map { (saved, _) -> SquadParticipant(saved.id, saved.owner, saved.faction.name, level.dimension().location().toString(), saved.orderStamp.toLong()) }
-                    val commandId = UUID.nameUUIDFromBytes("$group:${selected.joinToString { "${it.first.id}:${it.first.orderStamp}" }}".toByteArray())
+                    val first = selected.firstOrNull { it.id in activeIds } ?: selected.first()
+                    val view = snapshots[first.id]
+                    val center = view?.center ?: fireSupport.roster.center(first.id) ?: air.roster.center(first.id) ?: return@forEach
+                    val objective = first.tacticalObjective ?: first.objective ?: net.minecraft.core.BlockPos.containing(view?.home ?: center)
+                    // An attack is joined anywhere round its objective; a held point (defence, patrol)
+                    // is already occupied, so it is joined at the point.
+                    val entryRadius = if (first.order == SquadOrder.ATTACK) ReinforcementMarch.JOIN_RADIUS else 32.0
+                    val participants = selected.map { saved ->
+                        val role = if (saved.id in activeIds) ParticipantRole.GROUND else ParticipantRole.SUPPORT
+                        SquadParticipant(saved.id, saved.owner, saved.faction.name, level.dimension().location().toString(), saved.orderStamp.toLong(), role)
+                    }
+                    val commandId = UUID.nameUUIDFromBytes("$group:${selected.joinToString { "${it.id}:${it.orderStamp}" }}".toByteArray())
                     val key = first.command?.goal?.takeIf { first.commandOutcome == CommandOutcome.ACTIVE && first.command?.order == first.order.tactical() } ?: ObjectiveKey.Area(first.objectiveDimension?.location()?.toString() ?: level.dimension().location().toString(), objective.x, objective.y, objective.z)
-                    val accepted = operations.command(CommandBatch(commandId, first.owner, first.order.tactical(), key, participants, now, EntryArea(entry.point(), 32.0, 16.0)))
+                    val accepted = operations.command(CommandBatch(commandId, first.owner, first.order.tactical(), key, participants, now, EntryArea(objective.center.point(), entryRadius, 16.0)))
                     DebugFlags.log(LogGroup.ORDER, "[htn] event=operation_command principal={} squads={} order={} objective={} result={}", first.owner, participants.map { it.id }, first.order, key, accepted)
-                    selected.forEach { (saved, _) ->
+                    selected.forEach { saved ->
                         knownOrders[saved.id] = saved.orderStamp
                         missions.remove(saved.id)
                         saved.members.forEach {
@@ -565,6 +1082,7 @@ object NativeTactics {
                             formationDuties.remove(it)
                             plannedContact.remove(it)
                             dutyRules.remove(it)
+                            closeDuties.remove(it)
                             slotSights.remove(it)
                         }
                     }
@@ -595,21 +1113,33 @@ object NativeTactics {
                     )
                 }
                 sharedViews.clear()
-                val opGroups = loaded.groupBy { operations.operationOf(it.first.id)?.id ?: it.first.id }
+                val opGroups = commanded.groupBy { operations.operationOf(it.id)?.id ?: it.id }
                 val roots = HashSet<AgentId>()
                 val desiredAgents = HashSet<AgentId>()
                 opGroups.forEach { (operation, members) ->
-                    val standing = standing(operation, now)
-                    if (standing == OperationStanding.WITHDRAW) return@forEach
-                    val squadMissions = layout(members.map { it.first }, now, holding = standing == OperationStanding.REVIEW)
+                    val ground = members.filter { it.id in activeIds }
+                    val measure = if (ground.isEmpty()) AttackMeasure.STEADY else measure(operation, now)
+                    val holding = measure.standing == OperationStanding.REVIEW
+                    // A called-off attack gives its squads, crews and aircraft nothing to do for this one
+                    // update while its plan calls it off: the next one finds the squads retreating on
+                    // their own, and plans the carry to the rally point under them.
+                    val squadMissions = if (measure.callOff != null) {
+                        members.map { SquadMission(AgentId(AgentLevel.SQUAD, it.id), emptyList()) }
+                    } else {
+                        val grounded = if (ground.isEmpty()) emptyList() else layout(ground, now, holding)
+                        grounded.map { it.copy(support = fireSupport.roster.crews(it.agent.id), air = air.roster.aircraft(it.agent.id)) } +
+                            members.filter { it.id !in activeIds }.map { SquadMission(AgentId(AgentLevel.SQUAD, it.id), emptyList(), fireSupport.roster.crews(it.id), air.roster.aircraft(it.id)) }
+                    }
                     val root = AgentId(AgentLevel.OPERATION, operation)
                     roots += root
                     desiredAgents += root
                     children[root] = squadMissions.mapTo(HashSet()) { it.agent }
                     squadMissions.forEach { mission ->
-                        children[mission.agent] = mission.teams.mapTo(HashSet()) { it.agent }
+                        children[mission.agent] = mission.teams.mapTo(HashSet()) { it.agent } + mission.support.map { it.agent } + mission.air.map { it.agent }
                         desiredAgents += mission.agent
                         ensure(mission.agent)
+                        mission.support.forEach { crew -> ensureCrew(crew, desiredAgents) }
+                        mission.air.forEach { aircraft -> ensureAircraft(aircraft, desiredAgents) }
                         mission.teams.forEach { team ->
                             children[team.agent] = team.members.mapTo(HashSet()) { it.actor }
                             desiredAgents += team.agent
@@ -622,7 +1152,7 @@ object NativeTactics {
                     }
                     // A reinforcement still on its way only approaches: the area it is going to
                     // is held and completed by the operation it joins, never by itself.
-                    val active = members.map { it.first }.filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
+                    val active = if (measure.callOff != null) emptyList() else ground.filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
                     val first = active.firstOrNull()
                     val area = first?.command?.goal as? ObjectiveKey.Area ?: first?.objective?.let { point ->
                         if (first.command == null) ObjectiveKey.Area(level.dimension().location().toString(), point.x, point.y, point.z) else null
@@ -633,13 +1163,13 @@ object NativeTactics {
                         null
                     }
                     val roles = if (secure != null) {
-                        attackRoles(operation, secure, active, now, holding = standing == OperationStanding.REVIEW)
+                        attackRoles(operation, secure, active, now, holding)
                     } else {
                         attacks.remove(operation)
                         boundTraces.remove(operation)
                         AttackRoles.NONE
                     }
-                    ensure(root).command(operation, TacticalDomain.OPERATION.call(OperationMission(squadMissions, secure, roles)), facts(root, now))
+                    ensure(root).command(operation, TacticalDomain.OPERATION.call(OperationMission(squadMissions, secure, roles, measure.callOff, holding)), facts(root, now))
                 }
                 agents.keys.filter { it.level == AgentLevel.OPERATION && it !in roots }.toList().forEach { id ->
                     agents.remove(id)?.cancel(now, "operation_membership_changed")
@@ -652,6 +1182,8 @@ object NativeTactics {
                     flankTraces.remove(id.id)
                     boundTraces.remove(id.id)
                     sectorsHeld.remove(id.id)
+                    frontRises.remove(id.id)
+                    refusedRises.remove(id.id)
                     areaObservedAt.remove(id.id)
                     areaTraces.remove(id.id)
                     unverified.remove(id.id)
@@ -659,20 +1191,137 @@ object NativeTactics {
                     areaTasks.remove(id.id)
                     operations.forget(id.id)
                 }
-                agents.keys.filter { it !in desiredAgents }.toList().forEach { id -> agents.remove(id)?.cancel(now, "actor_not_active") }
+                commandCrews(now, desiredAgents)
+                commandAircraft(now, desiredAgents)
+                commandLoneOperators(now, desiredAgents)
+                commandEngagers(now, desiredAgents)
+                agents.keys.filter { it !in desiredAgents }.toList().forEach { id ->
+                    DebugFlags.log(LogGroup.ORDER, "[htn] actor={} level={} event=agent_dropped reason=actor_not_active", id.id, id.level)
+                    agents.remove(id)?.cancel(now, "actor_not_active")
+                }
+                fireSupport.sweep(desiredAgents)
+                air.sweep()
+                drones.sweep()
                 children.keys.removeIf { it !in desiredAgents }
                 failures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                // A man leaving the plan keeps no foxhole claim nobody would release.
+                armour.entries.removeIf { (id, state) ->
+                    (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) FiringSpots.release(id, state.reservation) }
+                }
+                cover.entries.removeIf { (id, state) ->
+                    (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) (level.getEntity(id) as? NpcEntity)?.release(NpcActivity.DUG_IN, state) }
+                }
+                // Nor a firing spot nobody would release.
+                engageStates.entries.removeIf { (id, state) -> (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) state.dispose() } }
+                engageBands.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                grenades.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
+                suspendedBy.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 arcing.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 offArc.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 teamAllocators.keys.removeIf { manager.get(it) == null }
+                // A disbanded squad of crews alone had no snapshot to be dropped with above.
+                knownOrders.keys.filter { manager.get(it) == null }.forEach { id ->
+                    knownOrders.remove(id)
+                    operations.detach(id)
+                }
                 manoeuvres.keys.removeIf { manager.get(it) == null }
                 retiredAssignments.forEach(ledger::forget)
                 retiredAssignments.clear()
             } finally {
                 refreshing = false
+            }
+        }
+
+        /**
+         * Keeps an engage-only agent for every man still reporting a fight with no full agent, its
+         * root `npc.engage`, recommanded when his squad's order changes; the rest are dropped by
+         * the sweep that follows. A man who gained a full agent is no engager any more.
+         */
+        private fun commandEngagers(now: Long, desired: MutableSet<AgentId>) {
+            engagers.entries.removeIf { (id, engager) -> engager.until < now || AgentId(AgentLevel.NPC, id) in desired || (level.getEntity(id) as? NpcEntity)?.isAlive != true }
+            engagers.forEach { (id, engager) ->
+                val agentId = AgentId(AgentLevel.NPC, id)
+                desired += agentId
+                val fresh = agentId !in agents
+                ensure(agentId).command(engager.command, TacticalDomain.FIGHT_TASK.call(EngageTask(agentId)), facts(agentId, now))
+                if (fresh) DecisionTrace.man(id, now, "agent", "engager")
+            }
+        }
+
+        /** [crew]'s team agent and its men's, kept as [desired]. */
+        private fun ensureCrew(crew: SupportCrew, desired: MutableSet<AgentId>) {
+            children[crew.agent] = crew.members.toSet()
+            desired += crew.agent
+            ensure(crew.agent)
+            crew.members.forEach {
+                desired += it
+                ensure(it)
+            }
+        }
+
+        /**
+         * Keeps a root crew agent for every squadless crew (#258), as [commandEngagers] does for
+         * a squadless man's fight: it has no squad to delegate it, so it is commanded here.
+         */
+        private fun commandCrews(now: Long, desired: MutableSet<AgentId>) {
+            fireSupport.roster.crews(null).forEach { crew ->
+                val fresh = crew.agent !in agents
+                ensureCrew(crew, desired)
+                agents.getValue(crew.agent).command(UUID.nameUUIDFromBytes("crew:${crew.agent.id}".toByteArray()), CrewPlan.TEAM_TASK.call(crew), facts(crew.agent, now))
+                if (fresh) DecisionTrace.man(crew.members.first().id, now, "agent", "squadless_crew")
+            }
+        }
+
+        /** [aircraft]'s team agent and its men's, kept as [desired]. */
+        private fun ensureAircraft(aircraft: Aircraft, desired: MutableSet<AgentId>) {
+            val men = listOfNotNull(aircraft.pilot) + aircraft.gunners
+            children[aircraft.agent] = men.toSet()
+            desired += aircraft.agent
+            ensure(aircraft.agent)
+            men.forEach {
+                desired += it
+                ensure(it)
+            }
+        }
+
+        /**
+         * Keeps a root agent for every squadless drone operator (#259), as [commandCrews] does for
+         * a squadless crew: his strike, his engage in a fight, else nothing. It stands in for the
+         * engage-only agent such a man would get, so he has one NPC agent, not two.
+         */
+        private fun commandLoneOperators(now: Long, desired: MutableSet<AgentId>) {
+            val lone = NpcRegistry.all(level).filter { DroneWorld.operates(it) && it.currentSquad() == null && AgentId(AgentLevel.NPC, it.uuid) !in desired }
+            // Kept between passes, not cleared first: his facts read it for whether his cover is planned.
+            loneOperators.retainAll(lone.mapTo(HashSet()) { it.uuid })
+            lone.forEach { npc ->
+                val agent = AgentId(AgentLevel.NPC, npc.uuid)
+                loneOperators += npc.uuid
+                desired += agent
+                val fresh = agent !in agents
+                ensure(agent).command(UUID.nameUUIDFromBytes("drone:${npc.uuid}".toByteArray()), DroneStrike.ALONE.call(StrikeCall(agent)), facts(agent, now))
+                if (fresh) DecisionTrace.man(npc.uuid, now, "agent", "squadless_operator")
+            }
+        }
+
+        /** The team agent [man] is planned in, or null. */
+        fun teamOf(man: AgentId): AgentId? = children.entries.firstOrNull { (id, members) -> id.level == AgentLevel.TEAM && man in members }?.key
+
+        /** The enemy most of [man]'s team fight (#259): his team's operator strikes it first. */
+        private fun teamTarget(man: AgentId, npc: NpcEntity): LivingEntity? {
+            val team = teamOf(man)?.let(children::get) ?: return null
+            return DroneWorld.teamTarget(npc, team.mapNotNull { level.getEntity(it.id) as? NpcEntity })
+        }
+
+        /** Keeps a root agent for every squadless aircraft (#260), as [commandCrews] does for a squadless crew. */
+        private fun commandAircraft(now: Long, desired: MutableSet<AgentId>) {
+            air.roster.aircraft(null).forEach { aircraft ->
+                val fresh = aircraft.agent !in agents
+                ensureAircraft(aircraft, desired)
+                agents.getValue(aircraft.agent).command(UUID.nameUUIDFromBytes("air:${aircraft.agent.id}".toByteArray()), AirPlan.TEAM_TASK.call(aircraft), facts(aircraft.agent, now))
+                if (fresh) DecisionTrace.man((aircraft.pilot ?: aircraft.gunners.first()).id, now, "agent", "squadless_aircraft")
             }
         }
 
@@ -735,7 +1384,7 @@ object NativeTactics {
             }
             val inspected = occupied && observers.any { it.position().distanceTo(point) <= 24 && Vision.inCone(it.position(), it.yHeadRot, point) && DetectionSightline.visible(level, it.eyePosition, point.add(0.0, 1.5, 0.0), it) } && remaining.isEmpty()
             val loaded = listOf(-24, 24).all { x -> listOf(-24, 24).all { z -> level.hasChunkAt(net.minecraft.core.BlockPos.containing(point.add(x.toDouble(), 0.0, z.toDouble()))) } }
-            val fire = observers.any { it.incomingFire.recentPoint(now) != null || it.evadingGrenade() }
+            val fire = observers.any { it.incomingFire.recentPoint(now) != null || it.holds(NpcActivity.EVADE) }
             val clock = areaClocks.getOrPut(task.operation, ::AreaControlClock)
             clock.observe(now, loaded, occupied, inspected, contacts.isNotEmpty() || discovered, fire)
             areaObservedAt[task.operation] = now
@@ -774,17 +1423,23 @@ object NativeTactics {
                 threatsNearby = threats.size,
                 sectorsHeld = sectorsHeld[operation] != false,
             )
-            if (progress.phase != before) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
+            if (progress.phase != before) {
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
+                DecisionTrace.group(operation, level.gameTime, "operation", "attack_phase", "$before -> ${progress.phase}, $inputs")
+            }
             val occupying = progress.occupying
             val bounders = squads.singleOrNull()
                 ?.takeIf { !holding && strategies[it.id]?.first in setOf(CombatStrategy.ADVANCE, CombatStrategy.GAIN_HEIGHT, CombatStrategy.BOUND_OVERWATCH) }
                 ?.let { squad -> manoeuvres[squad.id].orEmpty() - arcing }
                 .orEmpty()
-            val attackers = members.map { AttackMember(it.id, it.position.point(), it.ready) }
+            val squadOf = squads.flatMap { squad -> snapshots[squad.id]?.members.orEmpty().map { it.id to squad.id } }.toMap()
+            val attackers = members.map { AttackMember(it.id, it.position.point(), it.ready, closeQuarters = it.role == NpcClass.SHOTGUNNER, squad = squadOf[it.id]) }
             val known = (threats.map { it.position.point() } + defenders).distinct()
             // Every ready man takes part in an assault, not only the front rows of the line: the
             // flanks and rear guard a reinforcement was added to never left the firing line (#54).
-            val roles = progress.roles(now, task.objective, members.filter { it.ready }.map { it.id }, attackers, known)
+            val stalled = squads.filter { coverStalled(it.id, now) }.flatMapTo(HashSet()) { squad -> snapshots[squad.id]?.members.orEmpty().map { it.id } }
+            // A man whose squad's cover stalled closes in from cover to cover, not waiting for fire that never comes.
+            val roles = progress.roles(now, task.objective, members.filter { it.ready }.map { it.id }, attackers, known).let { roles -> roles.copy(covers = roles.covers.filter { (id, cover) -> id !in stalled || cover.isEmpty() }) }
             if (progress.occupying && !occupying) {
                 DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=assault_occupy ready={} defenders={} movers={}", operation, inputs.readyShooters, defenders.size, roles.assault.size)
             }
@@ -797,49 +1452,81 @@ object NativeTactics {
         }
 
         /**
-         * The attacking operation's standing after its losses, over every squad in it, loaded or
-         * not. On [OperationStanding.WITHDRAW] the attack is called off here and each squad falls back.
-         *
-         * Squads with a barracks are left out: it replaces their fallen, so they fight on whatever
-         * they lose (#57). Their men do not count, and a withdrawal pulls back only the squads
-         * without one; the attack goes on while a squad with a barracks is still in it.
+         * The attacking operation's [standing] by its strength, and on [OperationStanding.WITHDRAW] the
+         * [callOff] its plan carries out (#252).
          */
-        private fun standing(operation: UUID, now: Long): OperationStanding {
+        private data class AttackMeasure(val standing: OperationStanding, val callOff: CallOff? = null) {
+            companion object {
+                val STEADY = AttackMeasure(OperationStanding.STEADY)
+            }
+        }
+
+        /** The squads of [operation] still attacking: ordered to, active and not on their way. */
+        private fun attacking(operation: UUID): List<Squad> {
             val manager = SquadManager.get(level)
-            val all = (operations.operation(operation)?.members?.keys ?: setOf(operation))
+            return (operations.operation(operation)?.ground?.keys ?: setOf(operation))
                 .mapNotNull(manager::get)
                 .filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
-            val attacking = all.filter { it.barracks == null }
-            if (attacking.isEmpty()) {
-                losses.remove(operation)
+        }
+
+        /**
+         * Measures the attacking operation by its strength ([CombatStrength]), over every squad in it,
+         * loaded or not: the able men left of the bases its squads went in with. Only measures; on
+         * [OperationStanding.WITHDRAW] the operation's plan calls the attack off ([carryOut]).
+         *
+         * Squads with a barracks are left out: it replaces their fallen, so they fight on whatever
+         * they lose (#57). So are remnants, sent in to fight to the end, and squads not yet measured.
+         * The attack goes on while any of those is still in it.
+         */
+        private fun measure(operation: UUID, now: Long): AttackMeasure {
+            val all = attacking(operation)
+            val counted = all.filter { it.barracks == null && !it.attackRemnant && it.attackBase != null }
+            if (counted.isEmpty()) {
                 standings.remove(operation)
-                return OperationStanding.STEADY
+                return AttackMeasure.STEADY
             }
-            val record = losses.getOrPut(operation, ::OperationLosses)
-            record.retain(attacking.mapTo(HashSet()) { it.id })
-            attacking.forEach { record.observe(it.id, it.members) }
-            val fraction = record.fraction { id -> manager.get(id)?.members.orEmpty() }
-            val standing = OperationLosses.standing(fraction)
+            val base = counted.sumOf { it.attackBase!! }
+            val able = counted.sumOf { AttackStrength.count(it, level).able }
+            val standing = CombatStrength.standing(able, base)
             if (standings.put(operation, standing) != standing) {
-                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_standing standing={} losses={}", operation, standing, "%.2f".format(fraction))
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_standing standing={} able={} base={} tick={}", operation, standing, able, base, now)
             }
-            if (standing == OperationStanding.WITHDRAW) {
-                attacking.forEach { squad ->
-                    val view = snapshots[squad.id]
-                    val reference = squad.members.firstNotNullOfOrNull { level.getEntity(it) as? NpcEntity }
-                    manager.withdraw(squad.id, "operation_losses")
-                    if (view != null && reference != null) manager.setObjective(level, squad.id, net.minecraft.core.BlockPos.containing(AttackAmmoWithdrawal.fallBack(level, reference, view)))
-                    com.sbwnpc.squad.squad.SquadReports.attackFailedLosses(level.server, squad, (fraction * 100).toInt())
-                }
-                losses.remove(operation)
-                standings.remove(operation)
-                // The squads with a barracks fight on. This update still lists the withdrawn squads
-                // with the operation's, so it is skipped like a full withdrawal; the next one plans
-                // the attack without them.
-                if (attacking.size < all.size) {
-                    attacking.forEach { operations.detach(it.id) }
-                    return standing
-                }
+            if (standing != OperationStanding.WITHDRAW) return AttackMeasure(standing)
+            val fallBacks = counted.mapNotNull { squad -> fallBack(squad)?.let { squad.id to it } }.toMap()
+            return AttackMeasure(standing, CallOff(operation, counted.map { it.id }, able, base, counted.size < all.size, fallBacks))
+        }
+
+        /** Where [squad] falls back to from a called-off attack: a Supply behind it when there is one. */
+        private fun fallBack(squad: Squad): FallBack? {
+            val view = snapshots[squad.id] ?: return null
+            val reference = squad.members.firstNotNullOfOrNull { level.getEntity(it) as? NpcEntity } ?: return null
+            return AttackStrength.fallBack(level, squad, reference, view)?.let { FallBack(it.point.point(), it.toSupply) }
+        }
+
+        /**
+         * Calls the attack off as [callOff] says: its squads fall back, and the operation either lets
+         * them go while the squads left out fight on, or ends with its support withdrawn. Done once:
+         * a squad no longer attacking, or an operation no longer running, is not called off again.
+         */
+        private fun carryOut(callOff: CallOff, now: Long): ActionUpdate {
+            val manager = SquadManager.get(level)
+            val operation = callOff.operation
+            val attacking = attacking(operation).mapTo(HashSet()) { it.id }
+            val squads = callOff.squads.filter { it in attacking }.mapNotNull(manager::get)
+            // Already carried out (the plan ran again), or its squads left the attack meanwhile.
+            if (squads.isEmpty()) return ActionUpdate.Completed(listOf(ActionEvidence("attack_already_left", now)))
+            squads.forEach { squad ->
+                val fallBack = callOff.fallBacks[squad.id]
+                manager.withdraw(squad.id, "attack_strength")
+                fallBack?.let { manager.setObjective(level, squad.id, net.minecraft.core.BlockPos.containing(it.point.x, it.point.y, it.point.z)) }
+                SquadReports.attackCalledOff(level.server, squad, callOff.able, callOff.base, fallBack?.toSupply)
+            }
+            standings.remove(operation)
+            if (callOff.partial) {
+                squads.forEach { operations.detach(it.id) }
+            } else if (operations.operation(operation)?.status == OperationStatus.ACTIVE) {
+                // Its support falls back with it, packing its tubes for the rally point (#258).
+                operations.operation(operation)?.support?.keys?.forEach { manager.withdraw(it, "operation_losses") }
                 operations.finish(operation, OperationStatus.CANCELLED)
                 attacks.remove(operation)
                 sectors.remove(operation)
@@ -847,8 +1534,11 @@ object NativeTactics {
                 flankTraces.remove(operation)
                 boundTraces.remove(operation)
                 sectorsHeld.remove(operation)
+                frontRises.remove(operation)
+                refusedRises.remove(operation)
             }
-            return standing
+            DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_called_off squads={} partial={} able={} base={}", operation, squads.size, callOff.partial, callOff.able, callOff.base)
+            return ActionUpdate.Completed(listOf(ActionEvidence("attack_called_off", now)))
         }
 
         private fun nearest(points: List<Point3>, from: Point3) = points.minOfOrNull { hypot(it.x - from.x, it.z - from.z) } ?: 0.0
@@ -864,6 +1554,23 @@ object NativeTactics {
             }
             return engaged
         }
+
+        /**
+         * The point pending [squad] marches to ([ReinforcementMarch.marchPoint]), worked out from
+         * [from] the first time it is asked under its current pending link and kept for that link, so
+         * its own drift does not move it; a new order is a new link and gets its own. Null while it
+         * stands within the stand-off, looked at again each pass, so a squad pushed back out marches in.
+         */
+        private fun reinforcementPoint(squad: UUID, from: Point3): Point3? {
+            val pending = operations.pending(squad) ?: return null
+            reinforcementPoints[squad]?.takeIf { it.first == pending.command }?.let { return it.second }
+            reinforcementPoints.remove(squad)
+            val objective = operations.operation(pending.operation)?.entry?.center ?: return null
+            return ReinforcementMarch.marchPoint(objective, from)?.also { reinforcementPoints[squad] = pending.command to it }
+        }
+
+        /** The point pending [squad] marches to under its current link: null when it has none. */
+        fun reinforcementPoint(squad: UUID): Point3? = operations.pending(squad)?.let { pending -> reinforcementPoints[squad]?.takeIf { it.first == pending.command }?.second }
 
         /** Where an attacking operation's squads close on: its area objective, or the order's own. */
         private fun attackObjective(operation: UUID, squads: List<Squad>): Point3? {
@@ -961,6 +1668,54 @@ object NativeTactics {
             return Terrain.feetAt(level, Vec3(point.x, surface.toDouble(), point.z))
         }
 
+        /**
+         * The rise by an attack's front its [heightMen] could fight from, while it is [fighting], read off the heightmap
+         * round the centre of their front [proposals] at most every [FRONT_RISE_TICKS], or null
+         * without one. A rise one of them failed to find a post on is refused, and another looked for.
+         */
+        private fun frontRise(operation: UUID, fighting: Boolean, heightMen: List<TacticalMember>, proposals: Map<UUID, FrontProposal>, now: Long): Point3? {
+            val posts = heightMen.mapNotNull { proposals[it.id]?.anchor }
+            if (!fighting || posts.isEmpty()) return null
+            val offered = frontRises[operation]?.second
+            val refused = refusedRises.getOrPut(operation, ::ArrayList)
+            // A height man's OBSERVE anchor is the rise itself, so his failed search names it exactly.
+            if (offered != null && heightMen.any { failures[it.id]?.anchor == offered }) {
+                refused += offered.native()
+                if (refused.size > MAX_REFUSED_RISES) refused.removeAt(0)
+                frontRises.remove(operation)
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=front_rise_refused rise={}", operation, offered)
+            }
+            frontRises[operation]?.takeIf { now - it.first < FRONT_RISE_TICKS }?.let { return it.second }
+            val front = Vec3(posts.map { it.x }.average(), posts.map { it.y }.average(), posts.map { it.z }.average())
+            val rise = FrontHeights.rise(level, front, refused)?.point()
+            if (rise != offered) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=front_rise front={} rise={}", operation, front, rise)
+            frontRises[operation] = now to rise
+            return rise
+        }
+
+        /**
+         * The noise [squads] send their scouts to look at, or null (#254): nothing in a fight or on a
+         * reinforcement's march ([busy], which also forgets what was heard of it), nor while any of them is under an order that sends nobody
+         * ([MemberDuties.SCOUTING_ORDERS]), nor one farther than [UnverifiedContacts.SCOUT_RADIUS] from
+         * the point the squads hold or take. A spot a scout of [scouts] has come near or sees is checked
+         * on the way, so the next one heard is the answer.
+         */
+        private fun alarmToCheck(squads: List<Squad>, scouts: Set<UUID>, busy: Boolean, anchor: () -> Point3, now: Long): Point3? {
+            val boards = squads.mapNotNull { alarms[it.id] }
+            // The noise of its own fight is no spot to look at once it is over.
+            if (busy) boards.forEach { it.forget() }
+            if (busy || boards.isEmpty() || squads.any { it.order.tactical() !in MemberDuties.SCOUTING_ORDERS }) return null
+            val from = anchor()
+            val pending = { boards.firstNotNullOfOrNull { it.pending(now, from, UnverifiedContacts.SCOUT_RADIUS) } }
+            val spot = pending() ?: return null
+            val seenBy = scouts.mapNotNull { level.getEntity(it) as? NpcEntity }.firstOrNull {
+                it.position().point().horizontalDistanceSquared(spot) <= SquadAlarms.ARRIVAL * SquadAlarms.ARRIVAL || (boards.none { board -> board.walkTo(spot) } && DeathSites.canConfirm(it, spot.native()))
+            } ?: return spot
+            boards.forEach { it.checked(spot, now) }
+            DebugFlags.log(LogGroup.HEARING, "[htn] squad={} event=alarm_checked spot={} by={}", squads.first().id, spot, seenBy.uuid)
+            return pending()
+        }
+
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
         private fun layout(squads: List<Squad>, now: Long, holding: Boolean = false): List<SquadMission> {
             val seen = squads.flatMap { combatView(it.id)!!.contacts }.filter { now - it.seenAt <= 200 }.distinctBy { it.id }
@@ -973,6 +1728,7 @@ object NativeTactics {
                 squads.forEach {
                     reinforcementFire.remove(it.id)
                     reinforcementEngaged.remove(it.id)
+                    reinforcementPoints.remove(it.id)
                 }
             }
             val center = Vec3(members.map { it.position.x }.average(), members.map { it.position.y }.average(), members.map { it.position.z }.average())
@@ -986,9 +1742,18 @@ object NativeTactics {
             }
             val inspectAnchor = { UnverifiedContacts.inspectAnchor(currentAreaTask(operation)?.objective, squads.first().objective?.let { Vec3.atBottomCenterOf(it).point() }, center.point()) }
             val activeAttack = squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it).point() }
-            val inspect = UnverifiedContacts.inspectTarget(focus != null, marching, inspectAnchor, remembered.values.map { it.point() }, activeAttack)?.native()
-            val existingScouts = squads.flatMap { missions[it.id]?.teams.orEmpty() }.flatMap { it.members }.filter { it.duty == CombatDuty.SEARCH }.mapTo(HashSet()) { it.actor.id }
-            val candidates = squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready }.map { it.id to it.position.point() }
+            val previousDuties = squads.flatMap { missions[it.id]?.teams.orEmpty() }.flatMap { it.members }.associate { it.actor.id to it.duty }
+            val existingScouts = previousDuties.filterValues { it == CombatDuty.SEARCH }.keys
+            val attacking = squads.all { it.order == SquadOrder.ATTACK }
+            val busy = focus != null || marching
+            val alarm = alarmToCheck(squads, existingScouts, busy, inspectAnchor, now)
+            // Only an attack goes looking for an enemy it saw; under any other order it is the noise alone (#254).
+            val inspect = UnverifiedContacts.inspectTarget(busy, inspectAnchor, if (attacking) remembered.values.map { it.point() } else emptyList(), alarm, activeAttack)?.native()
+            // A sentry is no scout, on his height or still on his way to it: the scout rule comes before
+            // his post and would take him off it. A height man of a squad that keeps sentries counts as one.
+            val keepsSentries = squads.filter { it.order == SquadOrder.DEFEND || (it.order == SquadOrder.PATROL && !snapshots.getValue(it.id).hasPatrolRoute) }.mapTo(HashSet()) { it.id }
+            val candidates = squads.flatMap { saved -> snapshots.getValue(saved.id).members.filterNot { saved.id in keepsSentries && it.role in HEIGHT_ROLES && it.primaryAmmo } }
+                .filter { it.ready && previousDuties[it.id] != CombatDuty.OBSERVE }.map { it.id to it.position.point() }
             val scouts = UnverifiedContacts.scouts(candidates, existingScouts, inspect?.point())
             val actors = squads.flatMap { saved ->
                 snapshots.getValue(saved.id).members.map { member ->
@@ -1016,6 +1781,7 @@ object NativeTactics {
                 }.associate { (id, proposal) -> id to withSight(operation, id, proposal, defenders, members.first { it.id == id }.role) }
             }
             proposals.forEach { (id, proposal) -> formationDuties[id] = proposal.duty }
+            val rise = frontRise(operation, attacking && focus != null, members.filter { it.role in HEIGHT_ROLES && it.primaryAmmo }, proposals, now)
             // A man far round the objective from his sector gets there along the arc, not across the
             // point. Once the assault is on, its closing posts lead him to the point instead.
             val waypoints = if (bearings.isEmpty() || objective == null || (attacks[operation]?.phase ?: AttackPhase.DEPLOY) != AttackPhase.DEPLOY) {
@@ -1043,13 +1809,18 @@ object NativeTactics {
             return squads.map { saved ->
                 val view = snapshots.getValue(saved.id)
                 if (view.incoming.isNotEmpty()) lastHits[saved.id] = now
+                if (view.closeContact) closeContacts[saved.id] = now
+                // Falling back, only an enemy its men see near is a fight: on reported ones the
+                // squad bounded all the way back (#253).
+                val retreating = saved.order == SquadOrder.RETREAT
+                val contact = if (retreating) closeContacts[saved.id]?.let { now - it <= RETREAT_CONTACT_TICKS } == true else focus != null
                 if (focus == null) {
                     lastAbove.remove(saved.id)
                 } else if (focus.y > view.center.y + 4) {
                     lastAbove[saved.id] = now
                 }
                 val situation = CombatSituation(
-                    focus != null,
+                    contact,
                     // An operation reviewing its losses holds the line it has instead of pushing on;
                     // a squad with a barracks presses on (#57).
                     saved.order == SquadOrder.ATTACK && (!holding || saved.barracks != null),
@@ -1060,39 +1831,46 @@ object NativeTactics {
                     view.fighting.isNotEmpty(),
                     reinforced = saved.barracks != null,
                     underFire = lastHits[saved.id]?.let { now - it <= UNDER_FIRE_TICKS } == true,
+                    retreating = retreating,
                 )
                 val strategy = strategies[saved.id]?.first
                 val strategyKept = strategy == null || seenStrategies.put(saved.id, strategy) == strategy
                 val old = missions[saved.id]
                 val oldIntents = old?.teams?.flatMap { it.members }?.associateBy { it.actor.id }.orEmpty()
-                // Marching on, an attack's reinforcement makes for the operation's entry itself: left to
-                // the order's own march, each man's sighted target still drew him off after it.
-                val entry = if (marching && saved.order == SquadOrder.ATTACK) operations.pending(saved.id)?.let { operations.operation(it.operation) }?.entry?.center else null
+                // Marching on, an attack's reinforcement makes for its own point short of the objective:
+                // left to the order's own march, each man's sighted target still drew him off after it.
+                // The point is fixed once, so the squad's own drift does not move it every pass.
+                val entry = if (marching && saved.order == SquadOrder.ATTACK) reinforcementPoint(saved.id, view.center.point()) else null
                 val following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW
-                val transit = SquadTransit.distant(saved, level)
+                val transit = journeys[saved.id] == saved.orderStamp
                 val leader = if (following) level.getPlayerByUUID(saved.owner) else null
                 val heading = saved.followHeading.takeIf { it != net.minecraft.world.phys.Vec3.ZERO }?.let { it.x to it.z }
                 val intents = view.members.mapIndexed { index, member ->
-                    val man = if (following) level.getEntity(member.id) as? NpcEntity else null
+                    val man = if (following || retreating) level.getEntity(member.id) as? NpcEntity else null
                     val leaderAt = leader?.position()?.point()
                     val toLeader = leaderAt?.let { kotlin.math.hypot(member.position.x - it.x, member.position.z - it.z) } ?: 0.0
                     val waypoint = waypoints[member.id]
                     val proposal = waypoint?.let { FrontProposal(CombatDuty.MOVE, it, null) } ?: proposals.getValue(member.id)
-                    val ruled = entry?.takeUnless { transit }?.let { RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)) } ?: MemberDuties.choose(
+                    val held = dutyRules[member.id]
+                    val decision = entry?.takeUnless { transit }?.let { DutyDecision(RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)), null) } ?: MemberDuties.choose(
                         DutyInputs(
                             order = saved.order.tactical(),
                             position = member.position.point(),
                             proposal = proposal,
                             objective = saved.objective?.center?.point(),
                             inspect = inspect?.point(),
-                            inContact = focus != null,
+                            inContact = contact,
                             elsewhere = saved.objectiveDimension?.let { it != level.dimension() } == true,
                             scout = member.id in scouts,
                             heightRole = member.role in HEIGHT_ROLES,
                             primaryAmmo = member.primaryAmmo,
+                            sidearm = member.sidearmOnly,
+                            health = member.health,
+                            height = rise?.takeIf { member.role in HEIGHT_ROLES },
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
-                            wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
+                            // A pistol's FIRE is no post he settled on: with his main weapon back he moves on with the others.
+                            wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE && dutyRules[member.id]?.rule != "sidearm_fire",
                             // A patrol roams its whole area, so a sentry inside it has arrived; the defenders' ring radius
                             // sent him roaming with the riflemen until he happened to pass near the objective.
                             arrival = if (saved.order == SquadOrder.PATROL) {
@@ -1107,14 +1885,26 @@ object NativeTactics {
                             // a slot parity can leave one half empty, so nobody covers or nobody runs.
                             followBound = following && OperationTactics.followBound(index, now, toLeader),
                             followSlot = leaderAt?.let { com.sbwnpc.squad.combat.FollowFormation.slot(it, heading, saved.members.indexOf(member.id), heading != null) },
-                            followRide = leader?.vehicle != null || man?.activities?.has(com.sbwnpc.squad.entity.NpcActivity.VEHICLE) == true,
+                            followRide = leader?.vehicle != null || man?.holds(com.sbwnpc.squad.entity.NpcActivity.VEHICLE) == true,
                             transit = transit,
+                            // A man his out-of-ammunition rule runs back is not his squad's to move (#253).
+                            retreatSlot = man?.takeIf { retreating && movable(it) }?.let { m -> m.homeCenter()?.let { com.sbwnpc.squad.combat.SquadAreas.rallySlot(m, it).point() } },
                         ),
                         FIRE_POST_REACH,
                         CombatPosition.LOCAL_MOVE_RADIUS,
+                        held,
+                        now,
                     )
-                    if (dutyRules.put(member.id, ruled.rule) != ruled.rule) {
-                        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_rule rule={} duty={}", member.id, ruled.rule, ruled.choice.duty)
+                    val ruled = decision.ruled
+                    dutyRules[member.id] = HeldDuty(ruled.rule, ruled.choice, held?.takeIf { it.rule == ruled.rule }?.since ?: now)
+                    val weighed by lazy { decision.evaluation?.describe() ?: "hard" }
+                    if (held?.rule != ruled.rule) {
+                        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_rule rule={} duty={} options={}", member.id, ruled.rule, ruled.choice.duty, weighed)
+                        DecisionTrace.man(member.id, now, "duty", "${ruled.choice.duty} <- ${ruled.rule} [$weighed]")
+                    } else if (decision.evaluation?.close(DutyUtility.CLOSE_MARGIN) == true && now - (closeDuties[member.id] ?: Long.MIN_VALUE / 2) >= CLOSE_DUTY_LOG_TICKS) {
+                        // The options drifting close is what comes before a flip: shown only on a flip, it never was.
+                        closeDuties[member.id] = now
+                        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_close rule={} options={}", member.id, ruled.rule, weighed)
                     }
                     val choice = ruled.choice
                     val duty = choice.duty
@@ -1124,8 +1914,13 @@ object NativeTactics {
                     // stood five seconds before. Nor does it wait for cover: when the whole squad runs to
                     // catch up there is nobody left to give it, and the run was planned over and over.
                     val bounding = following && duty == CombatDuty.MOVE
-                    val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding
-                    val requireShelter = PostRequirements.shelter(duty, situation.incoming)
+                    // Falling back he runs for his place whatever fires at him, as an ordered retreat
+                    // always did: waiting for covering fire or shelter, a squad with nobody left to
+                    // give it stayed where it was ordered away from. In contact its halves cover
+                    // each other instead ([CombatStrategy.BOUND_OVERWATCH]).
+                    val fallingBack = retreating && duty == CombatDuty.MOVE
+                    val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding && !fallingBack
+                    val requireShelter = PostRequirements.shelter(duty, situation.incoming) && !fallingBack
                     val settled = strategyKept && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
                     val moving = waypoint != null || member.id in wasArcing || bounding
                     val byLegs = ruled.rule in LEG_RULES
@@ -1156,7 +1951,9 @@ object NativeTactics {
                             inspection = if (duty == CombatDuty.SEARCH) inspect?.point() else null,
                             standoff = sightClearance?.let { minOf(it, CombatPositionSafety.clearance(member.role)) } ?: CombatPositionSafety.clearance(member.role),
                             sightClearance = sightClearance,
-                            ordered = bounding,
+                            // A travelling squad's men make for the vehicles or the objective: no cover
+                            // on the way, and its strategy stands aside (#228, #255).
+                            ordered = bounding || transit,
                             legs = byLegs,
                         )
                     }
@@ -1165,9 +1962,10 @@ object NativeTactics {
                     DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=follow_bound running={} of={}", saved.id, intents.count { it.duty == CombatDuty.MOVE }, intents.size)
                 }
                 val movers = intents.filter { it.legs && it.duty == CombatDuty.MOVE && !it.assault && !it.ordered }
-                // Only an attack bounds or regroups. Measured for every squad, the spread of one
-                // walking behind its player changed its situation, and replanned it, nearly every time.
-                situations[saved.id] = if (!situation.offensive) {
+                // Only an attack or a retreat bounds, and only an attack regroups. Measured for every
+                // squad, the spread of one walking behind its player changed its situation, and
+                // replanned it, nearly every time.
+                situations[saved.id] = if (!situation.offensive && !retreating) {
                     situation
                 } else {
                     val radius = com.sbwnpc.squad.combat.SquadFormation.perimeterRadius(view.members.size)
@@ -1183,9 +1981,11 @@ object NativeTactics {
                         regrouping = strategy == CombatStrategy.REGROUP && strategies[saved.id]!!.second + REGROUP_MAX_TICKS > now,
                         regroupSpent = (strategy == CombatStrategy.REGROUP && strategies[saved.id]!!.second + REGROUP_MAX_TICKS <= now) ||
                             regroupEnds[saved.id]?.let { now - it < REGROUP_COOLDOWN_TICKS } == true,
+                        coverStalled = coverStalled(saved.id, now),
                     )
                 }
                 updateBoundTurn(saved.id, movers, view, focus, now)
+                if (retreating) coverRetreat(saved, view, contact) else retreatSmoke.forget(saved.id)
                 updateRally(saved.id, strategy, view.center, focus)
                 val teams = teamAllocators.getOrPut(saved.id, ::TaskTeamAllocator).assign(saved.id, intents)
                 SquadMission(AgentId(AgentLevel.SQUAD, saved.id), teams).also { missions[saved.id] = it }
@@ -1193,10 +1993,135 @@ object NativeTactics {
         }
 
         /**
+         * Screens a retreating squad with smoke once it is fired on ([RetreatSmoke]): towards the
+         * nearest enemy its men see in [contact], or else where the fire came from. Squads pulled
+         * back out of contact mostly threw nothing until fire from an unseen enemy counted too
+         * (in-game 21.10).
+         */
+        private fun coverRetreat(saved: Squad, view: TacticalSnapshot, contact: Boolean) {
+            val fireFrom = view.incoming.firstOrNull()
+            val men = view.members.mapNotNull { level.getEntity(it.id) as? NpcEntity }
+            // A target one of them fights, not a contact only reported to the squad.
+            val seen = men.mapNotNull { it.target?.takeIf { target -> target.isAlive } }.minByOrNull { it.position().distanceToSqr(view.center) }?.position()
+            val toward = if (contact) seen ?: fireFrom else fireFrom
+            retreatSmoke.cover(saved.id, saved.orderStamp, men, boundTurns[saved.id]?.turn?.posts?.keys.orEmpty(), toward)
+        }
+
+        /**
+         * Decides whether [saved] travels to its objective, for the whole squad ([SquadJourney]) from
+         * its men on foot here now, and records it for its plan and the vehicle and order behaviours.
+         * A squad with every man aboard keeps what it decided.
+         */
+        private fun journey(saved: Squad) {
+            val onFoot = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive && it.vehicle == null && it.squadId == saved.id }
+            if (onFoot.isEmpty()) return
+            val contacts = onFoot.map(SquadTransit::contact)
+            val contact = JourneyContact(contacts.any { it.enemy }, contacts.any { it.mob })
+            val travelling = journeys[saved.id] == saved.orderStamp
+            val travels = SquadJourney.travels(SquadTransit.distant(saved, level), contact, travelling)
+            if (travels != travelling) {
+                if (travels) journeys[saved.id] = saved.orderStamp else journeys.remove(saved.id)
+                DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=journey travels={} contact={}", saved.id, travels, contact)
+                DecisionTrace.group(saved.id, level.gameTime, "squad", "journey", if (travels) "travels to its objective" else "stays to fight or arrives, contact=$contact")
+            }
+        }
+
+        /**
+         * Works out the seats [saved]'s men are due for its journey ([SeatAllocation]) from those its
+         * plan gave out, every [SEAT_CHECK_TICKS]. Only while a man on foot has neither a seat nor
+         * word to walk: once all have one, nothing is searched till the order changes.
+         */
+        private fun seats(saved: Squad, now: Long) {
+            if (now < (seatChecks[saved.id] ?: Long.MIN_VALUE)) return
+            seatChecks[saved.id] = now + SEAT_CHECK_TICKS
+            val ride = rides[saved.id]?.takeIf { it.stamp == saved.orderStamp }
+            val given = ride?.seats ?: SeatPlan.EMPTY
+            val riders = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }
+                .filter { it.isAlive && it.vehicle == null && it.squadId == saved.id && it.assignedVehicleId == null }
+            if (saved.id in seatsDue && riders.none { given.undecided(it.uuid) }) return
+            val plan = SeatAllocation.allocate(given, riders.map { SeatRider(it.uuid, it.position().point()) }, SquadTransit.seatVehicles(saved, riders, level), ride?.refused.orEmpty())
+            if (seatsDue.put(saved.id, plan) != plan) {
+                DebugFlags.log(LogGroup.VEHICLE, "[htn] squad={} event=seats seats={} walks={}", saved.id, plan.seats, plan.walks)
+                DecisionTrace.group(saved.id, now, "squad", "seats", "${plan.seats.size} ride in ${plan.seats.values.map { it.vehicle }.distinct().size} vehicles, ${plan.walks.size} walk")
+            }
+        }
+
+        /** Gives [squad]'s men the [seats] its plan decided on, under its current order. */
+        private fun board(squad: UUID, seats: SeatPlan) {
+            val stamp = SquadManager.get(level).get(squad)?.orderStamp ?: return
+            val ride = rides[squad]?.takeIf { it.stamp == stamp }
+            if (ride?.seats != seats) rides[squad] = SquadRide(stamp, seats, ride?.refused.orEmpty())
+        }
+
+        /**
+         * Works out, for each ground team of a squad in a fight that is not travelling and whose
+         * order lets a man leave for a gun, who mans which empty armed vehicle nearby
+         * ([WeaponStations]), keeping what its plan gave out. Nothing for the others.
+         */
+        private fun weaponStations(manager: SquadManager) {
+            val due = HashMap<AgentId, StationPlan>()
+            missions.forEach { (squadId, mission) ->
+                val saved = manager.get(squadId) ?: return@forEach
+                if (situations[squadId]?.contact != true) return@forEach
+                val refused = when {
+                    squadId in journeys -> "travelling"
+                    !WeaponStationScan.orderAllows(saved, level) -> "order_${saved.order}"
+                    else -> null
+                }
+                if (stationRefusals.put(squadId, refused) != refused && refused != null) DebugFlags.log(LogGroup.VEHICLE, "[htn] squad={} event=weapon_stations_refused reason={}", squadId, refused)
+                if (refused != null) return@forEach
+                mission.teams.forEach { team ->
+                    val men = team.members.mapNotNull { level.getEntity(it.actor.id) as? NpcEntity }.filter(WeaponStationScan::free)
+                    val guns = WeaponStationScan.stations(men, level)
+                    // Only to a man whose own enemy the gun bears on: given to one who could not open fire, it stood unmanned.
+                    val plan = WeaponStations.assign(stations[team.agent].orEmpty(), guns, WeaponStationScan.hands(men))
+                        .filter { (vehicle, man) -> men.first { it.uuid == man }.let { WeaponStationScan.bears(it, vehicle, level) } }
+                    if (plan.isNotEmpty()) due[team.agent] = StationPlan(plan)
+                }
+            }
+            due.filter { (team, plan) -> stationsDue[team] != plan }.forEach { (team, plan) ->
+                DebugFlags.log(LogGroup.VEHICLE, "[htn] team={} event=weapon_stations men={}", team.id, plan.men)
+            }
+            stationsDue.clear()
+            stationsDue.putAll(due)
+        }
+
+        /** The vehicle whose gun [npc]'s team plan sent him to man, if any. */
+        fun stationOf(npc: NpcEntity): UUID? = stations.values.firstNotNullOfOrNull { men -> men.entries.firstOrNull { it.value == npc.uuid }?.key }
+
+        /** The seat [npc]'s squad gave him for its journey under its current order. */
+        fun seatOf(npc: NpcEntity): RideSeat? = ride(npc)?.seats?.seats?.get(npc.uuid)
+
+        /** Whether [npc]'s squad told him to walk its journey: no seat for him under this order. */
+        fun walks(npc: NpcEntity): Boolean = ride(npc)?.seats?.walks?.contains(npc.uuid) == true
+
+        /**
+         * [npc] could not board the seat he was given in [vehicle]: he loses it, and that vehicle is
+         * not given him again this order, so the next look gives him another or sends him walking.
+         */
+        fun seatRefused(npc: NpcEntity, vehicle: UUID) {
+            val squad = npc.squadId ?: return
+            val ride = ride(npc) ?: return
+            rides[squad] = ride.copy(
+                seats = ride.seats.copy(seats = ride.seats.seats - npc.uuid),
+                refused = ride.refused + (npc.uuid to ride.refused[npc.uuid].orEmpty() + vehicle),
+            )
+            seatChecks.remove(squad)
+        }
+
+        private fun ride(npc: NpcEntity): SquadRide? = npc.currentSquad()?.let { squad -> rides[squad.id]?.takeIf { it.stamp == squad.orderStamp } }
+
+        /** The rule [man]'s duty was last chosen by, while his squad's order stands. */
+        fun dutyRule(man: UUID): String? = dutyRules[man]?.rule
+
+        /** Whether [npc]'s squad travels to its objective under its current order. */
+        fun travelling(npc: NpcEntity): Boolean = npc.currentSquad()?.let { journeys[it.id] == it.orderStamp } == true
+
+        /**
          * Starts or swaps the turn of a squad bounding by halves. A turn ends once every mover of
          * its moving half still moving has finished a leg more than when it began, or after
-         * [BOUND_TURN_TICKS]; the other movers then move. The first halves alternate along the
-         * front, so each half covers all of it.
+         * [BOUND_TURN_TICKS] ([RETREAT_BOUND_TURN_TICKS] in a retreat); the other movers then move. The first
+         * halves are split by [BoundHalves], so each covers all of the front and a heavy gun covers each rush.
          */
         private fun updateBoundTurn(squad: UUID, movers: List<PositionIntent>, view: TacticalSnapshot, focus: Vec3?, now: Long) {
             if (strategies[squad]?.first != CombatStrategy.BOUND_OVERWATCH) {
@@ -1207,12 +2132,13 @@ object NativeTactics {
             val current = boundTurns[squad]
             val reason = when {
                 current == null -> "start"
-                now - current.startedAt >= BOUND_TURN_TICKS -> "timeout"
+                now - current.startedAt >= if (situations[squad]?.retreating == true) RETREAT_BOUND_TURN_TICKS else BOUND_TURN_TICKS -> "timeout"
                 current.turn.moving.filter { it in ids }.all { (legs[it] ?: 0) > (current.legsAtStart[it] ?: 0) } -> "legs_done"
                 else -> return
             }
             val waiting = ids.filter { current != null && it !in current.turn.moving }
-            val moving = waiting.ifEmpty { alongFront(movers, view.center, focus).filterIndexed { index, _ -> index % 2 == 0 } }.toSet()
+            val heavy = view.members.filter { it.role in HEIGHT_ROLES }.mapTo(HashSet()) { it.id }
+            val moving = waiting.ifEmpty { BoundHalves.firstMoving(alongFront(movers, view.center, focus), heavy) }.toSet()
             val posts = view.members.filter { it.id !in moving }.associate { it.id to it.position.point() }
             val turn = BoundTurn((current?.turn?.number ?: -1) + 1, moving, posts)
             boundTurns[squad] = BoundState(turn, now, moving.associateWith { legs[it] ?: 0 })
@@ -1264,17 +2190,36 @@ object NativeTactics {
 
         /**
          * Whether [actor]'s next rush is covered ([PositionIntent.coveredBy]): one of the men covering
-         * it fired lately, none of them has anything to fire at, or he has waited
-         * [SUPPORT_FALLBACK_TICKS] since his last leg.
+         * it fired lately. Nothing else starts it: with no target, the fallback of 3 s or the cover
+         * dead, rushes went out uncovered (in-game 03.11). Waiting [SUPPORT_STALL_TICKS] on the same
+         * leg stalls his squad's cover, and its strategy changes ([CombatSituation.coverStalled]);
+         * a rush still waiting keeps waiting until that strategy's plan replaces it.
+         *
+         * A retreat does not wait: its halves cover each other when they can, and a squad ordered
+         * away must not stand under fire for want of targets to shoot back at.
          */
         private fun supportFiring(actor: AgentId, now: Long): Boolean {
             val cover = goals[actor]?.coveredBy?.takeIf { it.isNotEmpty() } ?: return true
+            val squad = (level.getEntity(actor.id) as? NpcEntity)?.squadId
+            if (squad != null && situations[squad]?.retreating == true) return true
+            // Stalled, the squad gives up rushes under covering fire and its next plan sends the man
+            // from cover to cover. Released here instead, his rush would cross the open uncovered.
+            if (squad != null && coverStalled(squad, now)) return false
+            if (cover.mapNotNull { level.getEntity(it) as? NpcEntity }.any { it.isAlive && it.firedRecently(SUPPORT_FIRE_TICKS) }) return true
             val leg = legs[actor.id] ?: 0
             val since = supportWaits[actor.id]?.takeIf { it.first == leg }?.second ?: now.also { supportWaits[actor.id] = leg to it }
-            if (now - since >= SUPPORT_FALLBACK_TICKS) return true
-            val men = cover.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
-            return men.none { it.target != null } || men.any { it.firedRecently(SUPPORT_FIRE_TICKS) }
+            if (squad != null && now - since >= SUPPORT_STALL_TICKS && !coverStalled(squad, now)) {
+                coverStalls[squad] = now
+                DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=cover_stalled actor={} waited={}", squad, actor.id, now - since)
+            }
+            return false
         }
+
+        private fun coverStalled(squad: UUID, now: Long) = coverStalls[squad]?.let { now - it < COVER_STALL_TICKS } == true
+        fun keepAloft(npc: NpcEntity) = air.keepAloft(npc, level.gameTime)
+
+        fun keepFlying(npc: NpcEntity) = drones.keepFlying(npc)
+
         fun tick(npc: NpcEntity) {
             refresh(npc)
             val now = level.gameTime
@@ -1289,6 +2234,9 @@ object NativeTactics {
                     }
                 }
                 finishAreas()
+                if (DecisionTrace.on) {
+                    DecisionTrace.tick(level.server.tickCount.toLong(), VersionCompat.serverDirectory(level.server).resolve("logs").resolve(DecisionTrace.FILE)) { NativeTactics.traceSections() }
+                }
             }
             val id = AgentId(AgentLevel.NPC, npc.uuid)
             val agent = agents[id] ?: return
@@ -1300,6 +2248,111 @@ object NativeTactics {
             actions[npc.uuid]?.maintainLook()
             report(agent, now)
         }
+
+        /** The options each agent's current plan search weighed per task, until its result comes in. */
+        private val weighing = HashMap<AgentId, LinkedHashMap<String, MutableList<String>>>()
+
+        /** The squad or operation an agent's decisions are filed under; a man's own go to him. */
+        private fun traceGroup(id: AgentId): UUID? =
+            when (id.level) {
+                AgentLevel.OPERATION, AgentLevel.SQUAD -> id.id
+                AgentLevel.TEAM -> fireSupport.roster.groupOf(id) ?: air.roster.groupOf(id) ?: missions.entries.firstOrNull { (_, mission) -> mission.teams.any { it.agent == id } }?.key
+                AgentLevel.NPC -> null
+            }
+
+        /** Gathers what the planner weighed; the decision is recorded once its result is in ([flushPlanning]). */
+        private fun tracePlanning(id: AgentId, event: PlanningEvent) {
+            val method = event.method ?: return
+            val option = when (val verdict = event.verdict) {
+                Verdict.Allowed -> "$method ${event.score?.value?.let { "%.2f".format(it) } ?: "-"}"
+                is Verdict.Rejected -> "$method rejected: ${verdict.reason}"
+                is Verdict.Unknown -> "$method unknown: ${verdict.facts}"
+            }
+            val options = weighing.getOrPut(id, ::LinkedHashMap).getOrPut(event.node, ::ArrayList)
+            if (option !in options) options += option
+        }
+
+        /**
+         * Records each task the search had a real choice at (more than one option, or a rejection),
+         * the option the plan took marked `*`, and how the search ended.
+         */
+        private fun flushPlanning(id: AgentId, result: PlanningResult) {
+            val weighed = weighing.remove(id) ?: return
+            val taken = (result as? PlanningResult.Ready)?.plan?.tasks?.map { it.node }.orEmpty()
+            val record = { event: String, detail: String ->
+                val group = traceGroup(id)
+                if (group != null) {
+                    DecisionTrace.group(group, level.gameTime, "${id.level} ${DecisionTrace.short(id.id)}", event, detail)
+                } else if (id.level == AgentLevel.NPC) {
+                    DecisionTrace.man(id.id, level.gameTime, event, detail)
+                }
+            }
+            weighed.filterValues { options -> options.size > 1 || options.any { "rejected" in it } }.forEach { (node, options) ->
+                val marked = options.map { option ->
+                    val method = option.substringBefore(' ')
+                    if (taken.any { it == "$node/$method" || it.startsWith("$node/$method/") }) "*$option" else option
+                }
+                record("plan", "$node: ${marked.joinToString("; ")}")
+            }
+            when (result) {
+                is PlanningResult.Failed -> record("plan_failed", result.reasons.distinct().joinToString("; ") + if (result.limitReached) " (search limit)" else "")
+                is PlanningResult.WaitingForFacts -> record("plan_waiting", result.facts.joinToString(", "))
+                else -> Unit
+            }
+        }
+
+        private fun traceAction(id: AgentId, reason: String?) {
+            val now = level.gameTime
+            val group = traceGroup(id)
+            if (group != null) DecisionTrace.group(group, now, "${id.level} ${DecisionTrace.short(id.id)}", "action_failed", reason.orEmpty()) else DecisionTrace.man(id.id, now, "action_failed", reason.orEmpty())
+        }
+
+        /** The ids whose trace records are still wanted: squads, their operations and men in this level. */
+        fun traceIds(): Set<UUID> {
+            weighing.keys.retainAll(agents.keys)
+            val manager = SquadManager.get(level)
+            return manager.all().flatMapTo(HashSet()) { squad -> squad.members + squad.id + listOfNotNull(operations.operationOf(squad.id)?.id) }
+        }
+
+        /** Each squad with men in this level, its chain per man and its last decisions, for [DecisionTrace]. */
+        fun traceSections(): List<DecisionTrace.Section> {
+            val manager = SquadManager.get(level)
+            return manager.all().mapNotNull { squad ->
+                val men = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }
+                if (men.isEmpty()) return@mapNotNull null
+                val operation = operations.operationOf(squad.id)
+                val command = squad.command
+                val header = listOf(
+                    "order=${squad.order} command=${command?.order}/${command?.id?.let(DecisionTrace::short)} goal=${command?.goal} outcome=${squad.commandOutcome}${squad.commandReason?.let { " reason=$it" }.orEmpty()} objective=${squad.objective?.toShortString()}",
+                    "operation=${operation?.id?.let(DecisionTrace::short)} squads=${operation?.members?.size ?: 1} phase=${operation?.let { attackPhase(it.id) }} standing=${operation?.let { standings[it.id] }}",
+                    "strategy=${strategyOf(squad.id)} approach=${approachOf(squad.id)}",
+                )
+                val teams = missions[squad.id]?.teams.orEmpty()
+                val chains = men.map { npc -> chainOf(npc, teams) }
+                val decisions = (
+                    DecisionTrace.decisionsOf(squad.id) + operation?.let { DecisionTrace.decisionsOf(it.id) }.orEmpty() +
+                        men.flatMap { DecisionTrace.decisionsOf(it.uuid) }
+                    ).sortedBy { it.tick }.takeLast(DecisionTrace.LAST_DECISIONS)
+                DecisionTrace.Section("${squad.name} ${squad.id}", header, chains, decisions)
+            }
+        }
+
+        /** One man's line: his duty and the rule that set it, his post, his action or why he waits, and what else holds him. */
+        private fun chainOf(npc: NpcEntity, teams: List<TeamMission>): String {
+            val action = actions[npc.uuid]
+            val intent = action?.intent
+            val team = teams.firstOrNull { team -> team.members.any { it.actor.id == npc.uuid } }?.agent?.id?.let(DecisionTrace::short)
+            val reports = agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports.orEmpty()
+                .entries.joinToString(",") { (task, report) -> "$task:${report.status}${report.reason?.let { "($it)" }.orEmpty()}" }
+            val failure = failures[npc.uuid]?.takeIf { level.gameTime < it.failedAt + FAILURE_MEMORY_TICKS }
+            val target = npc.target?.let { "${DecisionTrace.short(it.uuid)}@${npc.distanceTo(it).toInt()}" }
+            val flags = listOfNotNull("suppressed".takeIf { npc.isSuppressed() }, "alert".takeIf { npc.isAlert() }, "in_vehicle".takeIf { npc.vehicle != null })
+            return "${DecisionTrace.short(npc.uuid)} ${npc.npcClass} team=$team duty=${intent?.duty} <- ${dutyRules[npc.uuid]?.rule} anchor=${intent?.anchor?.let { "%.0f,%.0f,%.0f".format(it.x, it.y, it.z) }}" +
+                " post=${action?.assignment?.position?.let { "%.0f,%.0f,%.0f".format(it.x, it.y, it.z) }} reached=${action?.reached()} action=[$reports]" +
+                (failure?.let { " failed=${it.attempts}x ${it.rejections}" }.orEmpty()) +
+                " target=$target holds=${npc.activitiesHeld()} $flags"
+        }
+
         private val areaTasks = HashMap<UUID, AreaControlTask>()
         fun holdsArea(squad: UUID) = areaTasks.values.any { squad in it.commands.keys }
         fun strategyOf(squad: UUID) = strategies[squad]?.first
@@ -1354,7 +2407,27 @@ object NativeTactics {
             actions.clear()
             heldPosts.clear()
             legs.clear()
+            armour.clear()
+            cover.clear()
             supportWaits.clear()
+            coverStalls.clear()
+            fireSupport.clear()
+            air.clear()
+            drones.clear()
+            loneOperators.clear()
+            alarms.clear()
+            closeContacts.clear()
+            journeys.clear()
+            reinforcementPoints.clear()
+            rides.clear()
+            stations.clear()
+            stationsDue.clear()
+            stationRefusals.clear()
+            seatsDue.clear()
+            seatChecks.clear()
+            retreatSmoke.clear()
+            grenades.clear()
+            suspendedBy.clear()
         }
     }
 }

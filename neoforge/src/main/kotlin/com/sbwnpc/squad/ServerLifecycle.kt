@@ -1,5 +1,6 @@
 package com.sbwnpc.squad
 
+import com.sbwnpc.squad.ai.integration.DroneLinks
 import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.TeamAwareness
@@ -7,7 +8,6 @@ import com.sbwnpc.squad.entity.DroneRegistry
 import com.sbwnpc.squad.entity.GrenadeRegistry
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.entity.SmokeCloudRegistry
-import com.sbwnpc.squad.entity.ai.DroneLinks
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.squad.RouteRecording
@@ -53,10 +53,8 @@ object ServerLifecycle {
     fun onServerStopped(event: ServerStoppedEvent) {
         com.sbwnpc.squad.team.Diplomacy.detach()
         com.sbwnpc.squad.map.MapFeed.clearAll()
-        com.sbwnpc.squad.combat.Withdrawal.clearAll()
         com.sbwnpc.squad.combat.SmokeClouds.clearAll()
         com.sbwnpc.squad.squad.FireSupport.clearAll()
-        com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour.clearAll()
         com.sbwnpc.squad.entity.ai.SquadMarch.clearAll()
         com.sbwnpc.squad.entity.ai.BoatTrips.clearAll()
         com.sbwnpc.squad.vehicle.WaterMap.clearAll()

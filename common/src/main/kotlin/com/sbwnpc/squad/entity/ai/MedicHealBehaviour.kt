@@ -6,9 +6,9 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
-import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.Diplomacy
 import com.sbwnpc.squad.team.SquadTeams
@@ -19,20 +19,18 @@ import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
-import net.tslat.smartbrainlib.util.BrainUtils
 import java.util.UUID
 
 /**
  * A MEDIC's shoot-vs-heal decision. Placed in `NpcEntity.getCoreTasks()` (like
- * `SeekCoverBehaviour`/`MortarCrewBehaviour`) so it can act whether or not the medic currently
+ * `SeekCoverBehaviour`/`CrewDutyAction`) so it can act whether or not the medic currently
  * has a combat target of its own — a real Fight-activity behaviour would only ever run alongside
  * `ATTACK_TARGET`, which would rule out the "no target, heal opportunistically" case entirely.
  *
  * Per explicit user decision (confirmed during planning): a medic heals a CRITICALLY wounded ally
  * (health below [CRITICAL_HEALTH_FRACTION]) even while it has a live target and is
  * actively engaged — for that case it locks [GunAttackBehaviour] out via
- * [ModMemories.MEDIC_HEALING] (same "hands off, I own the mob right now" idiom as
- * `SeekCoverBehaviour`'s `COVER_HOLD`) for as long as treatment takes. A merely wounded ally (below
+ * [NpcActivity.HEAL] (a lower claim than cover's) for as long as treatment takes. A merely wounded ally (below
  * [NEEDS_HEAL_FRACTION] but not critical) is only tended opportunistically, when the medic itself
  * has no target. The same memory owns movement during both treatments, so an idle tactical
  * behaviour cannot replace the medic's route to a patient with its squad position.
@@ -121,11 +119,11 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun scanCandidate(entity: NpcEntity): LivingEntity? {
         if (entity.npcClass != NpcClass.MEDIC) return null
         // A dug-in medic (badly hurt enough to take cover itself) must stay put like everything
-        // else that respects NpcEntity.diggedIn (PM review finding — this was one of two Core tasks
+        // else that respects [NpcActivity.DUG_IN] (PM review finding — this was one of two Core tasks
         // that still didn't) — even a critically wounded ally doesn't get the medic to abandon its
         // own hole; treating can wait until it's healed/no longer holding.
-        if (entity.diggedIn) return null
-        if (entity.vehicleTransport) return null
+        if (entity.holds(NpcActivity.DUG_IN)) return null
+        if (entity.holds(NpcActivity.VEHICLE)) return null
         val faction = SquadTeams.factionOf(entity) ?: return null
         val level = entity.level() as? ServerLevel ?: return null
         var best: LivingEntity? = null
@@ -192,15 +190,16 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean =
         entity.npcClass == NpcClass.MEDIC &&
-            !entity.evadingGrenade() && !entity.movementLockedByCover() && !entity.vehicleTransport && !entity.diggedIn && candidate(entity) != null
+            !entity.holdsAny(NpcActivity.COVER, NpcActivity.PEEK) && !entity.holdsAny(NpcActivity.DUG_IN, NpcActivity.VEHICLE) && candidate(entity) != null
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
+    // A higher rule pauses the treatment instead of ending it: the medic keeps his patient (#257).
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = MandatoryRules.may(MandatoryRule.MEDIC_HELP, entity) && eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
 
     override fun start(entity: NpcEntity) {
         unreachableUntil.entries.removeIf { it.value <= entity.tickCount }
         selectPatient(entity, candidate(entity))
-        if (healTargetId != null) BrainUtils.setMemory(entity, ModMemories.MEDIC_HEALING.get(), true)
+        if (healTargetId != null) entity.claim(NpcActivity.HEAL, this)
     }
 
     private fun selectPatient(entity: NpcEntity, patient: LivingEntity?) {
@@ -226,7 +225,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         healTargetId = null
         entity.navigation.stop()
         setSprinting(entity, false)
-        BrainUtils.clearMemory(entity, ModMemories.MEDIC_HEALING.get())
+        entity.release(NpcActivity.HEAL, this)
     }
 
     /** Per user request: a medic's normal pace is [NpcClass.speedMultiplier] (1.3, like SNIPER —
@@ -247,6 +246,11 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun tick(entity: NpcEntity) {
+        if (MandatoryRules.may(MandatoryRule.MEDIC_HELP, entity)) treat(entity)
+    }
+
+    /** One tick of going to and treating the patient, while no higher rule holds the medic. */
+    private fun treat(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         // Keep tending the same ally as long as it still genuinely needs it — re-picking a fresh
         // candidate every tick (even one that's merely alive but already healed up) would abandon a
@@ -254,7 +258,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         val sticky = healTargetId?.let { level.getEntity(it) as? LivingEntity }?.takeIf { it.isAlive && needsHealing(entity, it) && available(entity, it) }
         val ally = sticky ?: candidate(entity)?.also { selectPatient(entity, it) } ?: return
 
-        BrainUtils.setMemory(entity, ModMemories.MEDIC_HEALING.get(), true)
+        entity.claim(NpcActivity.HEAL, this)
 
         val dist = entity.position().distanceTo(ally.position())
         if (dist > HEAL_RANGE) {

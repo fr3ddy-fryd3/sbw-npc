@@ -20,8 +20,7 @@ source build/headless/env.sh
   -PgameTestReportName=battles
 ```
 
-`-PgameTestBattles=lone-squad-hill-point` runs only the named scenarios (comma-separated). A battle
-takes about four minutes: combat ticks are paced to real time for SBW's weapon timers.
+`-PgameTestBattles=lone-squad-hill-point` runs only the named scenarios (comma-separated).
 
 The save is only read. Its region files round the objective are copied into the report first and
 the terrain is restored from that copy. Blocks from other mods in the save need those mods on the

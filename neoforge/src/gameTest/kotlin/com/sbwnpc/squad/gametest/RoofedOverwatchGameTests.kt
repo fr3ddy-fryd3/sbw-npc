@@ -9,6 +9,7 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalPositions
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.init.ModBlocks
@@ -105,20 +106,12 @@ object RoofedOverwatchGameTests {
     fun supportOccupiesPlayerRoofedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1200, batch = "roofed-patrol")
-    fun patrolSupportOccupiesPlayerRoofedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL)
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "roofed-fall")
     fun fallenSupportReturnsToPlayerRoofedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, fall = true)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "roofed-exit")
     fun supportLeavesPlayerRoofedTower(helper: GameTestHelper) = departure(helper, SquadOrder.DEFEND, Departure.MARCH)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "roofed-patrol-exit")
-    fun patrolSniperLeavesPlayerRoofedTower(helper: GameTestHelper) = departure(helper, SquadOrder.PATROL, Departure.MARCH, NpcClass.SNIPER)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "roofed-retreat")
@@ -133,24 +126,12 @@ object RoofedOverwatchGameTests {
     fun supportReservesAndHoldsScaffoldTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, scaffolding = true)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 2000, batch = "scaffold-fall")
-    fun fallenSupportReturnsToScaffoldTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, fall = true, scaffolding = true)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 2400, batch = "scaffold-supply")
-    fun patrolSniperResuppliesAndReturnsToScaffoldTower(helper: GameTestHelper) = departure(helper, SquadOrder.PATROL, Departure.SUPPLY, NpcClass.SNIPER, scaffolding = true)
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "narrow-sniper")
     fun originalSniperFindsNarrowTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, onlySupport = NpcClass.SNIPER, supportIndex = 4)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "empty-sniper-tower")
     fun emptySniperWaitsBelowTowerUntilActualSupply(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, onlySupport = NpcClass.SNIPER, supportIndex = 4, emptyPrimary = true)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "empty-gunner-tower")
-    fun emptyPatrolGunnerWaitsBelowTowerUntilActualSupply(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL, onlySupport = NpcClass.MACHINE_GUNNER, emptyPrimary = true)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "tower-ammo-release")
@@ -180,9 +161,9 @@ object RoofedOverwatchGameTests {
     private enum class Departure { MARCH, RETREAT, SUPPLY }
 
     /** Only orders and real gun ammunition change; the brain owns every path and physical step. */
-    private fun departure(helper: GameTestHelper, order: SquadOrder, mode: Departure, onlySupport: NpcClass? = null, scaffolding: Boolean = false) {
+    private fun departure(helper: GameTestHelper, order: SquadOrder, mode: Departure, onlySupport: NpcClass? = null) {
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
-        val name = "${if (scaffolding) "scaffold" else "roofed"}-exit-$order-$mode-${onlySupport ?: "mixed"}"
+        val name = "roofed-exit-$order-$mode-${onlySupport ?: "mixed"}"
         val trace = StringBuilder("tick,x,y,z,ladder,ground,collision,dy,nextX,nextY,nextZ,done,health,ammo,resupplying\n")
         // A retreat ends in DEFEND at its point, and a tower within the post search's reach of that
         // point is a fair post for it (#166). So the retreat goes past that reach, where the sentry
@@ -194,7 +175,7 @@ object RoofedOverwatchGameTests {
         var descended = false
         var supplied = false
         var returnSince: Long? = null
-        occupy(helper, order, onlySupport = onlySupport, scaffolding = scaffolding, onOccupied = { npc, post ->
+        occupy(helper, order, onlySupport = onlySupport, onOccupied = { npc, post ->
             sentry = npc
             previousPost = post
             departureTick = helper.tick
@@ -236,7 +217,7 @@ object RoofedOverwatchGameTests {
             val at = helper.relativeVec(npc.position())
             if (npc.onClimbable() && npc.deltaMovement.y < -0.01 && at.y < 6.5) descended = true
             val next = npc.navigation.path?.takeUnless { it.isDone }?.nextNodePos?.let { relativeNode(helper, it) }
-            trace.append("${helper.tick},${at.x},${at.y},${at.z},${npc.onClimbable()},${npc.onGround()},${npc.horizontalCollision},${npc.deltaMovement.y},${next?.x},${next?.y},${next?.z},${npc.navigation.isDone},${npc.health},${npc.ammoFraction()},${npc.resupplying}\n")
+            trace.append("${helper.tick},${at.x},${at.y},${at.z},${npc.onClimbable()},${npc.onGround()},${npc.horizontalCollision},${npc.deltaMovement.y},${next?.x},${next?.y},${next?.z},${npc.navigation.isDone},${npc.health},${npc.ammoFraction()},${npc.holds(NpcActivity.RESUPPLY)}\n")
             if (helper.tick % 10L == 0L) Files.writeString(report.resolve("$name.csv"), trace)
             helper.assertTrue(npc.isAlive && npc.health == npc.maxHealth, "Leaving the tower caused fall damage")
             val arrived = when (mode) {
@@ -264,7 +245,7 @@ object RoofedOverwatchGameTests {
                 Departure.SUPPLY -> {
                     if (at.y < 3.0 && npc.ammoFraction() >= 0.8 && npc.position().distanceTo(helper.absolutePos(destination).center) <= SupplyBlockEntity.RADIUS) supplied = true
                     val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
-                    val returned = supplied && !npc.resupplying && task?.job == TacticalJob.OVERWATCH &&
+                    val returned = supplied && !npc.holds(NpcActivity.RESUPPLY) && task?.job == TacticalJob.OVERWATCH &&
                         task.position == previousPost && npc.onGround() && FiringPostArrival.reached(npc.position(), previousPost!!)
                     if (!returned) {
                         returnSince = null

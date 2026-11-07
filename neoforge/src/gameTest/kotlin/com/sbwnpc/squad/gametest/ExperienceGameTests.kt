@@ -63,16 +63,16 @@ object ExperienceGameTests {
             Ports.guns.inHand(rifleman)!!.inflictHit(hostile, 4f)
             val fraction = (before - hostile.health) / before
             helper.assertTrue(fraction > 0 && hostile.isAlive, "Player control did no nonlethal damage")
-            near(helper, rifleman.experience, fraction * 70.0, "Player wounds must retain ordinary XP")
+            near(helper, rifleman.experience, fraction * 70.0 * rate(NpcClass.RIFLEMAN), "Player wounds must retain ordinary XP")
             hostile.invulnerableTime = 0
             Ports.guns.inHand(sniper)!!.inflictHit(hostile, hostile.health * 2)
             helper.assertTrue(!hostile.isAlive, "Actual hostile player kill did not happen")
-            near(helper, rifleman.experience, fraction * 300.0, "Player kill assist lost its triple bounty")
+            near(helper, rifleman.experience, fraction * 300.0 * rate(NpcClass.RIFLEMAN), "Player kill assist lost its triple bounty")
             val coefficient = com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(NpcClass.SNIPER)
             near(helper, sniper.experience, (1.0 - fraction) * 300.0 * coefficient, "Player bounty must apply the sniper coefficient exactly once")
             val prior = rifleman.experience
             Ports.guns.inHand(rifleman)!!.inflictHit(enemy, enemy.health * 2)
-            near(helper, rifleman.experience - prior, 100.0, "NPC kill budget changed")
+            near(helper, rifleman.experience - prior, 100.0 * rate(NpcClass.RIFLEMAN), "NPC kill budget changed")
             val complete = rifleman.experience
             Ports.guns.inHand(rifleman)!!.inflictHit(allied, allied.health * 2)
             Ports.guns.inHand(rifleman)!!.inflictHit(creative, 100f)
@@ -141,7 +141,7 @@ object ExperienceGameTests {
             val npcFraction = enemy.health / initialHealth
             enemy.invulnerableTime = 0
             Ports.guns.inHand(shooter)!!.inflictHit(enemy, enemy.health * 2)
-            near(helper, shooter.experience, npcFraction * 100.0, "Player contribution must reduce the NPC assist share by actual damage")
+            near(helper, shooter.experience, npcFraction * 100.0 * rate(NpcClass.RIFLEMAN), "Player contribution must reduce the NPC assist share by actual damage")
             val before = shooter.experience
             Ports.guns.inHand(shooter)!!.inflictHit(promoted, promoted.health * 0.25f)
             val hp = promoted.health
@@ -149,7 +149,7 @@ object ExperienceGameTests {
             helper.assertTrue(promoted.health == hp, "Target promotion unexpectedly healed")
             promoted.invulnerableTime = 0
             Ports.guns.inHand(shooter)!!.inflictHit(promoted, promoted.health * 2)
-            near(helper, shooter.experience - before, 100.0, "Target's new maximum health rewrote its life budget")
+            near(helper, shooter.experience - before, 100.0 * rate(NpcClass.RIFLEMAN), "Target's new maximum health rewrote its life budget")
             helper.succeed()
         }
     }
@@ -168,22 +168,23 @@ object ExperienceGameTests {
             Ports.guns.inHand(first)!!.inflictHit(enemy, hp / 4)
             val lost = hp - enemy.health
             helper.assertTrue(lost > 0, "Actual SBW bullet did no damage")
-            near(helper, first.experience, lost / hp * 70.0, "Damage XP uses actual lost health")
+            near(helper, first.experience, lost / hp * 70.0 * rate(NpcClass.RIFLEMAN), "Damage XP uses actual lost health")
             val beforeFriend = first.experience
             Ports.guns.inHand(first)!!.inflictHit(friend, 2f)
             near(helper, first.experience, beforeFriend, "Friendly hits must give no XP")
             enemy.invulnerableTime = 0
             Ports.guns.inHand(second)!!.inflictHit(enemy, enemy.health * 2)
             helper.assertTrue(!enemy.isAlive, "Enemy survived the real fatal bullet")
-            near(helper, first.experience + second.experience, 100.0, "One life must pay exactly its budget")
-            near(helper, first.experience, lost / hp * 100.0, "Assist reward must follow contribution")
+            near(helper, first.experience + second.experience, 100.0 * rate(NpcClass.RIFLEMAN), "One life must pay exactly its budget")
+            near(helper, first.experience, lost / hp * 100.0 * rate(NpcClass.RIFLEMAN), "Assist reward must follow contribution")
             helper.succeed()
         }
     }
 
+    /** A medic earns experience for treating combat wounds only, and no more than the per-patient battle cap. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "experience-medical")
-    fun combatTreatmentPromotionAndIdentityPreserveTheKit(helper: GameTestHelper) {
+    fun combatTreatmentEarnsMedicExperienceUpToTheBattleCap(helper: GameTestHelper) {
         val medic = npc(helper, 3.5, SquadFaction.PIG, NpcClass.MEDIC)
         val patient = npc(helper, 7.5, SquadFaction.PIG)
         val enemy = npc(helper, 15.5, SquadFaction.COW)
@@ -194,7 +195,7 @@ object ExperienceGameTests {
             val hp = patient.health
             Ports.gear.treat(patient)
             ExperienceAwards.treated(medic, patient, hp, wounds)
-            near(helper, medic.experience, minOf(wounds, (patient.health - hp).toDouble()) * 2, "Medic XP must use actual combat treatment")
+            near(helper, medic.experience, minOf(wounds, (patient.health - hp).toDouble()) * 2 * rate(NpcClass.MEDIC), "Medic XP must use actual combat treatment")
             helper.assertTrue(medic.experience > 0, "Medic received no XP for treating a hostile wound")
             // Direct healing clears the eligibility; later fall injuries are not combat XP.
             patient.health = patient.maxHealth
@@ -214,7 +215,18 @@ object ExperienceGameTests {
                 Ports.gear.treat(patient)
                 ExperienceAwards.treated(medic, patient, beforeTreatment, eligible)
             }
-            near(helper, medic.experience, 50.0, "Repeated treatment exceeded the per-patient battle cap")
+            near(helper, medic.experience, 50.0 * rate(NpcClass.MEDIC), "Repeated treatment exceeded the per-patient battle cap")
+            helper.succeed()
+        }
+    }
+
+    /** A promotion keeps the soldier's wounds, kit and custom health; a save keeps all of it, and an old save keeps his rank. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "experience-medical")
+    fun promotionAndReloadPreserveTheKitAndIdentity(helper: GameTestHelper) {
+        val medic = npc(helper, 3.5, SquadFaction.PIG, NpcClass.MEDIC)
+        cleanup(helper) { medic.discard() }
+        helper.runAtTickTime(5) {
             val gun = medic.mainHandItem
             val pistol = medic.sidearmWeapon
             Ports.guns.inHand(medic)!!.spendShot()
@@ -263,7 +275,7 @@ object ExperienceGameTests {
             enemy.hurt(helper.level.damageSources().explosion(shooter, shooter), 30f)
             val fraction = before - Ports.vehicles.healthFraction(enemy)
             helper.assertTrue(fraction > 0, "Vehicle damage fixture did no damage")
-            near(helper, shooter.experience + driver.experience, fraction * 210.0, "Vehicle XP did not use actual SBW health")
+            near(helper, shooter.experience + driver.experience, fraction * 210.0 * rate(NpcClass.RIFLEMAN), "Vehicle XP did not use actual SBW health")
             near(helper, shooter.experience, driver.experience * 3, "Crew reward must be 75/25")
             val xp = shooter.experience + driver.experience
             ride.hurt(helper.level.damageSources().explosion(shooter, shooter), 30f)
@@ -292,12 +304,12 @@ object ExperienceGameTests {
             gun.operate()
             if (gun.canShoot()) gun.shootAt(0.0, enemy.eyePosition)
             if (!enemy.isAlive) {
-                near(helper, shooter.experience, 100.0, "Actual projectiles did not award the life budget")
+                near(helper, shooter.experience, 100.0 * rate(NpcClass.RIFLEMAN), "Actual projectiles did not award the life budget")
                 helper.assertTrue(Ports.guns.roundsLeft(shooter.mainHandItem) < ammo, "No physical bullet spent ammunition")
                 ExperienceAwards.objective(helper.level.server, squad)
-                near(helper, shooter.experience, 150.0, "Contested objective/participation bonus missing")
+                near(helper, shooter.experience, 150.0 * rate(NpcClass.RIFLEMAN), "Contested objective/participation bonus missing")
                 ExperienceAwards.objective(helper.level.server, squad)
-                near(helper, shooter.experience, 150.0, "Objective reward duplicated")
+                near(helper, shooter.experience, 150.0 * rate(NpcClass.RIFLEMAN), "Objective reward duplicated")
                 helper.succeed()
             }
         }
@@ -312,6 +324,9 @@ object ExperienceGameTests {
             for (slot in EquipmentSlot.entries.filter { it.type == EquipmentSlot.Type.HUMANOID_ARMOR }) setItemSlot(slot, ItemStack.EMPTY)
         }
     }
+
+    /** The XP a [role] earns per point of award: the class coefficient [com.sbwnpc.squad.entity.NpcEntity.gainExperience] applies. */
+    private fun rate(role: NpcClass) = com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(role)
 
     private fun near(helper: GameTestHelper, actual: Double, expected: Double, message: String) = helper.assertTrue(abs(actual - expected) < 1e-4, "$message: $actual != $expected")
 
@@ -381,7 +396,7 @@ object ExperienceGameTests {
         cleanup(helper) { listOf(medic, patient, enemy).forEach { it.discard() } }
         helper.onEachTick {
             if (patient.health > damaged && medic.experience > 0) {
-                helper.assertTrue(medic.experience <= (patient.maxHealth - damaged) * 2 + 0.01, "Medic earned more than healed combat health")
+                helper.assertTrue(medic.experience <= (patient.maxHealth - damaged) * 2 * rate(NpcClass.MEDIC) + 0.01, "Medic earned more than healed combat health")
                 helper.assertTrue(Ports.guns.isGun(medic.mainHandItem), "Healing displaced the medic weapon")
                 helper.succeed()
             }

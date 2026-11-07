@@ -114,4 +114,19 @@ class SpottingTimeTest {
         assertNotNull(seconds(160.0, 15, Observer.of(NpcRank.ELITE, NpcClass.DRONE_OPERATOR)))
         assertNull(seconds(161.0, 15, Observer.of(NpcRank.ELITE, NpcClass.DRONE_OPERATOR)))
     }
+
+    @Test fun `a wary observer notices a fifth sooner, on top of his rank`() {
+        val regular = Observer.of(NpcRank.REGULAR, NpcClass.RIFLEMAN)
+        assertEquals(seconds(100.0, 15, regular)!! / 1.25, seconds(100.0, 15, regular.wary())!!, 1e-9)
+        assertEquals(seconds(100.0, 15, Observer())!! / 1.25, seconds(100.0, 15, Observer().wary())!!, 1e-9)
+        assertEquals(regular.cutoffFactor, regular.wary().cutoffFactor)
+    }
+
+    @Test fun `aircrew see the ground half again as far, and the dark still shortens it`() {
+        val air = elite.airborne()
+        assertNotNull(seconds(192.0, 15, air))
+        assertNull(seconds(193.0, 15, air))
+        assertNotNull(seconds(48.0, 0, air))
+        assertNull(seconds(49.0, 0, air))
+    }
 }

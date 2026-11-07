@@ -20,7 +20,7 @@ object FiringOpportunity {
         if (!terrainClear || !WeaponReach.inRange(entity, entity.eyePosition, target.eyePosition)) return Opportunity.VISIBLE
         val spread = DroneCombat.spreadForTarget(entity.spread, target)
         val hulls = Sightline.vehicleHulls(level, AABB(entity.eyePosition, target.eyePosition).inflate(2.0), entity, target)
-        if (Sightline.crosses(hulls, entity.eyePosition, target.eyePosition, spread) ||
+        if (Sightline.crosses(hulls, entity.eyePosition, target.eyePosition) ||
             Sightline.ownHullInLane(entity, entity.eyePosition, target.eyePosition, spread, target)
         ) {
             return Opportunity.VISIBLE

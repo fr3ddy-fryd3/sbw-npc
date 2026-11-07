@@ -167,13 +167,12 @@ object FiringPostSearchGameTests {
             val view = TacticalSnapshot(helper.level.gameTime, SquadOrder.ATTACK, 1, origin, enemy.position(), listOf(TacticalMember(npc.uuid, origin)), listOf(TacticalContact(enemy.uuid, enemy.position(), helper.level.gameTime)))
             val result = TacticalPositions.find(npc, task, view)
             if (result.outcome == TacticalPositions.Outcome.DEFERRED) return@onEachTick
-            Files.writeString(Path.of(System.getProperty("sbwnpc.gameTestReports")).resolve("advance-progress.txt"), "origin=$origin\ngoal=$goal\nresult=$result\n")
-            if (result.outcome == TacticalPositions.Outcome.FOUND) {
-                val point = result.position!!
-                helper.assertTrue(point.distanceTo(goal) <= 10.0 || point.distanceTo(origin) >= 0.5, "Search returned the already reached intermediate post outside arrival tolerance: $point")
-            } else {
-                helper.assertTrue(result.rejections["no_goal_progress"] == 1, "Reached post was rejected for an unrelated reason: ${result.rejections}")
-            }
+            val reports = Files.createDirectories(Path.of(System.getProperty("sbwnpc.gameTestReports")))
+            Files.writeString(reports.resolve("advance-progress.txt"), "origin=$origin\ngoal=$goal\nresult=$result\n")
+            // The only candidate is where he stands, 13 blocks short of the goal: taking it again
+            // would be an advance that never moves.
+            helper.assertTrue(result.outcome != TacticalPositions.Outcome.FOUND, "Search returned the post he already stands on: ${result.position}")
+            helper.assertTrue(result.rejections["no_goal_progress"] == 1, "Reached post was rejected for an unrelated reason: ${result.rejections}")
             helper.succeed()
         }
     }

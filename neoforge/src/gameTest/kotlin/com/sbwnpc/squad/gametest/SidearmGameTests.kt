@@ -11,6 +11,7 @@ import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.TriggerMode
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.ai.AmmoRetreat
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.init.ModEntities
@@ -33,7 +34,6 @@ import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
@@ -42,6 +42,9 @@ import java.util.function.Consumer
 
 @PrefixGameTestTemplate(false)
 object SidearmGameTests {
+    /** Shots are timed in game ticks: the firing cadence counts them, not wall time. */
+    private const val TICK_MILLIS = 50.0
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "primary-gun-variety")
     fun rifleVariantsAndShotgunFireReloadAndKeepTheirSavedWeapon(helper: GameTestHelper) {
@@ -50,7 +53,7 @@ object SidearmGameTests {
         val shooters = weapons.mapIndexed { index, weapon ->
             val role = if (weapon in NpcClass.SHOTGUNNER.weaponPool) NpcClass.SHOTGUNNER else NpcClass.RIFLEMAN
             AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 12.5 + index * 16), SquadFaction.PIG, role = role).apply {
-                diggedIn = true
+                claim(NpcActivity.DUG_IN, this@SidearmGameTests)
                 setItemInHand(InteractionHand.MAIN_HAND, Ports.guns.issue(weapon, this, role.startingRounds(weapon)))
                 helper.assertTrue(!mainHandItem.isEmpty, "Unregistered weapon: $weapon")
                 ammunition(mainHandItem, 1, role.startingRounds(weapon) - 1)
@@ -82,12 +85,9 @@ object SidearmGameTests {
             val index = shooters.indexOf(round.owner)
             if (event.level === helper.level && index >= 0 && Ports.guns.isRound(round)) rounds[index]++
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(listener)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         cleanup(helper) {
             NeoForge.EVENT_BUS.unregister(listener)
-            NeoForge.EVENT_BUS.unregister(pacer)
             (shooters + enemies).forEach { it.discard() }
             helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
             val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "primary-variants.txt")
@@ -134,15 +134,12 @@ object SidearmGameTests {
             if (event.level === helper.level && round.owner === shooter && Ports.guns.isRound(round)) {
                 helper.assertTrue(WeaponReach.inRange(shooter, shooter.eyePosition, enemy.eyePosition), "Shotgun fired beyond effective range")
                 rounds++
-                if (shooter.distanceTo(enemy) < 42.0) closeShots++
+                if (attack && shooter.distanceTo(enemy) <= NpcClass.SHOTGUNNER.maxFireDistance) closeShots++
             }
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(listener)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         cleanup(helper) {
             NeoForge.EVENT_BUS.unregister(listener)
-            NeoForge.EVENT_BUS.unregister(pacer)
             manager.deleteSquad(helper.level, squad.id)
             listOf(shooter, enemy).forEach { it.discard() }
             helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
@@ -158,7 +155,7 @@ object SidearmGameTests {
         }
         helper.onEachTick {
             if (attack && closeShots >= 24) {
-                helper.assertTrue(shooter.distanceTo(enemy) >= 15.0, "Shotgunner ran into its enemy")
+                helper.assertTrue(shooter.distanceTo(enemy) >= NpcClass.SHOTGUNNER.combatClearance - 1.0, "Shotgunner ran into its enemy")
                 helper.succeed()
             }
         }
@@ -182,7 +179,7 @@ object SidearmGameTests {
         }
         val shooters = roles.mapIndexed { index, role ->
             AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 16.5 + index * 12), SquadFaction.PIG, role = role).apply {
-                diggedIn = true
+                claim(NpcActivity.DUG_IN, this@SidearmGameTests)
                 setItemInHand(InteractionHand.MAIN_HAND, Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", weapons[index]), this, 100))
                 if (index in 2..3) ammunition(mainHandItem, 0, 0)
             }
@@ -207,16 +204,13 @@ object SidearmGameTests {
             val index = shooters.indexOf(projectile.owner)
             if (event.level === helper.level && index >= 0 && Ports.guns.isRound(projectile) && lastVolley[index] != helper.tick) {
                 lastVolley[index] = helper.tick // All twelve shotgun pellets are one shot.
-                shots[index].add(System.nanoTime())
+                shots[index].add(helper.tick)
             }
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(listener)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         cleanup(helper) {
             DebugFlags.enabledGroups = oldGroups
             NeoForge.EVENT_BUS.unregister(listener)
-            NeoForge.EVENT_BUS.unregister(pacer)
             (shooters + enemies).forEach { it.discard() }
             helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
             val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "sniper-cadence.txt")
@@ -224,13 +218,13 @@ object SidearmGameTests {
             Files.writeString(
                 report,
                 shots.mapIndexed { index, times ->
-                    "${roles[index]} weapon=${weapons[index]} sidearm=${index in 2..3} npcTicks=${shooters[index].tickCount} target=${shooters[index].target?.uuid} intervals_ms=${times.zipWithNext { a, b -> (b - a) / 1_000_000.0 }}"
+                    "${roles[index]} weapon=${weapons[index]} sidearm=${index in 2..3} npcTicks=${shooters[index].tickCount} target=${shooters[index].target?.uuid} intervals_ms=${times.zipWithNext { a, b -> (b - a) * TICK_MILLIS }}"
                 }.joinToString("\n"),
             )
         }
         helper.onEachTick {
             if (shots.all { it.size >= 5 }) {
-                val intervals = shots.map { times -> times.zipWithNext { a, b -> (b - a) / 1_000_000.0 }.sorted().let { it[it.size / 2] } }
+                val intervals = shots.map { times -> times.zipWithNext { a, b -> (b - a) * TICK_MILLIS }.sorted().let { it[it.size / 2] } }
                 helper.assertTrue(intervals[1] / intervals[0] in 1.8..2.2, "Sniper primary cadence did not halve: $intervals")
                 helper.assertTrue(intervals[3] / intervals[2] in 0.85..1.15, "Sniper class slowed the same backup pistol: $intervals")
                 helper.assertTrue(intervals[5] / intervals[4] in 1.8..2.2, "Sniper bolt-action cadence did not halve: $intervals")
@@ -270,7 +264,7 @@ object SidearmGameTests {
                     Ports.guns.persist(npc.mainHandItem)
                     npc.stowedWeapon = npc.mainHandItem.copy()
                     npc.setItemInHand(InteractionHand.MAIN_HAND, Ports.drones.monitor())
-                    npc.operatingDrone = true
+                    npc.claim(NpcActivity.DRONE, this)
                     SidearmKit.update(npc)
                     helper.assertTrue(Ports.drones.isMonitor(npc.mainHandItem), "Pistol displaced the drone monitor")
                 }
@@ -302,7 +296,7 @@ object SidearmGameTests {
         val names = listOf("mp_443", "glock_17", "m_1911")
         val shooters = names.mapIndexed { index, name ->
             AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 40.5 + index * 16), SquadFaction.PIG).apply {
-                diggedIn = true
+                claim(NpcActivity.DUG_IN, this@SidearmGameTests)
                 sidearmWeapon = Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", name), this, if (name == "m_1911") 70 else 85)
                 ammunition(mainHandItem, 0, 0)
             }
@@ -327,12 +321,9 @@ object SidearmGameTests {
             val index = shooters.indexOf(projectile.owner)
             if (event.level === helper.level && index >= 0 && Ports.guns.isRound(projectile)) rounds[index]++
         }
-        val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(listener)
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         cleanup(helper) {
             NeoForge.EVENT_BUS.unregister(listener)
-            NeoForge.EVENT_BUS.unregister(pacer)
             (shooters + enemies).forEach { it.discard() }
             helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
             val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "sidearm-fire.txt")
@@ -433,6 +424,11 @@ object SidearmGameTests {
     fun emptyKitHoldsWithoutSupplyOrEndlessWithdrawal(helper: GameTestHelper) {
         floor(helper, 160, 128)
         val npc = AttackDeploymentGameTests.spawn(helper, Vec3(65.5, 1.0, 64.5), SquadFaction.PIG)
+        // Facing the enemy: the empty-ammo withdrawal starts only on a target, and a man looking
+        // away never noticed one, so the scene timed out with nothing to check.
+        npc.moveTo(npc.x, npc.y, npc.z, -90f, 0f)
+        npc.yHeadRot = -90f
+        npc.yBodyRot = -90f
         val origin = npc.position()
         for (stack in listOf(npc.mainHandItem, npc.sidearmWeapon)) {
             ammunition(stack, 0, 0)
@@ -453,7 +449,7 @@ object SidearmGameTests {
             Files.writeString(report, trace)
         }
         helper.onEachTick {
-            trace.append("${helper.tick},${npc.position().distanceTo(origin)},${npc.target != null},${npc.navigation.isDone},${npc.deltaMovement.horizontalDistance()},${npc.movementLockedByCover()},${Ports.guns.inHand(npc)?.hasAmmo()}\n")
+            trace.append("${helper.tick},${npc.position().distanceTo(origin)},${npc.target != null},${npc.navigation.isDone},${npc.deltaMovement.horizontalDistance()},${npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK)},${Ports.guns.inHand(npc)?.hasAmmo()}\n")
             helper.assertTrue(npc.nearestSupply() == null, "Empty-kit control unexpectedly has Supply")
             helper.assertTrue(Ports.guns.inHand(npc)?.hasAmmo() == false, "Empty-kit control can still fire")
             helper.assertTrue(!SidearmKit.hasSmallArmsAmmo(npc), "Empty kit regenerated ammunition: primary=${Ports.guns.roundsLeft(npc.primaryGun())} pistol=${Ports.guns.roundsLeft(npc.sidearmWeapon)} supply=${npc.nearestSupply()}")

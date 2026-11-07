@@ -25,13 +25,16 @@ object DefaultSquadSettings : SquadSettings {
     override fun recruitIntervalTicks(): Int = RECRUIT_INTERVAL_SECONDS * 20
     override fun experienceThresholds(): List<Int> = listOf(0, REGULAR_XP, VETERAN_XP, ELITE_XP)
 
+    /** Every class but the mortar earns this much more, so a rank takes two thirds of the XP; the mortar's slow climb stays. */
+    private const val FASTER_RANKS = 1.5
+
     override fun experienceMultiplier(cls: NpcClass): Double =
         when (cls.canonical) {
-            NpcClass.MACHINE_GUNNER, NpcClass.DRONE_OPERATOR -> 0.65
-            NpcClass.SNIPER, NpcClass.TANK_CREW, NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER -> 0.5
-            NpcClass.GRENADIER -> 0.75
+            NpcClass.MACHINE_GUNNER, NpcClass.DRONE_OPERATOR -> 0.65 * FASTER_RANKS
+            NpcClass.SNIPER, NpcClass.TANK_CREW, NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER -> 0.5 * FASTER_RANKS
+            NpcClass.GRENADIER -> 0.75 * FASTER_RANKS
             NpcClass.MORTAR -> 0.35
-            else -> 1.0
+            else -> FASTER_RANKS
         }
 }
 

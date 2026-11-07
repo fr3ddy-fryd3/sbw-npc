@@ -7,6 +7,7 @@ import com.sbwnpc.squad.combat.Hearing
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -22,13 +23,11 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
     private fun eligible(entity: NpcEntity): Boolean {
-        if (entity.busyWithRole() || entity.combatLockedByCover() || entity.combatLockedByMedic() ||
-            entity.resupplying || entity.vehicle != null || entity.evadingGrenade()
-        ) {
-            return false
-        }
+        if (entity.busyWithRole() || entity.vehicle != null || entity.holds(NpcActivity.COVER)) return false
+        if (!MandatoryRules.may(MandatoryRule.BLIND_RETURN_FIRE, entity)) return false
         val now = entity.level().gameTime
         val target = entity.target
+        if (target?.let(com.sbwnpc.squad.combat.VehicleTargeting::isGroundArmour) == true) return false
         if (target != null) {
             val visibility = DetectionSightline.trace(entity, target)
             if (target.isAlive && visibility == DetectionSightline.Visibility.VISIBLE) {
@@ -45,6 +44,7 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
         val now = entity.level().gameTime
         val incoming = entity.incomingFire.replying(now)
         val aim = (if (incoming) entity.incomingFire.point(now) else entity.lastSeenFire.point(now)) ?: return
+        if (com.sbwnpc.squad.combat.ArmourFireSafety.bearingContainsArmour(entity, aim)) return
         val source = if (incoming) "return-fire" else "foliage-fire"
         com.sbwnpc.squad.combat.AntiArmourKit.wield(entity, launcher = false)
         val gun = Ports.guns.inHand(entity) ?: return
@@ -67,7 +67,6 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (incoming) com.sbwnpc.squad.combat.IncomingFire.laneEnd(entity.eyePosition, aim) else aim,
             entity,
             hulls,
-            spread,
         )
         val allyBlocked = !FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)
         if (terrainBlocked || allyBlocked) {

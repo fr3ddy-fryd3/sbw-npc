@@ -50,6 +50,12 @@ data class TacticalContact(
     val armoured: Boolean = false,
     val priority: Double = 1.0,
     val airborne: Boolean = false,
+    /** When the squad first had this contact; the call to the others counts from here, see [com.sbwnpc.squad.combat.SquadKnowledge]. */
+    val firstSeenAt: Long = seenAt,
+    /** The men of the squad who noticed this enemy themselves: they need no call. */
+    val seenBy: Set<UUID> = emptySet(),
+    /** The eye point at the sighting, so mounted crew do not inherit an infantry height guess. */
+    val eye: Vec3 = position.add(0.0, DEFAULT_CONTACT_EYE_HEIGHT, 0.0),
 )
 data class TacticalSnapshot(
     val now: Long,
@@ -69,8 +75,18 @@ data class TacticalSnapshot(
     val regrouping: Boolean? = null,
     val suppressionWithdrawal: Boolean = false,
     val hasPatrolRoute: Boolean = false,
+    /**
+     * A member has a live enemy the squad sees as his target and can reach it with the ammunition
+     * in his hand, within
+     * [TacticalSnapshotCollector.CLOSE_CONTACT_RANGE]. Unlike [contacts], it leaves out what others
+     * only reported: a retreat that bounded on reported targets went back two hundred blocks twelve
+     * at a time (#253).
+     */
+    val closeContact: Boolean = false,
 ) {
     val visible get() = contacts.filter { now - it.seenAt < 40 }
     val fighting get() = members.filter { it.ready && it.health >= 0.3 && (!offensive || it.primaryAmmo) }
     val offensive get() = order == SquadOrder.ATTACK
 }
+
+private const val DEFAULT_CONTACT_EYE_HEIGHT = 1.5

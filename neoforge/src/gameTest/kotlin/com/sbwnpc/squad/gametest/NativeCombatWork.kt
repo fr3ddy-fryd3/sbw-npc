@@ -38,7 +38,7 @@ internal class NativeCombatWork(private val helper: GameTestHelper, members: Lis
     private var closed = false
     private val pre = Consumer<ServerTickEvent.Pre> { started = System.nanoTime() }
     private val post = Consumer<ServerTickEvent.Post> {
-        // Scene registered its wall-clock gun pacer before this listener. Sleep is excluded.
+        // Tick time from the scene's first listener to the last.
         if (helper.tick >= 200 && started != 0L) tickTimes += System.nanoTime() - started
     }
     private val damageTrace = Files.newBufferedWriter(Path.of(System.getProperty("sbwnpc.gameTestReports"), "operation-damage.csv"))
@@ -120,7 +120,8 @@ internal class NativeCombatWork(private val helper: GameTestHelper, members: Lis
         helper.assertTrue(actors.values.none { it.duplicateSameTick > 0 }, "Identical native route was rebuilt repeatedly within a tick; see operation-work.csv")
         helper.assertTrue(actors.values.all { it.maximumTickSearches <= 2 }, "NPC repeatedly launched native searches within one tick; see operation-work.csv")
         helper.assertTrue(actors.values.all { maximumSecond(it) <= 20 }, "NPC rebuilt more than 20 native paths in one simulated second; see operation-work.csv")
-        helper.assertTrue(pathTimes.isNotEmpty() && tickTimes.size >= 1000, "Native performance scene collected no usable work/tick samples")
+        // A scene may settle and close at its first check (tick 400), which samples 200 ticks.
+        helper.assertTrue(pathTimes.isNotEmpty() && tickTimes.size >= MIN_TICK_SAMPLES, "Native performance scene collected no usable work/tick samples")
     }
     override fun close() {
         if (closed) return
@@ -132,5 +133,10 @@ internal class NativeCombatWork(private val helper: GameTestHelper, members: Lis
         damageTrace.close()
         NeoForge.EVENT_BUS.unregister(pre)
         NeoForge.EVENT_BUS.unregister(post)
+    }
+
+    private companion object {
+        /** Server ticks timed from tick 200 to the earliest close at tick 400. */
+        const val MIN_TICK_SAMPLES = 200
     }
 }

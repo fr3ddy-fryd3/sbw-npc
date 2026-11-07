@@ -301,7 +301,7 @@ object SquadMarch {
      * arcs exist to avoid.
      */
     private fun routeGoal(level: ServerLevel, npc: NpcEntity, squad: com.sbwnpc.squad.squad.Squad, ownGoal: BlockPos): BlockPos {
-        if (npc.target != null || com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(npc)) return ownGoal
+        if (npc.target != null || npc.holds(com.sbwnpc.squad.entity.NpcActivity.TACTIC)) return ownGoal
         val objective = squad.objective ?: return ownGoal
         val requested = Vec3(objective.x + 0.5, objective.y.toDouble(), objective.z + 0.5)
         // The same point for every man: the squad's own area beside a shared objective where it
@@ -533,7 +533,10 @@ object SquadMarch {
         val from = npc.blockPosition()
         val r = SEARCH_RANGE.toInt() + 8
         val region = PathNavigationRegion(level, from.offset(-r, -r, -r), from.offset(r, r, r))
-        val evaluator = VehicleAwareNodeEvaluator().apply { setCanPassDoors(true) }
+        val evaluator = VehicleAwareNodeEvaluator().apply {
+            setCanPassDoors(true)
+            setCanOpenDoors(true)
+        }
         val path = PathFinder(evaluator, NODES).findPath(region, npc, setOf(target), SEARCH_RANGE, LEG_REACH, 1f)
         val route = path?.let { p -> (0 until p.nodeCount).map { p.getNode(it).asBlockPos() } }.orEmpty()
         val end = route.lastOrNull()

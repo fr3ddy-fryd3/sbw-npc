@@ -20,6 +20,7 @@ enum class LogGroup(val key: String) {
     MAP("map"),
     MARCH("march"),
     MEDIC("medic"),
+    MOVEMENT("movement"),
     ORDER("order"),
     PATH("path"),
     PERF("perf"),

@@ -50,8 +50,9 @@ object PilotlessHelicopters {
                 continue
             }
             val level = heli.level() as? ServerLevel ?: continue
-            // Someone took the controls, or it settled on its own before the time was up.
-            if (heli.firstPassenger != null || Helicopters.isGrounded(level, heli)) {
+            // Someone took the pilot's seat, or it settled on its own before the time was up. Not
+            // any passenger: gunners left aboard fly nothing, and kept it from being written off.
+            if (Ports.vehicles.seating(heli).getOrNull(0) != null || Helicopters.isGrounded(level, heli)) {
                 iterator.remove()
                 continue
             }

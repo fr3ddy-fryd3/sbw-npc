@@ -5,6 +5,7 @@ import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -14,8 +15,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 /**
  * Before the ordinary journey in Core: low on ammunition, no one to fight and a Supply to return to — go and stand by
  * it until the block has topped the NPC up ([SupplyBlockEntity]), then let the squad order take it
- * back to whatever it was doing. [NpcEntity.resupplying] keeps [SquadOrderBehaviour] and
- * [InvestigateBehaviour] off it meanwhile.
+ * back to whatever it was doing. [NpcActivity.RESUPPLY] keeps [SquadOrderBehaviour] off it meanwhile.
  *
  * A target ends it at once: the Fight activity takes over, and if the NPC is all but out by then
  * [GunAttackBehaviour] falls back on the Supply itself, firing.
@@ -23,7 +23,10 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * Long trips have no overall time limit while reaching fresh ground. A minute without progress
  * still ends an unreachable trip, instead of holding up squad orders forever.
  */
-class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
+class ResupplyBehaviour :
+    ExtendedBehaviour<NpcEntity>(),
+    MandatoryRuleOwner {
+    override val rule = MandatoryRule.RESUPPLY
 
     init {
         noTimeout()
@@ -35,8 +38,8 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     private fun free(entity: NpcEntity): Boolean =
-        entity.target == null && !entity.isPassenger && !entity.busyWithRole() && !entity.diggedIn &&
-            !entity.combatLockedByCover() && !entity.evadingGrenade() && entity.retreatPoint() == null
+        entity.target == null && !entity.isPassenger && !entity.busyWithRole() && !entity.holds(NpcActivity.DUG_IN) &&
+            !entity.holds(NpcActivity.COVER) && MandatoryRules.may(MandatoryRule.RESUPPLY, entity) && entity.retreatPoint() == null
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
 
@@ -47,7 +50,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
             !travel.stalled(entity.tickCount)
 
     override fun start(entity: NpcEntity) {
-        entity.resupplying = true
+        entity.claim(NpcActivity.RESUPPLY, this)
         entity.clearAlert()
         travel.reset(entity.tickCount, entity.position())
         nextRepathTick = 0
@@ -76,7 +79,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        entity.resupplying = false
+        entity.release(NpcActivity.RESUPPLY, this)
         DebugFlags.log(
             LogGroup.SUPPLY,
             "{} ({}) done resupplying ({})",

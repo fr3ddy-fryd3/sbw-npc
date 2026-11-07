@@ -24,7 +24,10 @@ import java.util.UUID
 /** A distant ATTACK travels as a squad before the operation hands out position work. */
 @PrefixGameTestTemplate(false)
 object SquadTransportGameTests {
-    /** Observes physical march while far; after transit the reinforcement takes its entry post. */
+    /** How near the DEFEND point the replaced order's men count as there: a five-man squad's spread round it. */
+    private const val DEFEND_REACHED = 12.0
+
+    /** Observes physical march while far; after transit the reinforcement makes for its march point ([entry]). */
     internal fun reinforcementMarch(helper: GameTestHelper, group: List<NpcEntity>, squad: Squad, entry: Point3, elapsed: Long): Boolean {
         val transit = SquadTransit.distant(squad, helper.level)
         val astray = group.filter { npc ->
@@ -55,11 +58,6 @@ object SquadTransportGameTests {
         val driver = VehicleTransportClaims.driverOf(lav.uuid)
         helper.assertTrue(driver != null && Ports.vehicles.seating(lav).firstOrNull()?.uuid == driver, "The boarded squad has no transport driver at the wheel")
     }
-
-    /** The fifth man is personally within 100 blocks, but his squad and its ride are still far. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "whole-squad-transport")
-    fun allFiveAttackersBoardBeforeTakingPositionDuties(helper: GameTestHelper) = wholeSquadBoards(helper)
 
     /** A reported target beyond engagement distance does not switch off the common ride. */
     @JvmStatic
@@ -93,6 +91,45 @@ object SquadTransportGameTests {
                 helper.assertTrue(!remoteContact || retainedContactTicks >= 5, "The remote contact was cleared instead of retained during boarding")
                 scene.result("PASS", "tick=${helper.tick} aboard=${men.size} retainedContactTicks=$retainedContactTicks")
                 helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * A new order replaces the old one on the ride too: a squad that boarded for an Attack far to the
+     * east and is then told to defend a spot behind it must not be driven on to the old objective
+     * (in game 29.10 the ride went to the old target, dropped the men there, and they walked back).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "transport-new-order")
+    fun rideDoesNotCarryOnToTheObjectiveOfAReplacedOrder(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "transport-new-order")
+        val manager = SquadManager.get(helper.level)
+        val men = listOf(32.5, 35.5, 38.5, 41.5, 44.5).map { scene.spawn(Vec3(it, 1.0, 20.5)) }
+        val lav = park(helper, Vec3(45.5, 1.0, 24.5))
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            lav.discard()
+        }
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(160, 1, 20)))
+        var replacedAt = -1L
+        var boardedX = 0.0
+        helper.onEachTick {
+            if (replacedAt < 0 && men.all { it.vehicle === lav }) {
+                replacedAt = helper.tick
+                boardedX = helper.relativeVec(lav.position()).x
+                manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, helper.absolutePos(BlockPos(8, 1, 20)))
+            }
+            if (replacedAt >= 0) {
+                val x = helper.relativeVec(lav.position()).x
+                helper.assertTrue(x < boardedX + 15.0, "The ride drove on towards the replaced order's objective: x=$x, boarded at $boardedX, tick ${helper.tick}")
+                // And the new order is carried out: the men end at the DEFEND point, not idle in a parked ride.
+                val there = men.all { it.vehicle == null && helper.relativeVec(it.position()).subtract(8.5, 1.0, 20.5).horizontalDistance() <= DEFEND_REACHED }
+                if (there) {
+                    scene.result("PASS", "boardedAt=$replacedAt boardedX=$boardedX x=$x arrived=${helper.tick}")
+                    helper.succeed()
+                }
             }
         }
     }

@@ -30,9 +30,7 @@ import net.minecraft.world.level.GameType
 import net.minecraft.world.level.block.Rotation
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.Vec3
-import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
-import net.neoforged.neoforge.event.tick.ServerTickEvent
 import java.io.InputStreamReader
 import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
@@ -116,8 +114,6 @@ object RealTerrainBattleGameTests {
         val manager = SquadManager.get(level)
         val previousGroups = DebugFlags.enabledGroups
         DebugFlags.enabledGroups = previousGroups + setOf(LogGroup.ORDER, LogGroup.FIRE)
-        val pacer = CombatTickPacer()
-        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         val npcs = mutableListOf<NpcEntity>()
         val squads = mutableListOf<UUID>()
         val observer = FakePlayerFactory.get(level, GameProfile(UUID.nameUUIDFromBytes("battle-observer:${scenario.name}".toByteArray()), "battle-observer")).apply {
@@ -135,7 +131,6 @@ object RealTerrainBattleGameTests {
             level.removePlayerImmediately(observer, Entity.RemovalReason.DISCARDED)
             replay.close()
             DebugFlags.enabledGroups = previousGroups
-            NeoForge.EVENT_BUS.unregister(pacer)
         }
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
