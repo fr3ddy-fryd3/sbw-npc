@@ -113,20 +113,33 @@ class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: Tact
      * Height searches still finish their full scan before ranking the highest protected floor. */
     internal fun readyBatch(overwatch: Boolean): Boolean = !overwatch && scored.values.any { !it.open }
 
-    /** Why [needsRestart] would restart this search, or null when it would not. */
+    /**
+     * Why this search's cached ranking no longer holds, or null while it does: the man moved off
+     * its origin, an aim appeared or went, or the aim point moved further than [aimTolerance].
+     *
+     * The target's id alone does not count (#301): with many enemies a man's target switches all
+     * the time, and restarting on each switch threw away nearly every multi-turn search under load.
+     * Committing a post rechecks its body, firing lane and route against the live aim, so a kept
+     * ranking can only cost a less good cover or exposure, never an unsafe post.
+     */
     fun restartReason(position: Vec3, currentAim: TacticalAim?): String? =
         when {
             origin.distanceTo(position) > 4.0 -> "moved"
-            aim?.target != currentAim?.target -> "target"
             aim == null || currentAim == null -> if (aim != currentAim) "aim" else null
-            aim.eye.distanceTo(currentAim.eye) > 2.0 -> "aim_moved"
+            aim.eye.distanceTo(currentAim.eye) > aimTolerance(aim) -> if (aim.target != currentAim.target) "target" else "aim_moved"
             else -> null
         }
 
-    fun needsRestart(position: Vec3, currentAim: TacticalAim?): Boolean {
-        if (origin.distanceTo(position) > 4.0 || aim?.target != currentAim?.target) return true
-        if (aim == null || currentAim == null) return aim != currentAim
-        return aim.eye.distanceTo(currentAim.eye) > 2.0
+    fun needsRestart(position: Vec3, currentAim: TacticalAim?): Boolean = restartReason(position, currentAim) != null
+
+    /** How far the aim point may move and keep the ranking: 2 blocks up close, 8 degrees seen from the origin further out, at most 12 blocks. */
+    private fun aimTolerance(aim: TacticalAim) = (origin.distanceTo(aim.eye) * AIM_TOLERANCE_SLOPE).coerceIn(MIN_AIM_TOLERANCE, MAX_AIM_TOLERANCE)
+
+    private companion object {
+        /** tan 8 degrees. */
+        const val AIM_TOLERANCE_SLOPE = 0.1405
+        const val MIN_AIM_TOLERANCE = 2.0
+        const val MAX_AIM_TOLERANCE = 12.0
     }
 
     fun reject(reason: String) {
