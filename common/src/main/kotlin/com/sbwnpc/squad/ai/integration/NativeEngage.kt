@@ -16,7 +16,6 @@ import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.LogGroup
-import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.SquadTransit
@@ -396,7 +395,7 @@ private class HoldSpot(npc: NpcEntity, state: EngageState, sidearm: Boolean, pri
 
     /** Whether the spot he holds still serves: he stands on it, out of any blast, still a shot, not crowded, his lane clear. */
     private fun verdict(level: ServerLevel, target: LivingEntity, held: Vec3): Verdict {
-        if (!FiringPostArrival.reached(npc.position(), held) || GrenadeHazard.threatens(level, held) || !TickBudget.hasRaycasts(level)) return Verdict.UNSAFE
+        if (!FiringPostArrival.reached(npc.position(), held) || GrenadeHazard.threatens(level, held)) return Verdict.UNSAFE
         // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer
         // "still has a shot", and keeping it had defenders standing behind a hull, never firing.
         val score = state.search.concealmentAt(FiringSpotSearch.Shot(level, npc, target, state.bounds()), held)
