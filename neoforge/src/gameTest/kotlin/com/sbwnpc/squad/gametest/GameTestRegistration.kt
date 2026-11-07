@@ -47,6 +47,7 @@ object GameTestRegistration {
             FarDefenceGameTests::class.java,
             RoofedOverwatchGameTests::class.java,
             AttackDeploymentGameTests::class.java,
+            PostSpacingGameTests::class.java,
             TerrainAttackGameTests::class.java,
             HeightMenGameTests::class.java,
             FiringPostSearchGameTests::class.java,

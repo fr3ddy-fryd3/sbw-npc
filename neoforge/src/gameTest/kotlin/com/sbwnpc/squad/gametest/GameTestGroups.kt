@@ -26,6 +26,7 @@ internal object GameTestGroups {
             FollowOrderGameTests::class.java,
             WithdrawalGameTests::class.java,
             AttackDeploymentGameTests::class.java,
+            PostSpacingGameTests::class.java,
             TerrainAttackGameTests::class.java,
             HeightMenGameTests::class.java,
         ),

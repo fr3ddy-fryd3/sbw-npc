@@ -13,6 +13,27 @@
       { "preset": "SIXTEEN", "at": [-97, -264] }
     ]
   },
+  "joint-attack-hill-point": {
+    "about": "Owner's playtest 07.11: 32 against 32 on a hilltop point; Bravo reached it, Charlie came in later. Squads placed from where the survivors stood in the save.",
+    "world": "Новый мир (3)",
+    "objective": [-432, 74, 291],
+    "ticks": 4800,
+    "attackers": [
+      { "preset": "SIXTEEN", "at": [-445, 230] },
+      { "preset": "SIXTEEN", "at": [-362, 300], "afterTicks": 1200 }
+    ],
+    "defenders": [
+      { "preset": "SIXTEEN", "at": [-436, 300] },
+      { "preset": "SIXTEEN", "at": [-428, 296] }
+    ],
+    "expect": {
+      "note": "Even numbers: not expected to fall. Run for post spacing, not to pass thresholds.",
+      "maxFriendlyShare": 1.0,
+      "maxChurnPerManMinute": 99.0,
+      "assault": false,
+      "taken": false
+    }
+  },
   "lone-squad-hill-point": {
     "about": "Owner's playtest 17.10 16:47: one squad of 16 attacks the same point held by 16.",
     "world": "New World (1)",

@@ -81,6 +81,12 @@ object NativeTactics {
     /** How long a failed post search is remembered, 10 s. */
     private const val FAILURE_MEMORY_TICKS = 200L
 
+    /** How often a man's squadmate spacing is measured, half a second. */
+    private const val CROWDING_CHECK_TICKS = 10L
+
+    /** How much further than the spacing his nearest squadmate must stand before he is no longer crowded. */
+    private const val CROWDING_RELEASE = 0.5
+
     /** A squad smaller than this is never counted as scattered. */
     private const val REGROUP_MIN_MEN = 4
 
@@ -347,6 +353,9 @@ object NativeTactics {
 
         /** What each man's cover actions found and did, read back as his facts (#251). */
         private val cover = HashMap<UUID, CoverState>()
+
+        /** Each man's last squadmate-spacing check: when, and whether he was crowded (#299). */
+        private val crowding = HashMap<UUID, Pair<Long, Boolean>>()
 
         /** What each man's engage keeps across its units (#251 step B). */
         private val engageStates = HashMap<UUID, EngageState>()
@@ -731,7 +740,13 @@ object NativeTactics {
                             val npc = requireNotNull(level.getEntity(intent.actor.id) as? NpcEntity)
                             actions[intent.actor.id]?.overwatchPost?.let { heldPosts[intent.actor.id] = it }
                             NativePositionAction(intent, npc, { npc.squadId?.let(::combatView) }, heldPost = heldPosts[intent.actor.id], exhausted = { failed, rejections, searched ->
-                                failures[failed.actor.id] = LocalPositionFailure(original.anchor, level.gameTime, (failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }?.attempts ?: 0) + 1, rejections.toMap())
+                                val previous = failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }
+                                // A failed spread keeps the round's count: it must not restart the post chain (#299).
+                                failures[failed.actor.id] = if (failed.spread && previous != null) {
+                                    previous.copy(failedAt = level.gameTime, spreadTried = true)
+                                } else {
+                                    LocalPositionFailure(original.anchor, level.gameTime, (previous?.attempts ?: 0) + 1, rejections.toMap(), previous?.spreadTried == true)
+                                }
                                 // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
                                 // The planned anchor is put on the ground before the search; searched is where it looked.
                                 val ground = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, net.minecraft.util.Mth.floor(searched.x), net.minecraft.util.Mth.floor(searched.z))
@@ -891,7 +906,7 @@ object NativeTactics {
 
         /** His facts about fire, cover and his foxhole (#251); the costly ones only while they matter. */
         private fun coverFacts(facts: FactSnapshot, npc: NpcEntity?, now: Long): FactSnapshot {
-            npc ?: return facts.observe(TacticalFacts.UNDER_FIRE, false).observe(TacticalFacts.DIGS, 0)
+            npc ?: return facts.observe(TacticalFacts.UNDER_FIRE, false).observe(TacticalFacts.DIGS, 0).observe(TacticalFacts.CROWDED, false)
             val underFire = npc.isSuppressed()
             val sector = npc.threatPos?.takeIf { underFire }?.let { coverOf(npc).fireSector(it) }
             val state = cover[npc.uuid]
@@ -899,6 +914,7 @@ object NativeTactics {
             var result = facts.observe(TacticalFacts.UNDER_FIRE, underFire).observe(TacticalFacts.DIGS, digs)
                 .observe(TacticalFacts.COVER_CYCLES, state?.cycles ?: 0)
                 .observe(TacticalFacts.SHELTERED, state?.sheltered(npc, sector) == true)
+                .observe(TacticalFacts.CROWDED, crowded(npc, now))
             sector?.let { result = result.observe(TacticalFacts.FIRE_SECTOR, it) }
             state?.failure?.let { result = result.observe(TacticalFacts.COVER_FAILURE, it, observedAt = it.failedAt, expiresAt = it.failedAt + FAILURE_MEMORY_TICKS) }
             // Only the answers to no cover and the hole read these, and a man peeking from cover
@@ -913,6 +929,30 @@ object NativeTactics {
             }
             return result
         }
+
+        /**
+         * Whether a squadmate's body stands within [FiringSpots.MIN_SPACING] of him, checked every
+         * [CROWDING_CHECK_TICKS]. Claims are not bodies, so [FiringSpots.nearbyWithBodies] is not used.
+         * Once crowded he stays so until the nearest is half a block further, or the fact flickered
+         * at the edge and replanned him. Medics walk up to the wounded on purpose and are left out;
+         * the patient is private to the medic's behaviour, so a medic beside another man is left out too.
+         */
+        private fun crowded(npc: NpcEntity, now: Long): Boolean {
+            crowding[npc.uuid]?.takeIf { now - it.first < CROWDING_CHECK_TICKS }?.let { return it.second }
+            val was = crowding[npc.uuid]?.second == true
+            val reach = FiringSpots.MIN_SPACING + if (was) CROWDING_RELEASE else 0.0
+            var near = false
+            if (npc.npcClass != NpcClass.MEDIC && npc.vehicle == null) {
+                NpcRegistry.forEachWithin(npc.level() as ServerLevel, npc.position(), reach, exclude = npc) {
+                    if (!near && spacedFrom(npc, it)) near = true
+                }
+            }
+            crowding[npc.uuid] = now to near
+            return near
+        }
+
+        /** Whether [other] is a squadmate on foot whose post must keep its distance from [npc]'s. */
+        private fun spacedFrom(npc: NpcEntity, other: NpcEntity) = other.isAlive && other.vehicle == null && other.npcClass != NpcClass.MEDIC && other.squadId == npc.squadId
 
         /**
          * A live target he sees, or one not shooting at him now: the cover behaviour's test for
@@ -1214,6 +1254,7 @@ object NativeTactics {
                 // Nor a firing spot nobody would release.
                 engageStates.entries.removeIf { (id, state) -> (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) state.dispose() } }
                 engageBands.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                crowding.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 grenades.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 suspendedBy.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -2409,6 +2450,7 @@ object NativeTactics {
             legs.clear()
             armour.clear()
             cover.clear()
+            crowding.clear()
             supportWaits.clear()
             coverStalls.clear()
             fireSupport.clear()

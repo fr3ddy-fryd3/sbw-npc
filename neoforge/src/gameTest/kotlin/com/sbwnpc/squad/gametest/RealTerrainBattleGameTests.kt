@@ -11,6 +11,7 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.squad.GroupOrders
@@ -182,18 +183,20 @@ object RealTerrainBattleGameTests {
         val timeline = report.resolve("timeline.csv")
         Files.writeString(timeline, "tick,attackersAlive,defendersAlive,phase\n")
         val closeness = Closeness()
+        val spacing = PostSpacing()
         helper.onEachTick {
             if (helper.tick % 20L != 0L) return@onEachTick
+            spacing.sample(attack.map { (_, men) -> men.filter { it.isAlive } })
             closeness.sample(attack.flatMap { it.second }.filter { it.isAlive }, defence.flatMap { it.second }.filter { it.isAlive })
             val phase = attack.flatMap { it.second }.filter { it.isAlive }.mapNotNull(NativeTactics::attackPhase).maxOrNull()
             if (phase != null) phases.putIfAbsent(phase, helper.tick.toInt())
             Files.writeString(timeline, "${helper.tick},${attack.sumOf { (_, m) -> m.count { it.isAlive } }},${defence.sumOf { (_, m) -> m.count { it.isAlive } }},$phase\n", java.nio.file.StandardOpenOption.APPEND)
         }
-        helper.runAtTickTime(scenario.ticks.toLong()) { judge(helper, scenario, Fought(attack, defence, phases, manTicks, closeness), marker, report) }
+        helper.runAtTickTime(scenario.ticks.toLong()) { judge(helper, scenario, Fought(attack, defence, phases, manTicks, closeness, spacing), marker, report) }
     }
 
     /** The sides as they stand at the end of the battle, with the phases the attack went through. */
-    private class Fought(val attack: List<Pair<UUID, List<NpcEntity>>>, val defence: List<Pair<UUID, List<NpcEntity>>>, val phases: Map<AttackPhase, Int>, val manTicks: Long, val closeness: Closeness)
+    private class Fought(val attack: List<Pair<UUID, List<NpcEntity>>>, val defence: List<Pair<UUID, List<NpcEntity>>>, val phases: Map<AttackPhase, Int>, val manTicks: Long, val closeness: Closeness, val spacing: PostSpacing)
 
     /**
      * How near the attackers came to living defenders, sampled once a second: the owner's rule is
@@ -226,6 +229,71 @@ object RealTerrainBattleGameTests {
         }
     }
 
+    /**
+     * How close the attackers' standing men come to each other, sampled once a second: in a
+     * playtest men of one squad held posts on neighbouring blocks. A man counts once he has stood
+     * still for a second, so walking past a neighbour is not a post.
+     */
+    private class PostSpacing {
+        private val last = HashMap<UUID, net.minecraft.world.phys.Vec3>()
+        var nearestWithin = Double.MAX_VALUE
+            private set
+        var nearestBetween = Double.MAX_VALUE
+            private set
+        var tightWithin = 0
+            private set
+
+        /** Tight pairs of one squad with one man [STACKED] blocks or more above the other: a ledge or floor, counted apart. */
+        var stackedWithin = 0
+            private set
+        var tightBetween = 0
+            private set
+        var samples = 0
+            private set
+
+        fun sample(squads: List<List<NpcEntity>>) {
+            val standing = squads.map { men -> men.filter { man -> last[man.uuid]?.let { it.distanceTo(man.position()) < STILL } == true } }
+            squads.flatten().forEach { last[it.uuid] = it.position() }
+            for ((i, a) in standing.withIndex()) {
+                for ((j, man) in a.withIndex()) {
+                    samples++
+                    // A medic walks up to the wounded on purpose: his pairs are no shared post.
+                    a.drop(j + 1).filter { man.npcClass != NpcClass.MEDIC && it.npcClass != NpcClass.MEDIC }.forEach { within(i, man, it) }
+                    standing.drop(i + 1).flatten().forEach { between(man, it) }
+                }
+            }
+        }
+
+        private fun between(man: NpcEntity, other: NpcEntity) {
+            val d = man.position().subtract(other.position()).horizontalDistance()
+            nearestBetween = minOf(nearestBetween, d)
+            if (d < TIGHT) tightBetween++
+        }
+
+        private fun within(squad: Int, man: NpcEntity, other: NpcEntity) {
+            val d = man.position().subtract(other.position()).horizontalDistance()
+            if (d < TIGHT && kotlin.math.abs(man.y - other.y) >= STACKED) {
+                stackedWithin++
+                return
+            }
+            nearestWithin = minOf(nearestWithin, d)
+            if (d < TIGHT) {
+                tightWithin++
+                LOGGER.info("[battle-spacing] squad={} d={} a={} {} at {} b={} {} at {}", squad, "%.2f".format(d), man.uuid, man.npcClass, man.blockPosition().toShortString(), other.uuid, other.npcClass, other.blockPosition().toShortString())
+            }
+        }
+
+        companion object {
+            const val STILL = 0.3
+
+            /** Nearer than this (2 blocks) two standing men share one post. */
+            const val TIGHT = 2.0
+
+            /** One man on a ledge or floor above the other: not a shared post, left to the spacing rule, which measures in space. */
+            const val STACKED = 2.0
+        }
+    }
+
     /** Writes the battle's summary and checks it against the scenario's thresholds. */
     private fun judge(helper: GameTestHelper, scenario: Scenario, fought: Fought, marker: String, report: Path) {
         val attack = fought.attack
@@ -249,6 +317,7 @@ object RealTerrainBattleGameTests {
             appendLine("taken=$taken")
             appendLine("fireGates=${metrics.fireGates.entries.sortedByDescending { it.value }.joinToString { "${it.key}=${it.value}" }}")
             appendLine("friendlyShare=${"%.2f".format(metrics.share("FRIENDLY_OR_VEHICLE"))} readyShare=${"%.2f".format(metrics.share("READY"))}")
+            appendLine("postSpacing nearestWithin=${"%.2f".format(fought.spacing.nearestWithin)} nearestBetween=${"%.2f".format(fought.spacing.nearestBetween)} tightPairsWithin=${fought.spacing.tightWithin} stackedPairsWithin=${fought.spacing.stackedWithin} tightPairsBetween=${fought.spacing.tightBetween} standingSamples=${fought.spacing.samples}")
             appendLine("pointBlankShare=${"%.3f".format(fought.closeness.share())} pointBlankSamples=${fought.closeness.pointBlank} nearestToDefender=${"%.1f".format(fought.closeness.nearest)}")
             appendLine("intermediateReachedPerManMinute=${"%.2f".format(churn)} exhaustedPerManMinute=${"%.2f".format(metrics.exhaustedSearches / manMinutes)}")
         }
