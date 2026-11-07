@@ -119,8 +119,10 @@ class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: Tact
      *
      * The target's id alone does not count (#301): with many enemies a man's target switches all
      * the time, and restarting on each switch threw away nearly every multi-turn search under load.
-     * Committing a post rechecks its body, firing lane and route against the live aim, so a kept
-     * ranking can only cost a less good cover or exposure, never an unsafe post.
+     * Committing a post rechecks its body, its route and, for a shooting job, its firing lane against
+     * the live aim, and its cover when shelter is required. Exposure and other cover are not
+     * rechecked, so a kept ranking can cost a less good post, never a blocked shot or an unsafe body
+     * or route.
      */
     fun restartReason(position: Vec3, currentAim: TacticalAim?): String? =
         when {

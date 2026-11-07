@@ -139,13 +139,13 @@ object CombatPerformanceGameTests {
         val origins = members.associate { it.uuid to it.position() }
         for (index in 0 until 16) scene.enemy(Vec3(145.5 + index / 4 * 3, 1.0, 100.5 + index % 4 * 12))
         val squads = groups.map { group -> manager.create(helper.level, java.util.UUID(90, 301), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        val report = java.nio.file.Path.of(System.getProperty("sbwnpc.gameTestReports")).resolve("position-queue.csv")
+        java.nio.file.Files.writeString(report, "tick,men,moved,foundTotal,menFound,freshSearches,msptAvg,restarts,deferrals\n")
         val tally = SearchTally(ids)
         scene.onClose = {
             tally.close()
             squads.forEach { manager.deleteSquad(helper.level, it.id) }
         }
-        val report = java.nio.file.Path.of(System.getProperty("sbwnpc.gameTestReports")).resolve("position-queue.csv")
-        java.nio.file.Files.writeString(report, "tick,men,moved,foundTotal,menFound,freshSearches,msptAvg,restarts,deferrals\n")
         val objective = helper.absolutePos(BlockPos(148, 1, 118))
         com.sbwnpc.squad.squad.GroupOrders.apply(helper.level, manager, squads.map { it.id }, com.sbwnpc.squad.squad.SquadOrder.ATTACK, objective.x, objective.z)
         var lastNanos = System.nanoTime()
