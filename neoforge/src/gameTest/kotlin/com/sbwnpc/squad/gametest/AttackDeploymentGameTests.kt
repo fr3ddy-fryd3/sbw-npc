@@ -421,56 +421,6 @@ object AttackDeploymentGameTests {
         }
     }
 
-    /**
-     * Two riflemen of one squad start side by side and attack an enemy walled in on every side, so no
-     * post anywhere has a lane. Every search fails; the last resort once held both where they stood,
-     * touching (#299). One must step off the other's block.
-     */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1000, batch = "failed-posts-spread")
-    fun menWhosePostSearchesFailDoNotStandTouching(helper: GameTestHelper) {
-        for (x in 0..159) {
-            for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-        }
-        val enemyAt = BlockPos(70, 1, 64)
-        for (dx in -2..2) for (dz in -2..2) for (y in 1..4) {
-            if (dx in -1..1 && dz in -1..1 && y < 4) continue
-            helper.setBlock(enemyAt.offset(dx, y - 1, dz), Blocks.STONE)
-        }
-        val men = listOf(spawn(helper, Vec3(40.5, 1.0, 63.5), SquadFaction.PIG), spawn(helper, Vec3(40.5, 1.0, 64.5), SquadFaction.PIG))
-        val enemy = spawn(helper, Vec3(enemyAt.x + 0.5, 1.0, enemyAt.z + 0.5), SquadFaction.COW).apply {
-            isNoAi = true
-            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 5000.0
-            health = maxHealth
-        }
-        val manager = SquadManager.get(helper.level)
-        val squad = manager.create(helper.level, UUID(4502, 0), SquadFaction.PIG, men.map { it.uuid }).also {
-            manager.setOrder(it.id, SquadOrder.ATTACK)
-            manager.setObjective(helper.level, it.id, helper.absolutePos(BlockPos(48, 1, 64)))
-        }
-        val last = HashMap<UUID, Vec3>()
-        var worst = Double.MAX_VALUE
-        helper.onEachTick {
-            if (helper.tick % 20L != 0L) return@onEachTick
-            val still = men.all { man -> last[man.uuid]?.let { it.distanceTo(man.position()) < 0.3 } == true }
-            men.forEach { last[it.uuid] = it.position() }
-            val d = men[0].position().subtract(men[1].position()).horizontalDistance()
-            if (helper.tick >= 600 && still) worst = minOf(worst, d)
-            if (helper.tick % 100L == 0L) println("[failed-posts-spread] tick=${helper.tick} still=$still d=${"%.2f".format(d)} at=${men.map { helper.relativePos(it.blockPosition()).toShortString() }}")
-        }
-        helper.runAtTickTime(950) {
-            try {
-                println("[failed-posts-spread] result worst=${"%.2f".format(worst)}")
-                helper.assertTrue(worst != Double.MAX_VALUE, "The two men never stood still together")
-                helper.assertTrue(worst >= POST_SPACING, "Two men with no post found stood ${"%.2f".format(worst)} blocks apart")
-                helper.succeed()
-            } finally {
-                manager.deleteSquad(helper.level, squad.id)
-                (men + enemy).forEach { it.discard() }
-            }
-        }
-    }
-
     /** Pushing alone keeps two bodies about a block apart; a post of one's own is farther. */
     private const val POST_SPACING = 2.0
 

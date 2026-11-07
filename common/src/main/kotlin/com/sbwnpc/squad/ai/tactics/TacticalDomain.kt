@@ -611,11 +611,28 @@ object TacticalDomain {
                             }
                         }
                     }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent)) }),
+                    // A search failed and he stands on a squadmate's block: before the next search
+                    // he steps off it, searching round where he stands with no lane asked for. The
+                    // neighbour and closer searches fail in place, so he stood touching through the
+                    // whole round, and the last resort then held him there (#299).
+                    Method("spread_post", eligible = { intent ->
+                        Condition { facts ->
+                            NpcFamilies.standsAside(intent, facts)?.let { return@Condition it }
+                            val failure = facts.value(TacticalFacts.POST_FAILURE)
+                            if (failure?.anchor != intent.anchor) Verdict.Rejected("no_failed_search") else spreads(intent, failure, facts)
+                        }
+                    }, decompose = { intent, _ ->
+                        TaskNetwork.sequence(POST.call(intent.copy(duty = CombatDuty.REAR_GUARD, anchor = intent.origin, hold = false, holdFeet = false, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet(), spread = true)))
+                    }),
                     Method("neighbor_post", eligible = { intent ->
                         Condition { facts ->
                             NpcFamilies.standsAside(intent, facts)?.let { return@Condition it }
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
-                            if (failure?.anchor == intent.anchor && failure.attempts <= NEIGHBOR_ATTEMPTS) Verdict.Allowed else Verdict.Rejected("local_alternatives_exhausted")
+                            when {
+                                failure?.anchor != intent.anchor || failure.attempts > NEIGHBOR_ATTEMPTS -> Verdict.Rejected("local_alternatives_exhausted")
+                                spreads(intent, failure, facts) == Verdict.Allowed -> Verdict.Rejected("spread_due")
+                                else -> Verdict.Allowed
+                            }
                         }
                     }, decompose = { intent, facts ->
                         val attempt = facts.value(TacticalFacts.POST_FAILURE)!!.attempts
@@ -641,28 +658,13 @@ object TacticalDomain {
                                 failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS -> Verdict.Rejected("neighbors_not_exhausted")
                                 facts.sidearm -> Verdict.Rejected("sidearm")
                                 intent.duty.holdsBack -> Verdict.Rejected("holds_back")
+                                spreads(intent, failure, facts) == Verdict.Allowed -> Verdict.Rejected("spread_due")
                                 else -> closer(intent, failure)
                             }
                         }
                     }, decompose = { intent, facts ->
                         val step = facts.value(TacticalFacts.POST_FAILURE)!!.attempts - NEIGHBOR_ATTEMPTS - 1
                         TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step], legs = false, coveredBy = emptySet())))
-                    }),
-                    // Every search failed and he stands on a squadmate's block: one search round
-                    // his own position, with no lane asked for, steps him off it. Before it the
-                    // last resort held him there, so two men failing side by side stood touching (#299).
-                    Method("spread_post", eligible = { intent ->
-                        Condition { facts ->
-                            NpcFamilies.standsAside(intent, facts)?.let { return@Condition it }
-                            val failure = facts.value(TacticalFacts.POST_FAILURE)
-                            when {
-                                failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS -> Verdict.Rejected("posts_not_exhausted")
-                                !facts.sidearm && !intent.duty.holdsBack && closer(intent, failure) == Verdict.Allowed -> Verdict.Rejected("closer_post_left")
-                                else -> spreads(intent, failure, facts)
-                            }
-                        }
-                    }, decompose = { intent, _ ->
-                        TaskNetwork.sequence(POST.call(intent.copy(duty = CombatDuty.REAR_GUARD, anchor = intent.origin, hold = false, holdFeet = false, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet(), spread = true)))
                     }),
                     // Every search round the anchor failed: his order and gun move him until the
                     // failure is forgotten and the search starts again. Without it the man had no
@@ -798,7 +800,7 @@ object TacticalDomain {
     private val CLOSER_STEPS = listOf(12.0 to 0.0, 24.0 to 0.0, 12.0 to 16.0, 12.0 to -16.0, 24.0 to 16.0, 24.0 to -16.0, 36.0 to 0.0)
 
     /** Whether [closerAnchors] still has a step to try after [failure], the neighbours being exhausted. */
-    /** Whether a man whose searches all failed steps off a squadmate's block (spread_post) before the last resort holds him. */
+    /** Whether a man whose search failed steps off a squadmate's block (spread_post) before any other post method. */
     private fun spreads(intent: PositionIntent, failure: LocalPositionFailure, facts: FactView): Verdict = when {
         failure.spreadTried -> Verdict.Rejected("spread_failed")
         !intent.duty.commandsMovement -> Verdict.Rejected("feet_not_his")
