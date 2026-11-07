@@ -62,8 +62,10 @@ enum class CombatDuty(
  *   clearance: a blind firing-line slot found sight only there (#93). Null keeps the role's own.
  * @property coveredBy the men whose fire covers his rushes: each rush waits to start until one
  *   of them fires ([TacticalFacts.SUPPORT_FIRING]), however long that takes. Empty, he rushes when ready.
+ * @property spread the step off a squadmate's block by a man whose post search found nothing (#299);
+ *   its failure is remembered so the step is tried once per failed anchor.
  */
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val sightClearance: Double? = null, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val coveredBy: Set<java.util.UUID> = emptySet(), val armour: ArmourContact? = null, val holdFeet: Boolean = false) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val sightClearance: Double? = null, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val coveredBy: Set<java.util.UUID> = emptySet(), val armour: ArmourContact? = null, val holdFeet: Boolean = false, val spread: Boolean = false) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
@@ -195,11 +197,15 @@ data class HoldHole(val actor: AgentId, val digs: Int)
 data class LeaveHole(val actor: AgentId)
 
 /** Typed observations are scoped by FactSnapshot.owner; no world queries live in this domain. */
-data class LocalPositionFailure(val anchor: Point3, val failedAt: Long, val attempts: Int, val rejections: Map<String, Int>)
+/** The post searches round [anchor] that failed; [spreadTried] once the step off a squadmate failed there too. */
+data class LocalPositionFailure(val anchor: Point3, val failedAt: Long, val attempts: Int, val rejections: Map<String, Int>, val spreadTried: Boolean = false)
 
 object TacticalFacts {
     val POST_FAILURE = FactKey("post.local_failure", LocalPositionFailure::class.java)
     val AREA_SECURED = FactKey("operation.area_secured", Boolean::class.javaObjectType)
+
+    /** A squadmate stands within [com.sbwnpc.squad.combat.FiringSpots.MIN_SPACING] of him (#299). */
+    val CROWDED = FactKey("actor.crowded", Boolean::class.javaObjectType)
     val MOVABLE = FactKey("actor.movable", Boolean::class.javaObjectType)
     val COVER = FactKey("sector.actual_cover", Boolean::class.javaObjectType)
     val ARRIVED = FactKey("post.actual_arrival", Boolean::class.javaObjectType)
@@ -642,6 +648,22 @@ object TacticalDomain {
                         val step = facts.value(TacticalFacts.POST_FAILURE)!!.attempts - NEIGHBOR_ATTEMPTS - 1
                         TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step], legs = false, coveredBy = emptySet())))
                     }),
+                    // Every search failed and he stands on a squadmate's block: one search round
+                    // his own position, with no lane asked for, steps him off it. Before it the
+                    // last resort held him there, so two men failing side by side stood touching (#299).
+                    Method("spread_post", eligible = { intent ->
+                        Condition { facts ->
+                            NpcFamilies.standsAside(intent, facts)?.let { return@Condition it }
+                            val failure = facts.value(TacticalFacts.POST_FAILURE)
+                            when {
+                                failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS -> Verdict.Rejected("posts_not_exhausted")
+                                !facts.sidearm && !intent.duty.holdsBack && closer(intent, failure) == Verdict.Allowed -> Verdict.Rejected("closer_post_left")
+                                else -> spreads(intent, failure, facts)
+                            }
+                        }
+                    }, decompose = { intent, _ ->
+                        TaskNetwork.sequence(POST.call(intent.copy(duty = CombatDuty.REAR_GUARD, anchor = intent.origin, hold = false, holdFeet = false, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet(), spread = true)))
+                    }),
                     // Every search round the anchor failed: his order and gun move him until the
                     // failure is forgotten and the search starts again. Without it the man had no
                     // plan at all and stood with his last failed search for a task.
@@ -652,6 +674,7 @@ object TacticalDomain {
                             when {
                                 failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS -> Verdict.Rejected("posts_not_exhausted")
                                 !facts.sidearm && !intent.duty.holdsBack && closer(intent, failure) == Verdict.Allowed -> Verdict.Rejected("closer_post_left")
+                                spreads(intent, failure, facts) == Verdict.Allowed -> Verdict.Rejected("spread_due")
                                 else -> Verdict.Allowed
                             }
                         }
@@ -775,6 +798,15 @@ object TacticalDomain {
     private val CLOSER_STEPS = listOf(12.0 to 0.0, 24.0 to 0.0, 12.0 to 16.0, 12.0 to -16.0, 24.0 to 16.0, 24.0 to -16.0, 36.0 to 0.0)
 
     /** Whether [closerAnchors] still has a step to try after [failure], the neighbours being exhausted. */
+    /** Whether a man whose searches all failed steps off a squadmate's block (spread_post) before the last resort holds him. */
+    private fun spreads(intent: PositionIntent, failure: LocalPositionFailure, facts: FactView): Verdict = when {
+        failure.spreadTried -> Verdict.Rejected("spread_failed")
+        !intent.duty.commandsMovement -> Verdict.Rejected("feet_not_his")
+        facts.value(TacticalFacts.UNDER_FIRE) == true -> Verdict.Rejected("under_fire")
+        facts.value(TacticalFacts.CROWDED) != true -> Verdict.Rejected("not_crowded")
+        else -> Verdict.Allowed
+    }
+
     private fun closer(intent: PositionIntent, failure: LocalPositionFailure): Verdict {
         val step = failure.attempts - NEIGHBOR_ATTEMPTS - 1
         return when {

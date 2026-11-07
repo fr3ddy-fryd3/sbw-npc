@@ -11,6 +11,7 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.squad.GroupOrders
@@ -252,7 +253,8 @@ object RealTerrainBattleGameTests {
             for ((i, a) in standing.withIndex()) {
                 for ((j, man) in a.withIndex()) {
                     samples++
-                    for (other in a.drop(j + 1)) {
+                    // A medic walks up to the wounded on purpose: his pairs are no shared post.
+                    for (other in a.drop(j + 1).filter { man.npcClass != NpcClass.MEDIC && it.npcClass != NpcClass.MEDIC }) {
                         val d = man.position().subtract(other.position()).horizontalDistance()
                         nearestWithin = minOf(nearestWithin, d)
                         if (d < TIGHT) {

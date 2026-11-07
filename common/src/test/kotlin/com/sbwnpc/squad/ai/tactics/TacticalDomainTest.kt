@@ -52,6 +52,24 @@ class TacticalDomainTest {
         assertEquals(listOf("hold_as_ordered"), methods(LocalPositionFailure(intent.anchor, 1, 5, mapOf("unreachable_route" to 5))))
     }
 
+    @Test fun `a man whose every search failed beside a squadmate steps off once, then holds`() {
+        val exhausted = LocalPositionFailure(intent.anchor, 1, 5, mapOf("unreachable_route" to 5))
+        fun chosen(failure: LocalPositionFailure, crowded: Boolean) =
+            (plan(facts(1).observe(TacticalFacts.POST_FAILURE, failure, expiresAt = 201).observe(TacticalFacts.CROWDED, crowded)) as PlanningResult.Ready)
+                .plan.tasks.single().spec.action.parameters as PositionIntent
+        val step = chosen(exhausted, crowded = true)
+        assertTrue(step.spread)
+        assertTrue(step.commandsMovement)
+        assertEquals(CombatDuty.REAR_GUARD, step.duty)
+        assertFalse(step.requireCover)
+        for (held in listOf(chosen(exhausted, crowded = false), chosen(exhausted.copy(spreadTried = true), crowded = true))) {
+            assertFalse(held.spread)
+            assertTrue(held.hold)
+        }
+        // Crowded with searches left, he keeps searching for a real post.
+        assertFalse(chosen(exhausted.copy(attempts = 2), crowded = true).spread)
+    }
+
     @Test fun `a blind neighbourhood moves the search closer to the enemy`() {
         val blind = LocalPositionFailure(intent.anchor, 1, 5, mapOf("blocked_shot" to 93))
         val selected = (plan(facts(1).observe(TacticalFacts.POST_FAILURE, blind, expiresAt = 201)) as PlanningResult.Ready).plan.tasks.single().spec.action.parameters as PositionIntent

@@ -49,7 +49,8 @@ internal class NativePositionAction(
 
             CombatDuty.FOLLOW_ORDER -> TacticalJob.WAIT
         },
-        DryGround.near(npc.level() as ServerLevel, intent.anchor.native(), npc.position()),
+        // A spread searches round where he stands now; the plan only knows where he stood when it was made.
+        DryGround.near(npc.level() as ServerLevel, if (intent.spread) npc.position() else intent.anchor.native(), npc.position()),
         intent.focus?.native(),
         intent.hashCode(),
     )
@@ -317,7 +318,7 @@ internal class NativePositionAction(
 
             next.armour != intent.armour -> "armour_source_changed"
 
-            next.inspection != intent.inspection || next.hold != intent.hold || next.holdFeet != intent.holdFeet || next.legs != intent.legs -> "post_kind_changed"
+            next.inspection != intent.inspection || next.hold != intent.hold || next.holdFeet != intent.holdFeet || next.spread != intent.spread || next.legs != intent.legs -> "post_kind_changed"
 
             // GAIN_HEIGHT sets the floor from where the man stands now, so it moved with every
             // step up or down a slope and threw away a post that was still high enough.
