@@ -2243,7 +2243,10 @@ object NativeTactics {
                         .mapNotNull { intent -> view.members.firstOrNull { it.id == intent.actor.id }?.position?.let { hypot(it.x - view.center.x, it.z - view.center.z) } }
                     situation.copy(
                         movers = movers.size,
-                        movingTeams = teamsOf(saved).values.count { team -> movers.any { it.actor.id in team } },
+                        // Bounding, the covering team stands and fires: counted by its duty it was no
+                        // mover, the squad fell to one moving team, and bounding was refused the moment
+                        // it began (headless manoeuvre-bound, 08.11).
+                        movingTeams = teamsOf(saved).values.count { team -> (if (strategy == CombatStrategy.BOUND_OVERWATCH) intents.filter { it.legs && !it.assault } else movers).any { it.actor.id in team } },
                         flanking = view.members.any { it.id in waypoints },
                         scattered = distances.size >= REGROUP_MIN_MEN && distances.count { it > 2 * radius }.let { it >= REGROUP_MIN_SCATTERED && it * 3 >= distances.size },
                         gathered = distances.all { it <= radius },
