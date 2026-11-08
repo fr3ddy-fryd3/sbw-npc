@@ -167,6 +167,7 @@ class TacticalDomainTest {
         val calm = CombatSituation(false, true, false, false, 1.0, 0.0, false)
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(calm.copy(assessment = SquadAssessment(ammo = 0.6))))))
         assertEquals(CombatStrategy.HOLD, strategyOf(squadPlan(squadFacts(calm.copy(assessment = SquadAssessment(ammo = 0.0))))))
+        assertEquals(0.0, SquadManners.score(CombatStrategy.ADVANCE, squadFacts(calm.copy(assessment = SquadAssessment(ammo = 0.0)), CombatStrategy.ADVANCE)).value)
         val retreat = CombatSituation(false, false, false, false, 1.0, 0.0, false, retreating = true, assessment = SquadAssessment(ammo = 0.0))
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(retreat))))
     }

@@ -1,7 +1,5 @@
 package com.sbwnpc.squad.ai.planning
 
-import kotlin.math.exp
-
 /**
  * One factor of a score: its [value] on the 0..1 scale and, for a [Consideration], the [input] it
  * was mapped from. An [unknown] factor had no data and counts as 1 (no effect), so it neither
@@ -64,9 +62,6 @@ fun interface ResponseCurve {
     companion object {
         /** 0 at [from], 1 at [to], straight between; [from] above [to] makes it fall. */
         fun linear(from: Double, to: Double) = ResponseCurve { x -> ((x - from) / (to - from)).coerceIn(0.0, 1.0) }
-
-        /** An S rising through 0.5 at [midpoint]; a negative [steepness] makes it fall. */
-        fun logistic(midpoint: Double, steepness: Double) = ResponseCurve { x -> 1.0 / (1.0 + exp(-steepness * (x - midpoint))) }
 
         /** [floor] at [from], 1 at [to], linear between: a factor that weakens an option but never vetoes it. */
         fun floored(floor: Double, from: Double, to: Double) = ResponseCurve { x -> floor + (1.0 - floor) * linear(from, to).at(x) }

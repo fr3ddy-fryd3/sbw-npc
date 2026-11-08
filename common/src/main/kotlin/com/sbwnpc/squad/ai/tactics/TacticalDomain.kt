@@ -7,6 +7,7 @@ import com.sbwnpc.squad.ai.planning.*
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.round
 
 /**
  * What a member does, and what that means for how his post is searched and held.
@@ -882,14 +883,13 @@ data class CombatSituation(val contact: Boolean, val offensive: Boolean, val hig
  * on every refresh made the squad replan on every refresh.
  *
  * @property forceRatio the squad's fighting men to the enemies it sees, an armoured one counting
- *   as [ARMOURED] men; null with no enemy in sight.
+ *   for several; null with no enemy in sight.
  * @property ammo the share of its men still on their main weapon; null out of contact.
  * @property health its men's mean health, 0 to 1; null out of contact.
- * @property objectiveDistance blocks from its centre to its objective; null without one.
- * @property fireSupport 1 when a mortar crew or a tank fights with it, else 0.
- * @property light the brightness at its centre, 0 to 1.
+ * @property objectiveDistance blocks from its centre to its attack's objective; null without one.
+ * @property fireSupport 1 when a mortar crew or a tank fights with its attack, else 0.
+ * @property light the brightness at its centre, 0 to 1, in an attack.
  * @property sinceContact seconds since it last saw an enemy; null if it never has.
- * @property exposed it stands on open ground.
  */
 data class SquadAssessment(
     val forceRatio: Double? = null,
@@ -899,13 +899,10 @@ data class SquadAssessment(
     val fireSupport: Double? = null,
     val light: Double? = null,
     val sinceContact: Double? = null,
-    val exposed: Boolean? = null,
 ) {
     companion object {
-        const val ARMOURED = 3.0
-
         /** [value] rounded to the nearest multiple of [step]. */
-        fun of(value: Double, step: Double) = kotlin.math.round(value / step) * step
+        fun of(value: Double, step: Double) = round(value / step) * step
     }
 }
 
@@ -954,7 +951,8 @@ object SquadManners {
         val situation = facts.value(TacticalFacts.SITUATION) ?: return UtilityScore.NEUTRAL
         val score = strategy.rules.score(situation)
         val held = facts.value(TacticalFacts.MANNER) == strategy
-        return if (held) score.copy(value = min(1.0, score.value + ADVANTAGE), factors = score.factors + UtilityFactor("held", ADVANTAGE)) else score
+        // A vetoed strategy stays vetoed held: the advantage only keeps one still worth something.
+        return if (held && score.value > 0.0) score.copy(value = min(1.0, score.value + ADVANTAGE), factors = score.factors + UtilityFactor("held", ADVANTAGE)) else score
     }
 }
 
@@ -1002,7 +1000,7 @@ object SquadApproaches {
             SquadApproach.FRONTAL -> UtilityScore.product(FRONTAL, emptyList(), "frontal")
         }
         val held = facts.value(TacticalFacts.APPROACH) == approach
-        return if (held) score.copy(value = min(1.0, score.value + SquadManners.ADVANTAGE), factors = score.factors + UtilityFactor("held", SquadManners.ADVANTAGE)) else score
+        return if (held && score.value > 0.0) score.copy(value = min(1.0, score.value + SquadManners.ADVANTAGE), factors = score.factors + UtilityFactor("held", SquadManners.ADVANTAGE)) else score
     }
 
     private const val FLANK_BASE = 0.5

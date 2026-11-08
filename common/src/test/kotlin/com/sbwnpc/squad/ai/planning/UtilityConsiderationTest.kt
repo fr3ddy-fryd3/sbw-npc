@@ -10,7 +10,6 @@ class UtilityConsiderationTest {
         assertEquals(0.5, ResponseCurve.linear(0.2, 0.6).at(0.4), 1e-9)
         assertEquals(1.0, ResponseCurve.linear(1.0, 0.0).at(0.0))
         assertEquals(0.7, ResponseCurve.floored(0.7, 0.0, 1.0).at(-5.0), 1e-9)
-        assertEquals(0.5, ResponseCurve.logistic(0.4, 10.0).at(0.4), 1e-9)
     }
 
     @Test fun `a consideration at zero vetoes, at one or unknown it leaves the base`() {
