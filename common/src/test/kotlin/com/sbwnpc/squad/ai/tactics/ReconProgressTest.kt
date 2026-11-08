@@ -45,4 +45,17 @@ class ReconProgressTest {
         assertEquals(null, progress.tally(setOf(a, b), 100))
         assertEquals(1 to 2, progress.tally(setOf(a, b), 10 + ReconProgress.UPDATE_TICKS))
     }
+
+    @Test fun `reported and holding its post it keeps counting, falling back it stops`() {
+        val a = java.util.UUID.randomUUID()
+        val held = ReconProgress(1)
+        held.update(95.0, 0)
+        held.update(70.0, 0)
+        held.update(70.0, ReconProgress.WATCH_TICKS)
+        held.holdsPost = true
+        assertEquals(Point3(0.0, 64.0, 0.0), held.point(Point3(0.0, 64.0, 0.0), Point3(0.0, 64.0, 70.0)))
+        assertEquals(1 to 1, held.tally(setOf(a), ReconProgress.WATCH_TICKS))
+        held.holdsPost = false
+        assertEquals(null, held.tally(setOf(a), ReconProgress.WATCH_TICKS + ReconProgress.UPDATE_TICKS))
+    }
 }

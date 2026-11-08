@@ -26,9 +26,10 @@ class ReconRulesTest {
         assertTrue(ReconRules.mayFire(holds = false, distance = 60.0))
     }
 
-    @Test fun `after its report recon fights beside infantry and keeps hiding otherwise`() {
-        assertFalse(ReconRules.holdsFire(Company.INFANTRY, true, false, false, reported = true))
-        assertTrue(ReconRules.holdsFire(Company.SUPPORT, true, false, false, reported = true))
+    @Test fun `recon beside infantry hides until the assault and fights once it begins`() {
+        assertTrue(ReconRules.holdsFire(Company.INFANTRY, true, true, false, assault = false))
+        assertFalse(ReconRules.holdsFire(Company.INFANTRY, true, false, false, assault = true))
+        assertTrue(ReconRules.holdsFire(Company.SUPPORT, true, false, false, assault = true))
     }
 
     @Test fun `discovered it withdraws unless infantry is beside it or it is alone attacking a found enemy`() {

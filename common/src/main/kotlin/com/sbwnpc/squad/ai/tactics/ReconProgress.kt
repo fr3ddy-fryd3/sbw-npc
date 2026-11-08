@@ -31,6 +31,9 @@ class ReconProgress(val stamp: Int) {
     /** Where it falls back to and holds once reported with no infantry beside it. */
     var fallBack: Point3? = null
 
+    /** Reported beside infantry, it keeps its post until the assault (owner 08.11) instead of falling back. */
+    var holdsPost = false
+
     /** When it reached its post, or null before. */
     var watchFrom: Long? = null
         private set
@@ -50,12 +53,14 @@ class ReconProgress(val stamp: Int) {
     private var nextUpdate = Long.MIN_VALUE
 
     /**
-     * The post's running count (owner 08.11): at most every [UPDATE_TICKS] while watching, how many of
+     * The post's running count (owner 08.11): at most every [UPDATE_TICKS] while on the post (watching,
+     * or reported and [holdsPost]), how many of
      * [present] (enemies round the objective now) it had not reported before, and how many there are.
      * Null when no update is due.
      */
     fun tally(present: Set<java.util.UUID>, now: Long): Pair<Int, Int>? {
-        if (stage != ReconStage.WATCH || now < nextUpdate) return null
+        val onPost = stage == ReconStage.WATCH || (stage == ReconStage.REPORTED && holdsPost)
+        if (!onPost || now < nextUpdate) return null
         nextUpdate = now + UPDATE_TICKS
         val fresh = present.count { it !in seen }
         seen += present
@@ -73,7 +78,7 @@ class ReconProgress(val stamp: Int) {
 
             // With no infantry to join (reported with infantry, it fights and is no longer here):
             // back along its approach to 64 blocks short of the objective, and it holds there.
-            ReconStage.REPORTED -> fallBack ?: objective
+            ReconStage.REPORTED -> if (holdsPost) objective else fallBack ?: objective
         }
 
     companion object {

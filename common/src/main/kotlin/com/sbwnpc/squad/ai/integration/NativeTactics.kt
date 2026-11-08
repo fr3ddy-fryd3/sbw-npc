@@ -402,6 +402,7 @@ object NativeTactics {
 
     /** How far beyond where it stood a discovered recon squad withdraws (#194). */
     private const val WITHDRAW_DISTANCE = 80.0
+    private const val ASSAULT_RANGE = 48.0
 
     /** Enemies this close to the objective are what a recon squad reports from its post (#194). */
     private const val INTEL_RADIUS = 48.0
@@ -657,6 +658,8 @@ object NativeTactics {
                 DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=stage from={} to={}", saved.id, before, stage)
                 if (stage == ReconStage.REPORTED) {
                     recon.report(saved)
+                    // Beside infantry it keeps its post until the assault (owner 08.11); else it falls back.
+                    progress.holdsPost = company(saved) == ReconRules.Company.INFANTRY
                     progress.fallBack = ReconProgress.along(objective, centre, ReconProgress.FALL_BACK_DISTANCE)
                     reportIntel(saved, objective, now)
                 }
@@ -679,6 +682,21 @@ object NativeTactics {
 
         private val intelWaits = HashMap<UUID, IntelWait>()
         private val intelReleased = HashSet<UUID>()
+
+        // Operations whose infantry has gone into the assault: their recon leaves its post and fights.
+        private val assaulting = HashSet<UUID>()
+
+        /**
+         * The assault of [saved]'s operation begins (owner 08.11) once the wait for the report is over and
+         * its infantry is fired on or has an enemy within [ASSAULT_RANGE]; a far sighting relayed from the
+         * post does not start it. Latched per operation.
+         */
+        private fun noteAssault(saved: Squad, incoming: Boolean, centre: Vec3, enemies: List<Vec3>) {
+            if (intelWaits[saved.id] != IntelWait.WITH_RECON) return
+            val operation = operations.committedTo(saved.id) ?: return
+            if (!incoming && enemies.none { hypot(it.x - centre.x, it.z - centre.z) <= ASSAULT_RANGE }) return
+            if (assaulting.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=assault squad={} incoming={}", operation.id, saved.id, incoming)
+        }
         private val intelAnnounced = HashSet<UUID>()
 
         fun intelWait(squad: UUID): IntelWait = intelWaits[squad] ?: IntelWait.NONE
@@ -725,7 +743,7 @@ object NativeTactics {
         private fun enemiesAt(saved: Squad, objective: Point3, now: Long): Set<UUID> = TeamAwareness.knownContacts(saved.faction, now).filterTo(HashSet()) { id -> level.getEntity(id)?.let { hypot(it.x - objective.x, it.z - objective.z) <= INTEL_RADIUS } == true }
 
         /** Whether [squad], a recon squad, holds its fire now ([ReconRules.holdsFire]). */
-        fun squadHoldsFire(squad: Squad): Boolean = ReconRules.holdsFire(company(squad), squad.order == SquadOrder.ATTACK, recon.sawEnemy(squad), recon.discovered(squad), recon.reported(squad))
+        fun squadHoldsFire(squad: Squad): Boolean = ReconRules.holdsFire(company(squad), squad.order == SquadOrder.ATTACK, recon.sawEnemy(squad), recon.discovered(squad), operations.committedTo(squad.id)?.id in assaulting)
 
         /**
          * A recon squad discovered since the last pass that does not fight leaves at once, as a RETREAT
@@ -1584,6 +1602,8 @@ object NativeTactics {
                     unverified.remove(id.id)
                     unverifiedSeen.remove(id.id)
                     areaTasks.remove(id.id)
+                    intelReleased.remove(id.id)
+                    assaulting.remove(id.id)
                     operations.forget(id.id)
                 }
                 commandCrews(now, desiredAgents)
@@ -2286,7 +2306,9 @@ object NativeTactics {
                 // Waiting for the recon report, infantry stops short of its firing line unless it is fired on.
                 // An enemy merely seen far off does not end it: in the playtest of 08.11 a sighting at
                 // the objective sent the infantry on past the scouts before they reported.
-                val intelHold = if (awaitingIntel(saved, now) && view.incoming.isEmpty() && !wet) saved.objective?.center?.point()?.let { ReconProgress.shortOf(it, view.center.point(), ReconProgress.STAGING_DISTANCE) } else null
+                val awaiting = awaitingIntel(saved, now)
+                noteAssault(saved, view.incoming.isNotEmpty(), view.center, contacts.map { it.position })
+                val intelHold = if (awaiting && view.incoming.isEmpty() && !wet) saved.objective?.center?.point()?.let { ReconProgress.shortOf(it, view.center.point(), ReconProgress.STAGING_DISTANCE) } else null
                 if (reconnoitre != null && reconnoitre.first != ReconStage.STAGING) {
                     val toward = saved.objective!!.center
                     view.members.forEach { (level.getEntity(it.id) as? NpcEntity)?.becomeWary(toward) }
@@ -2301,7 +2323,9 @@ object NativeTactics {
                     val proposal = waypoint?.let { FrontProposal(CombatDuty.MOVE, it, null) } ?: proposals.getValue(member.id)
                     val held = dutyRules[member.id]
                     val decision = entry?.takeUnless { transit }?.let { DutyDecision(RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)), null) } ?: reconnoitre?.let { (stage, point) ->
-                        val duty = if (stage == ReconStage.WATCH) CombatDuty.OBSERVE else CombatDuty.MOVE
+                        // On the post, watching or holding it after the report, the observer's post search places them;
+                        // a plain MOVE to the objective would walk them onto the enemy.
+                        val duty = if (stage == ReconStage.WATCH || reconProgress[saved.id]?.holdsPost == true) CombatDuty.OBSERVE else CombatDuty.MOVE
                         DutyDecision(RuledDuty("recon_${stage.name.lowercase()}", DutyChoice(duty, point)), null)
                     } ?: intelHold?.let { DutyDecision(RuledDuty("intel_wait", DutyChoice(CombatDuty.MOVE, it)), null) } ?: MemberDuties.choose(
                         DutyInputs(
@@ -2921,6 +2945,7 @@ object NativeTactics {
             reconProgress.clear()
             intelWaits.clear()
             intelReleased.clear()
+            assaulting.clear()
             intelAnnounced.clear()
             reconnoitring.clear()
             stalking.clear()
