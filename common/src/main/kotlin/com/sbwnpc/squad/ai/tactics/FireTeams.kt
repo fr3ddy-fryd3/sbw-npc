@@ -51,6 +51,7 @@ class FireTeams {
 
     private fun place(man: Man, byId: Map<UUID, Man>) {
         val kind = kind(man.role)
+        // Every sniper, however many: they hold the fire line together, and the flank goes without them.
         if (man.role == NpcClass.SNIPER) {
             teams.first().members += man.id
             return
@@ -95,6 +96,19 @@ class FireTeams {
 
         /** A larger squad forms a team per this many men. */
         const val SIZE = 6
+
+        /**
+         * The team of [movers] (each team's men who bound) that moves next in a bounding squad: after
+         * [previous], the next in a fixed order round all the teams, so with three each moves in
+         * turn; first, the one with fewer [heavy] guns, so a gun covers the first rush. Null when
+         * no team but [previous] has movers.
+         */
+        fun nextToBound(movers: Map<AgentId, List<UUID>>, heavy: Set<UUID>, previous: AgentId?): AgentId? {
+            val order = movers.keys.sortedBy { it.id.toString() }
+            if (previous == null) return order.minByOrNull { team -> movers.getValue(team).count { it in heavy } }
+            val after = order.filter { it.id.toString() > previous.id.toString() } + order.filter { it.id.toString() < previous.id.toString() }
+            return after.firstOrNull()
+        }
 
         fun target(size: Int) =
             when {

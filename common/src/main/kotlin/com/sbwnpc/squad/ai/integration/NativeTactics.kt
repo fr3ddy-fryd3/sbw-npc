@@ -532,7 +532,7 @@ object NativeTactics {
         private val flankBlockedAt = HashMap<UUID, Long>()
 
         // Each bounding squad's turn, when it began, and the legs its movers had finished by then.
-        private class BoundState(val turn: BoundTurn, val startedAt: Long, val legsAtStart: Map<UUID, Int>)
+        private class BoundState(val turn: BoundTurn, val startedAt: Long, val legsAtStart: Map<UUID, Int>, val team: AgentId)
         private val boundTurns = HashMap<UUID, BoundState>()
 
         // The leg each covered mover waits to start, and since when; see supportFiring.
@@ -2280,18 +2280,13 @@ object NativeTactics {
             // The halves are fire teams (#184): the team that moved fires next, and the first to move
             // is the one with fewer heavy guns among its movers, so a gun covers the first rush.
             val heavy = view.members.filter { it.role in HEIGHT_ROLES }.mapTo(HashSet()) { it.id }
-            val teams = teamsOf(saved).values.map { team -> team.filter { it in ids } }.filter { it.isNotEmpty() }
-            val moved = current?.turn?.moving.orEmpty()
-            val moving = (
-                if (current == null) {
-                    teams.minWithOrNull(compareBy<List<UUID>> { team -> team.count { it in heavy } }.thenBy { it.first().toString() })
-                } else {
-                    teams.filter { team -> team.none { it in moved } }.minByOrNull { it.first().toString() } ?: teams.firstOrNull { team -> team.none { it in moved } }
-                }
-                ).orEmpty().ifEmpty { teams.firstOrNull { team -> team.any { it !in moved } }.orEmpty() }.toSet()
+            val teams = teamsOf(saved).mapValues { (_, team) -> team.filter { it in ids } }.filterValues { it.isNotEmpty() }
+            // No other team to move (the squad is down to one): the turn stands until the strategy changes.
+            val team = FireTeams.nextToBound(teams, heavy, current?.team) ?: return
+            val moving = teams.getValue(team).toSet()
             val posts = view.members.filter { it.id !in moving }.associate { it.id to it.position.point() }
             val turn = BoundTurn((current?.turn?.number ?: -1) + 1, moving, posts)
-            boundTurns[squad] = BoundState(turn, now, moving.associateWith { legs[it] ?: 0 })
+            boundTurns[squad] = BoundState(turn, now, moving.associateWith { legs[it] ?: 0 }, team)
             DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=bound_turn number={} reason={} moving={} firing={}", squad, turn.number, reason, moving.size, ids.size - moving.size)
         }
 

@@ -149,24 +149,24 @@ data class TeamMission(val agent: AgentId, val members: List<PositionIntent>, va
 object TeamRoles {
     fun assign(teams: List<TeamMission>, shaping: SquadShaping): List<TeamMission> {
         val turn = shaping.turn
-        val supporting = if (turn != null) teams.filter { team -> team.members.none { it.actor.id in turn.moving } } else teams.filter { it.agent != shaping.manoeuvre }
+        val split = turn != null || teams.any { it.agent == shaping.manoeuvre }
+        fun moves(team: TeamMission) = if (turn != null) team.members.any { it.actor.id in turn.moving } else team.agent == shaping.manoeuvre
+        val covering = teams.filter { !moves(it) && !watching(it) }.flatMapTo(HashSet()) { team -> team.members.map { it.actor.id } }
         return teams.map { team ->
             when {
-                team.members.isNotEmpty() && team.members.all { it.duty.watching } -> team.copy(role = TeamRole.GUARD)
+                // A team that only watches guards, unless it is the one the squad moves; it covers nobody.
+                watching(team) && !moves(team) -> team.copy(role = TeamRole.GUARD)
 
-                turn != null && team.members.any { it.actor.id in turn.moving } ->
-                    team.copy(role = TeamRole.MANOEUVRE, covering = supporting.flatMapTo(HashSet()) { s -> s.members.map { it.actor.id } })
+                !split -> team
 
-                turn != null -> team.copy(role = TeamRole.SUPPORT, posts = turn.posts.filterKeys { id -> team.members.any { it.actor.id == id } })
+                moves(team) -> team.copy(role = TeamRole.MANOEUVRE, covering = if (turn != null) covering else emptySet())
 
-                shaping.manoeuvre == null || teams.none { it.agent == shaping.manoeuvre } -> team
-
-                team.agent == shaping.manoeuvre -> team.copy(role = TeamRole.MANOEUVRE)
-
-                else -> team.copy(role = TeamRole.SUPPORT)
+                else -> team.copy(role = TeamRole.SUPPORT, posts = turn?.posts?.filterKeys { id -> team.members.any { it.actor.id == id } }.orEmpty())
             }
         }
     }
+
+    private fun watching(team: TeamMission) = team.members.isNotEmpty() && team.members.all { it.duty.watching }
 
     /**
      * [mission]'s men as a supporting team fires: its movers fire from their [TeamMission.posts]

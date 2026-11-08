@@ -58,4 +58,16 @@ class FireTeamsTest {
         assertTrue(away.values.flatten().none { it == men[0].id || it == men[1].id })
         assertEquals(before, owners(teams.of(men)))
     }
+
+    @Test fun `bounding goes round every team in turn, a gun covering the first rush`() {
+        val a = com.sbwnpc.squad.ai.planning.AgentId(com.sbwnpc.squad.ai.planning.AgentLevel.TEAM, UUID(9, 1))
+        val b = com.sbwnpc.squad.ai.planning.AgentId(com.sbwnpc.squad.ai.planning.AgentLevel.TEAM, UUID(9, 2))
+        val c = com.sbwnpc.squad.ai.planning.AgentId(com.sbwnpc.squad.ai.planning.AgentLevel.TEAM, UUID(9, 3))
+        val movers = mapOf(a to listOf(UUID(0, 1)), b to listOf(UUID(0, 2)), c to listOf(UUID(0, 3)))
+        assertEquals(b, FireTeams.nextToBound(movers, heavy = setOf(UUID(0, 1), UUID(0, 3)), previous = null))
+        assertEquals(c, FireTeams.nextToBound(movers, emptySet(), b))
+        assertEquals(a, FireTeams.nextToBound(movers, emptySet(), c))
+        assertEquals(b, FireTeams.nextToBound(movers, emptySet(), a))
+        assertEquals(null, FireTeams.nextToBound(mapOf(a to listOf(UUID(0, 1))), emptySet(), a))
+    }
 }

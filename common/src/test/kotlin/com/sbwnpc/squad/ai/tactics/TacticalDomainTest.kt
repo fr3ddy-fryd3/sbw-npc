@@ -278,6 +278,8 @@ class TacticalDomainTest {
         assertEquals(listOf(TeamRole.MANOEUVRE, TeamRole.SUPPORT, TeamRole.GUARD), roles)
         // Without a split every team is one with the squad, as before.
         assertEquals(listOf(TeamRole.ALL, TeamRole.ALL, TeamRole.GUARD), TeamRoles.assign(teams, SquadShaping()).map { it.role })
+        // A watching team the squad sends round still manoeuvres.
+        assertEquals(listOf(TeamRole.MANOEUVRE, TeamRole.SUPPORT), TeamRoles.assign(listOf(teams[2], teams[1]), SquadShaping(manoeuvre = teams[2].agent)).map { it.role })
         // A flank team covers its own rushes: it may still pair off.
         assertTrue(teamPlan(TeamRoles.assign(teams, SquadShaping(manoeuvre = teams[0].agent))[0]).tasks.first().node.split('/')[1] in setOf("together", "pairs"))
     }
