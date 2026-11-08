@@ -24,7 +24,7 @@ class RaycastWorkBudgetTest {
                     }
                     continue
                 }
-                if (!rays.acquire(RaycastWorkBudget.Key(actor, TickBudget.Work.POSITIONS), tick)) continue
+                if (!rays.take(RaycastWorkBudget.Key(actor, TickBudget.Work.POSITIONS), tick)) continue
                 repeat(32) { rays.charge(tick) }
                 if (paths.acquire(actor, tick)) {
                     turns.getValue(actor) += tick
@@ -47,11 +47,11 @@ class RaycastWorkBudgetTest {
         val turns = work.associateWith { mutableListOf<Long>() }
         for (tick in 0L..119L) {
             for (key in work) {
-                if (!budget.acquire(key, tick)) continue
+                if (!budget.take(key, tick)) continue
                 turns.getValue(key) += tick
                 repeat(64) { budget.charge(tick) }
                 assertFalse(budget.available(tick))
-                assertFalse(budget.acquire(key, tick), "One actor cannot consume another turn")
+                assertFalse(budget.take(key, tick), "One actor cannot consume another turn")
             }
         }
         assertTrue(turns.values.all { it.size >= 3 }, "Every work item must receive at least three bounded turns")
@@ -60,23 +60,23 @@ class RaycastWorkBudgetTest {
 
     @Test fun `an indivisible cover scan can overrun but cannot launch another scan that tick`() {
         val budget = RaycastWorkBudget()
-        assertTrue(budget.acquire(RaycastWorkBudget.Key(UUID(1, 0), TickBudget.Work.COVER), 0))
+        assertTrue(budget.take(RaycastWorkBudget.Key(UUID(1, 0), TickBudget.Work.COVER), 0))
         repeat(510) { budget.charge(0) }
         val waiting = RaycastWorkBudget.Key(UUID(1, 1), TickBudget.Work.POSITIONS)
-        assertFalse(budget.acquire(waiting, 0))
-        assertTrue(budget.acquire(waiting, 1))
+        assertFalse(budget.take(waiting, 0))
+        assertTrue(budget.take(waiting, 1))
         assertTrue(budget.available(1))
     }
 
     @Test fun `disappeared work expires and another world has an independent queue`() {
         val budget = RaycastWorkBudget()
         val active = RaycastWorkBudget.Key(UUID(1, 100), TickBudget.Work.POSITIONS)
-        for (actor in 0L..32L) budget.acquire(RaycastWorkBudget.Key(UUID(1, actor), TickBudget.Work.COVER), 0)
-        assertFalse(budget.acquire(active, 0))
-        assertTrue(budget.acquire(active, 1), "Ready work within the reserved group can pass an absent actor")
-        assertFalse(budget.acquire(active, 2))
-        assertTrue(budget.acquire(active, 7))
-        assertTrue(RaycastWorkBudget().acquire(active, 2))
+        for (actor in 0L..32L) budget.take(RaycastWorkBudget.Key(UUID(1, actor), TickBudget.Work.COVER), 0)
+        assertFalse(budget.take(active, 0))
+        assertTrue(budget.take(active, 1), "Ready work within the reserved group can pass an absent actor")
+        assertFalse(budget.take(active, 2))
+        assertTrue(budget.take(active, 7))
+        assertTrue(RaycastWorkBudget().take(active, 2))
     }
 
     @Test fun `one expensive early actor cannot repeatedly overtake waiting cheap actors`() {
@@ -85,9 +85,9 @@ class RaycastWorkBudgetTest {
         val late = (1L..10L).map { RaycastWorkBudget.Key(UUID(1, it), TickBudget.Work.POSITIONS) }
         val seen = mutableSetOf<RaycastWorkBudget.Key>()
         for (tick in 0L..10L) {
-            if (budget.acquire(early, tick)) repeat(510) { budget.charge(tick) }
+            if (budget.take(early, tick)) repeat(510) { budget.charge(tick) }
             for (key in late) {
-                if (budget.acquire(key, tick)) {
+                if (budget.take(key, tick)) {
                     seen += key
                     budget.charge(tick)
                 }
@@ -95,4 +95,43 @@ class RaycastWorkBudgetTest {
         }
         assertEquals(late.toSet(), seen)
     }
+
+    @Test fun `an unfinished search keeps its place and searches started together finish one after another`() {
+        val budget = RaycastWorkBudget()
+        val keys = (0L..39L).map { RaycastWorkBudget.Key(UUID(4, it), TickBudget.Work.POSITIONS) }
+        val turnsLeft = keys.associateWith { 5 }.toMutableMap()
+        val finishedAt = HashMap<RaycastWorkBudget.Key, Long>()
+        for (tick in 0L..60L) {
+            for (key in keys) {
+                if (key in finishedAt || !budget.acquire(key, tick)) continue
+                repeat(64) { budget.charge(tick) }
+                val left = turnsLeft.getValue(key) - 1
+                turnsLeft[key] = left
+                budget.release(key, unfinished = left > 0)
+                if (left == 0) finishedAt[key] = tick
+            }
+        }
+        assertEquals(keys.toSet(), finishedAt.keys)
+        // Round-robin over 40 searches finished none before the 25th tick; in order, the first ones
+        // finish within their five turns.
+        assertTrue(finishedAt.values.min() <= 6, "first search finished at ${finishedAt.values.min()}")
+        assertEquals(keys.map { finishedAt.getValue(it) }.sorted(), keys.map { finishedAt.getValue(it) }, "searches finished out of arrival order")
+    }
+
+    @Test fun `a search that never ends gives its place up after a bounded number of turns`() {
+        val budget = RaycastWorkBudget()
+        val stuck = (0L..7L).map { RaycastWorkBudget.Key(UUID(5, it), TickBudget.Work.POSITIONS) }
+        val late = RaycastWorkBudget.Key(UUID(6, 0), TickBudget.Work.POSITIONS)
+        var lateTurnAt = -1L
+        for (tick in 0L..40L) {
+            for (key in stuck) {
+                if (budget.acquire(key, tick)) budget.release(key, unfinished = true)
+            }
+            if (tick > 0 && lateTurnAt < 0 && budget.take(late, tick)) lateTurnAt = tick
+        }
+        assertTrue(lateTurnAt in 2L..14L, "a late search waited behind never-ending ones until $lateTurnAt")
+    }
 }
+
+/** A granted turn released at once, as a finished search does. */
+private fun RaycastWorkBudget.take(key: RaycastWorkBudget.Key, now: Long) = acquire(key, now).also { if (it) release(key, unfinished = false) }

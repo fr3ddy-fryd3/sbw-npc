@@ -15,8 +15,11 @@ object TickBudget {
     /** Null means deferred; a completed search may itself legitimately return null. */
     fun <T> attempt(entity: NpcEntity, work: Work, operation: () -> T): SearchResult<T>? = search(entity, work, null as SearchResult<T>?) { SearchResult(operation()) }
 
-    /** Each task keeps its own cursor when its bounded turn ends. No ray result is fabricated. */
-    fun <T> search(entity: NpcEntity, work: Work, deferred: T, operation: () -> T): T {
+    /**
+     * Each task keeps its own cursor when its bounded turn ends. No ray result is fabricated.
+     * A result for which [unfinished] holds keeps the search's place in the queue for its next turn.
+     */
+    fun <T> search(entity: NpcEntity, work: Work, deferred: T, unfinished: (T) -> Boolean = { false }, operation: () -> T): T {
         val level = entity.level() as? ServerLevel ?: return deferred
         check(active == null) { "Raycast searches must not nest" }
         val budget = worlds.getOrPut(level) { RaycastWorkBudget() }
@@ -27,10 +30,12 @@ object TickBudget {
             DebugFlags.log(LogGroup.PATH, "[tactics] {} event=ray_budget_granted work={} waited={} queued={}", entity.uuid, work, waited, budget.waitingCount)
         }
         active = budget
+        var keep = false
         try {
-            return operation()
+            return operation().also { keep = unfinished(it) }
         } finally {
             active = null
+            budget.release(key, keep)
         }
     }
 
@@ -46,7 +51,7 @@ object TickBudget {
 /** Reserve capacity for the oldest request, while other ready actors can use the remainder. */
 internal class RaycastWorkBudget {
     data class Key(val actor: UUID, val work: TickBudget.Work)
-    private data class Request(val since: Long, var seenAt: Long)
+    private data class Request(var since: Long, var seenAt: Long, var heldTurns: Int = 0)
     private val waiting = LinkedHashMap<Key, Request>()
     private val served = HashSet<Key>()
     private var tick = Long.MIN_VALUE
@@ -81,13 +86,37 @@ internal class RaycastWorkBudget {
         // otherwise an early suppressed actor could consume another actor's reservation.
         if (key.work == TickBudget.Work.COVER && priority != null && !reservedTurn) return false
         if (turns >= 32 || (!reservedTurn && used >= if (priority == null) 500 else 436)) return false
-        waiting.remove(key)
         served += key
         turns++
         turnUsed = 0
         priorityTurn = reservedTurn
         if (reservedTurn) priority = null
         return true
+    }
+
+    /**
+     * Ends a granted turn. A finished search leaves the queue; an unfinished one keeps its place, so
+     * the oldest searches finish first. Sent back to the tail after every turn, 300 searches started
+     * together all advanced a little each turn and none finished for 100-200 ticks (#301).
+     *
+     * The place is kept for [HELD_TURNS] turns at most: in a playtest a man in a hole whose routes
+     * kept being rejected held a reserved slot for 1000 ticks, and a few such men left the rest of
+     * the queue one or two slots.
+     */
+    fun release(key: Key, unfinished: Boolean) {
+        val request = waiting[key] ?: return
+        if (!unfinished || request.heldTurns >= HELD_TURNS) {
+            waiting.remove(key)
+            return
+        }
+        request.heldTurns++
+        // The wait is counted again from this turn, so the trace reports real waits only.
+        request.since = tick
+    }
+
+    private companion object {
+        /** About two full candidate collections of an ordinary post search. */
+        const val HELD_TURNS = 10
     }
 
     fun available(now: Long): Boolean {
