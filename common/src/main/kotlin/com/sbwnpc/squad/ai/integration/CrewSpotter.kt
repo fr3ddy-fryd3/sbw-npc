@@ -28,8 +28,14 @@ internal class CrewSpotter(private val level: ServerLevel, private val preparati
         val eyes = unit.tube?.let(MortarClaims::operator)?.let { id -> men.firstOrNull { it.uuid == id } } ?: men.first()
         scan(eyes, state, now)
         val faction = SquadTeams.factionOf(eyes)
-        val held = NativeTactics.holdsReconSightings(level, squad?.id)
-        val sightings = faction?.let { TeamAwareness.sightings(it, now) }.orEmpty().filter { !held || !it.reconOnly }
+        // Its operation waits for the recon report: no fire at all, so as not to give the scouts away (owner 08.11).
+        if (NativeTactics.holdsReconSightings(level, squad?.id)) {
+            if (state.target != null) DebugFlags.log(LogGroup.FIRE_SUPPORT, "crew={} event=target from={} to=null reason=awaiting_intel", unit.crew.agent.id, state.target)
+            state.target = null
+            state.sightingPos = null
+            return
+        }
+        val sightings = faction?.let { TeamAwareness.sightings(it, now) }.orEmpty()
         val reported = sightings.firstOrNull { (level.getEntity(it.target) as? LivingEntity)?.isAlive == true }
         val own = state.ownSighting?.takeIf { now - state.ownSeenAt <= FireSupportTargets.OWN_SIGHTING_HOLD_TICKS }
         val sighted = sightings.mapTo(HashSet()) { it.target.toString() } + listOfNotNull(own?.toString())

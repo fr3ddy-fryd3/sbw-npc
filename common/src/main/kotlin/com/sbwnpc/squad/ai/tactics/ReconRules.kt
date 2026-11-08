@@ -42,15 +42,23 @@ object ReconRules {
     /** Whether a recon squad just discovered withdraws (owner decision 3, 24.10) rather than fights. */
     fun retreats(company: Company, attack: Boolean, sawEnemy: Boolean): Boolean = company != Company.INFANTRY && !(company == Company.ALONE && attack && sawEnemy)
 
-    /** How long (60 s) infantry waits at most for its recon squad's report (owner 26.10). */
+    /**
+     * How long (60 s, owner 26.10) the operation waits for the report once its recon squad is at its
+     * post. Counted from the order, it ran out while the scouts were still on their way: in the
+     * playtest of 08.11 they needed two minutes to reach the post and the infantry went in first.
+     */
     const val INTEL_WAIT_TICKS = 1200L
 
+    /** However far the post, the operation never waits longer than this (5 min) for its recon. */
+    const val INTEL_CAP_TICKS = 6000L
+
     /**
-     * Whether the infantry of an operation with a recon squad still waits for intelligence: walking,
-     * short of its firing line. A report, the recon squad found or gone, or [INTEL_WAIT_TICKS] since
-     * the order ends it.
+     * Whether an operation with a recon squad still waits for intelligence: its infantry walks and
+     * stays short of its firing line, its mortars and drones hold their fire. A report, the recon
+     * squad found or gone, [INTEL_WAIT_TICKS] at the post ([sincePost], null before it gets there) or
+     * [INTEL_CAP_TICKS] since the order ends it.
      */
-    fun awaitsIntel(sinceOrder: Long, reconHidden: Boolean, reported: Boolean): Boolean = reconHidden && !reported && sinceOrder < INTEL_WAIT_TICKS
+    fun awaitsIntel(sinceOrder: Long, sincePost: Long?, reconHidden: Boolean, reported: Boolean): Boolean = reconHidden && !reported && sinceOrder < INTEL_CAP_TICKS && (sincePost ?: 0L) < INTEL_WAIT_TICKS
 
     /** Whether a man of a squad that [holds] its fire may still shoot at a target [distance] blocks away. */
     fun mayFire(holds: Boolean, distance: Double) = !holds || distance < CLOSE

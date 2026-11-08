@@ -340,7 +340,7 @@ object NativeTactics {
      */
     fun intelWait(npc: NpcEntity): IntelWait = npc.squadId?.let { worlds[npc.level()]?.intelWait(it) } ?: IntelWait.NONE
 
-    /** Whether fire support of [squad] holds off sightings only recon scouts made (#194): its operation awaits their report. */
+    /** Whether fire support of [squad] holds its fire (#194): its operation awaits its recon report, and shells would give the scouts away. */
     fun holdsReconSightings(level: ServerLevel, squad: UUID?): Boolean {
         val world = squad?.let { worlds[level] } ?: return false
         return world.operations.operationOf(squad)?.let { world.operationWaits(it, level.gameTime) } == true
@@ -699,14 +699,15 @@ object NativeTactics {
 
         /**
          * Whether [operation] still waits for its recon report (ReconRules.awaitsIntel): its infantry
-         * holds short, and its own mortars and drones leave alone what only the scouts have seen.
+         * holds short, and its own mortars and drones hold their fire so as not to give the scouts away.
          */
         fun operationWaits(operation: OperationView, now: Long): Boolean {
             if (operation.id in intelReleased) return false
             val manager = SquadManager.get(level)
             val recons = operation.members.keys.mapNotNull(manager::get).filter { manager.isReconSquad(it) && it.order == SquadOrder.ATTACK && it.members.isNotEmpty() }
             if (recons.isEmpty()) return false
-            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, recons.all { !recon.discovered(it) }, recons.any { recon.reported(it) })
+            val atPost = recons.mapNotNull { reconProgress[it.id]?.takeIf { p -> p.stamp == it.orderStamp }?.watchFrom }.minOrNull()
+            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { recon.reported(it) })
             if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end", operation.id)
             return waiting
         }
@@ -2264,8 +2265,10 @@ object NativeTactics {
                 val following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW
                 val transit = journeys[saved.id] == saved.orderStamp
                 val reconnoitre = reconStage(saved, view.center.point(), now)
-                // Waiting for the recon report, infantry stops short of its firing line, unless already in a fight.
-                val intelHold = if (awaitingIntel(saved, now) && !contact) saved.objective?.center?.point()?.let { ReconProgress.shortOf(it, view.center.point(), ReconProgress.STAGING_DISTANCE) } else null
+                // Waiting for the recon report, infantry stops short of its firing line unless it is fired on.
+                // An enemy merely seen far off does not end it: in the playtest of 08.11 a sighting at
+                // the objective sent the infantry on past the scouts before they reported.
+                val intelHold = if (awaitingIntel(saved, now) && view.incoming.isEmpty()) saved.objective?.center?.point()?.let { ReconProgress.shortOf(it, view.center.point(), ReconProgress.STAGING_DISTANCE) } else null
                 if (reconnoitre != null && reconnoitre.first != ReconStage.STAGING) {
                     val toward = saved.objective!!.center
                     view.members.forEach { (level.getEntity(it.id) as? NpcEntity)?.becomeWary(toward) }

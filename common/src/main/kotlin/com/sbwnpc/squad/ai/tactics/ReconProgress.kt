@@ -30,14 +30,17 @@ class ReconProgress(val stamp: Int) {
 
     /** Where it falls back to and holds once reported with no infantry beside it. */
     var fallBack: Point3? = null
-    private var watchFrom = 0L
+
+    /** When it reached its post, or null before. */
+    var watchFrom: Long? = null
+        private set
 
     /** Advances the stage for a squad whose centre stands [distance] blocks from the objective at [now]; returns the stage. */
     fun update(distance: Double, now: Long): ReconStage {
         stage = when (stage) {
             ReconStage.STAGING -> if (distance <= STAGING_DISTANCE + ARRIVAL) ReconStage.STALK else ReconStage.STAGING
             ReconStage.STALK -> if (distance <= POST_DISTANCE) ReconStage.WATCH.also { watchFrom = now } else ReconStage.STALK
-            ReconStage.WATCH -> if (now - watchFrom >= WATCH_TICKS) ReconStage.REPORTED else ReconStage.WATCH
+            ReconStage.WATCH -> if (now - (watchFrom ?: now) >= WATCH_TICKS) ReconStage.REPORTED else ReconStage.WATCH
             ReconStage.REPORTED -> ReconStage.REPORTED
         }
         return stage
