@@ -83,7 +83,7 @@ object FireSupportGameTests {
             val aloneX = helper.relativeVec(aloneVehicle.position()).x
             Files.writeString(log, "${helper.tick},${escortX.toInt()},${leadX.toInt()},${aloneX.toInt()}\n", java.nio.file.StandardOpenOption.APPEND)
             worstLead = maxOf(worstLead, escortX - leadX)
-            helper.assertTrue(escortX - leadX <= FireSupport.ESCORT_LEAD + 8, "Escorting tank ran ahead of its infantry: tank x=$escortX, lead x=$leadX")
+            helper.assertTrue(escortX - leadX <= com.sbwnpc.squad.ai.tactics.TankSupport.ESCORT_LEAD + 8, "Escorting tank ran ahead of its infantry: tank x=$escortX, lead x=$leadX")
             if (aloneX - leadX >= 30 && escortX >= 40) {
                 Files.writeString(report.resolve("fire-support-escort.txt"), "result=PASS tick=${helper.tick} escortX=${escortX.toInt()} leadX=${leadX.toInt()} aloneX=${aloneX.toInt()} worstLead=${"%.1f".format(worstLead)}\n")
                 helper.succeed()

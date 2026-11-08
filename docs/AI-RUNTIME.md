@@ -64,8 +64,12 @@ the subtask active again. Revising an intent keeps the suitable child executors;
 old revision is rejected. An asynchronous executor gets a new generation by default, not a
 synchronous revision.
 
-Medical, grenade, vehicle and supply actions keep their own constraints and priorities. Helicopters
-and crews use the existing specialised executors.
+Medical, grenade, vehicle and supply actions keep their own constraints and priorities. Mortar crews,
+helicopters and tanks join their squad's mission as teams (`team.fire_support`, `team.air`,
+`team.tank`) and drone operators plan their strikes as men (`DroneStrike`); the methods choose the
+duty and the existing specialised executors carry it out.
+A tank's plan only chooses whether it keeps the pace of the infantry it attacks with; its seat, gun and
+steering stay with `VehicleCrewBehaviour`, SBW auto-aim and `VehicleTransportBehaviour`.
 
 ## Limits
 

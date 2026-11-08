@@ -54,7 +54,6 @@ object ServerLifecycle {
         com.sbwnpc.squad.team.Diplomacy.detach()
         com.sbwnpc.squad.map.MapFeed.clearAll()
         com.sbwnpc.squad.combat.SmokeClouds.clearAll()
-        com.sbwnpc.squad.squad.FireSupport.clearAll()
         com.sbwnpc.squad.entity.ai.SquadMarch.clearAll()
         com.sbwnpc.squad.entity.ai.BoatTrips.clearAll()
         com.sbwnpc.squad.vehicle.WaterMap.clearAll()

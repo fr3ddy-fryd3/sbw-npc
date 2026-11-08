@@ -91,7 +91,7 @@ class DecisionLayerRuleTest {
             "SquadTargetSensor" to UNAUDITED,
             "VehicleCombatSupportBehaviour" to "execution: mans the gun his team plan gave him (STATIONS, team.man_stations, #255)",
             "VehicleCrewBehaviour" to UNAUDITED,
-            "VehicleTransportBehaviour" to "execution: boards the seat his travelling squad gave him (SEATS, squad.board, #255); boats are still weighed per man (BoatTrips)",
+            "VehicleTransportBehaviour" to "execution: boards the seat his travelling squad gave him (SEATS, squad.board, #255) and keeps a tank to the pace its plan gave it (team.tank, #185); boats are still weighed per man (BoatTrips)",
         )
 
         val MEMORIES = sortedMapOf(
