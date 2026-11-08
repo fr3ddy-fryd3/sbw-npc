@@ -2417,9 +2417,10 @@ object NativeTactics {
                     val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding && !fallingBack
                     val requireShelter = PostRequirements.shelter(duty, situation.incoming) && !fallingBack
                     val settled = strategyKept && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
-                    // A ruled point (recon stage, intel wait, reinforcement entry) moves with its stage: kept as
-                    // settled, the scouts stood on their staging line and never reached a post (playtest 08.11).
-                    val moving = waypoint != null || member.id in wasArcing || bounding || ruled.rule.startsWith("recon_") || ruled.rule == "intel_wait" || ruled.rule == "reinforcement_entry"
+                    // A recon stage's point, or the intel wait's, replaces his post: kept as settled, the scouts
+                    // stood on their staging line and never reached a post (playtest 08.11). Both are fixed
+                    // points within a stage, so this does not churn.
+                    val moving = waypoint != null || member.id in wasArcing || bounding || ruled.rule.startsWith("recon_") || ruled.rule == "intel_wait"
                     val byLegs = ruled.rule in LEG_RULES
                     // A blind slot brought nearer than the role's clearance lets its man come that near (#93).
                     val sightClearance = slotSights[member.id]?.sighted?.takeIf { waypoint == null && it.post == proposal.anchor }?.clearance
