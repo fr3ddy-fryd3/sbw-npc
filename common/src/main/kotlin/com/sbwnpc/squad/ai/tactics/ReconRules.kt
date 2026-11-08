@@ -42,6 +42,16 @@ object ReconRules {
     /** Whether a recon squad just discovered withdraws (owner decision 3, 24.10) rather than fights. */
     fun retreats(company: Company, attack: Boolean, sawEnemy: Boolean): Boolean = company != Company.INFANTRY && !(company == Company.ALONE && attack && sawEnemy)
 
+    /** How long (60 s) infantry waits at most for its recon squad's report (owner 26.10). */
+    const val INTEL_WAIT_TICKS = 1200L
+
+    /**
+     * Whether the infantry of an operation with a recon squad still waits for intelligence: walking,
+     * short of its firing line. A report, the recon squad found or gone, or [INTEL_WAIT_TICKS] since
+     * the order ends it.
+     */
+    fun awaitsIntel(sinceOrder: Long, reconHidden: Boolean, reported: Boolean): Boolean = reconHidden && !reported && sinceOrder < INTEL_WAIT_TICKS
+
     /** Whether a man of a squad that [holds] its fire may still shoot at a target [distance] blocks away. */
     fun mayFire(holds: Boolean, distance: Double) = !holds || distance < CLOSE
 }

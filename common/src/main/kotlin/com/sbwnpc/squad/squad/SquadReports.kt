@@ -106,6 +106,11 @@ object SquadReports {
         send(server, squad, Kind.RESUPPLY, "${className(npc)} going to resupply")
     }
 
+    /** The attack waits for its recon squad before it closes in (#194). */
+    fun awaitingIntel(server: MinecraftServer, squad: Squad) {
+        send(server, squad, Kind.INTEL, "Waiting for intelligence")
+    }
+
     /** A recon squad was found and leaves (#194). */
     fun reconDiscovered(server: MinecraftServer, squad: Squad) {
         send(server, squad, Kind.INTEL, "Discovered, withdrawing")

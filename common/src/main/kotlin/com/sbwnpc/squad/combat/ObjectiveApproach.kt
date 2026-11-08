@@ -54,7 +54,11 @@ object ObjectiveApproach {
             val spent = spentSquad == squad.id && spentStamp == squad.orderStamp
             val onFoot = npc.vehicle == null && !npc.holds(com.sbwnpc.squad.entity.NpcActivity.VEHICLE)
             val distance = npc.position().distanceTo(Vec3.atCenterOf(objective))
-            if (!cautious(squad.order, distance, onFoot, spent)) return end(npc)
+            // Scouts stalk on their own approach; infantry waiting for them walks from the start, and
+            // once they have looked it runs the rest of the way (#194).
+            val wait = if (npc.npcClass == com.sbwnpc.squad.npc.NpcClass.SCOUT) null else com.sbwnpc.squad.ai.integration.NativeTactics.intelWait(npc)
+            val walking = wait == com.sbwnpc.squad.ai.integration.NativeTactics.IntelWait.WAITING && onFoot
+            if (!walking && (wait != com.sbwnpc.squad.ai.integration.NativeTactics.IntelWait.NONE || !cautious(squad.order, distance, onFoot, spent))) return end(npc)
             toward = Vec3.atCenterOf(objective)
             slow(npc, squad.order == SquadOrder.ATTACK)
         }

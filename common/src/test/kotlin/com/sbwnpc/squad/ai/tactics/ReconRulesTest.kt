@@ -37,4 +37,11 @@ class ReconRulesTest {
         assertTrue(ReconRules.retreats(Company.ALONE, false, true))
         assertTrue(ReconRules.retreats(Company.SUPPORT, true, true))
     }
+
+    @Test fun `infantry waits for a hidden recon report at most a minute`() {
+        assertTrue(ReconRules.awaitsIntel(0, reconHidden = true, reported = false))
+        assertFalse(ReconRules.awaitsIntel(0, reconHidden = true, reported = true))
+        assertFalse(ReconRules.awaitsIntel(0, reconHidden = false, reported = false))
+        assertFalse(ReconRules.awaitsIntel(ReconRules.INTEL_WAIT_TICKS, reconHidden = true, reported = false))
+    }
 }

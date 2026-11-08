@@ -330,6 +330,16 @@ object NativeTactics {
         return SquadManager.get(level).isReconSquad(squad) && world(npc).squadHoldsFire(squad)
     }
 
+    /**
+     * How [npc]'s cautious approach goes (#148, #194): [IntelWait.WAITING] walks the whole way while
+     * his operation waits for its recon squad; [IntelWait.WITH_RECON] drops the last-100-blocks walk,
+     * since the recon has already looked; [IntelWait.NONE] is the approach as without recon.
+     */
+    fun intelWait(npc: NpcEntity): IntelWait = npc.squadId?.let { worlds[npc.level()]?.intelWait(it) } ?: IntelWait.NONE
+
+    /** See [intelWait]. */
+    enum class IntelWait { NONE, WAITING, WITH_RECON }
+
     /** Whether [npc] stalks with his recon squad: crouched and wary on its approach (#194). */
     fun stalks(npc: NpcEntity): Boolean = npc.npcClass == NpcClass.SCOUT && npc.squadId?.let { worlds[npc.level()]?.stalks(it) } == true
 
@@ -652,6 +662,37 @@ object NativeTactics {
             val seen = TeamAwareness.knownContacts(saved.faction, now).mapNotNull { level.getEntity(it) }.count { hypot(it.x - objective.x, it.z - objective.z) <= INTEL_RADIUS }
             DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=report enemies={}", saved.id, seen)
             level.server.let { com.sbwnpc.squad.squad.SquadReports.intel(it, saved, seen) }
+        }
+
+        private val intelWaits = HashMap<UUID, IntelWait>()
+        private val intelReleased = HashSet<UUID>()
+        private val intelAnnounced = HashSet<UUID>()
+
+        fun intelWait(squad: UUID): IntelWait = intelWaits[squad] ?: IntelWait.NONE
+
+        /**
+         * Whether [saved], an attacking infantry squad, waits for its operation's recon report (#194),
+         * kept for its men's pace in [intelWaits]. Once released an operation does not wait again.
+         */
+        private fun awaitingIntel(saved: Squad, now: Long): Boolean {
+            val manager = SquadManager.get(level)
+            val operation = operations.operationOf(saved.id)
+            val recons = operation?.members?.keys.orEmpty().mapNotNull(manager::get).filter { manager.isReconSquad(it) && it.order == SquadOrder.ATTACK && it.members.isNotEmpty() }
+            if (operation == null || recons.isEmpty() || !attackingInfantry(saved)) {
+                intelWaits.remove(saved.id)
+                return false
+            }
+            val waiting = operation.id !in intelReleased &&
+                ReconRules.awaitsIntel(now - operation.issuedAt, recons.all { !recon.discovered(it) }, recons.any { recon.reported(it) })
+            if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end", operation.id)
+            if (waiting && intelAnnounced.add(operation.id)) SquadReports.awaitingIntel(level.server, saved)
+            intelWaits[saved.id] = if (waiting) IntelWait.WAITING else IntelWait.WITH_RECON
+            return waiting
+        }
+
+        private fun attackingInfantry(squad: Squad): Boolean {
+            val manager = SquadManager.get(level)
+            return squad.order == SquadOrder.ATTACK && !manager.isReconSquad(squad) && !manager.isMortarSquad(squad) && !manager.isDroneSquad(squad)
         }
 
         /** Whether [squad], a recon squad, holds its fire now ([ReconRules.holdsFire]). */
@@ -1341,6 +1382,7 @@ object NativeTactics {
                     retreatSmoke.forget(id)
                     grenades.forgetSquad(id)
                     recon.forget(id)
+                    intelWaits.remove(id)
                     reconProgress.remove(id)
                     reconnoitring -= id
                     stalking -= id
@@ -2201,6 +2243,8 @@ object NativeTactics {
                 val following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW
                 val transit = journeys[saved.id] == saved.orderStamp
                 val reconnoitre = reconStage(saved, view.center.point(), now)
+                // Waiting for the recon report, infantry stops short of its firing line, unless already in a fight.
+                val intelHold = if (awaitingIntel(saved, now) && !contact) saved.objective?.center?.point()?.let { ReconProgress.shortOf(it, view.center.point(), ReconProgress.STAGING_DISTANCE) } else null
                 if (reconnoitre != null && reconnoitre.first != ReconStage.STAGING) {
                     val toward = saved.objective!!.center
                     view.members.forEach { (level.getEntity(it.id) as? NpcEntity)?.becomeWary(toward) }
@@ -2217,7 +2261,7 @@ object NativeTactics {
                     val decision = entry?.takeUnless { transit }?.let { DutyDecision(RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)), null) } ?: reconnoitre?.let { (stage, point) ->
                         val duty = if (stage == ReconStage.WATCH) CombatDuty.OBSERVE else CombatDuty.MOVE
                         DutyDecision(RuledDuty("recon_${stage.name.lowercase()}", DutyChoice(duty, point)), null)
-                    } ?: MemberDuties.choose(
+                    } ?: intelHold?.let { DutyDecision(RuledDuty("intel_wait", DutyChoice(CombatDuty.MOVE, it)), null) } ?: MemberDuties.choose(
                         DutyInputs(
                             order = saved.order.tactical(),
                             position = member.position.point(),
@@ -2832,6 +2876,9 @@ object NativeTactics {
             grenades.clear()
             recon.clear()
             reconProgress.clear()
+            intelWaits.clear()
+            intelReleased.clear()
+            intelAnnounced.clear()
             reconnoitring.clear()
             stalking.clear()
             suspendedBy.clear()
