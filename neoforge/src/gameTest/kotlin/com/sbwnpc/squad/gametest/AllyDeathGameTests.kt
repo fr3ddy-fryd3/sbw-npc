@@ -200,8 +200,10 @@ object AllyDeathGameTests {
         val start = allies.associateWith { it.position() }
         val startYaw = allies.associateWith { it.yHeadRot }
         val lines = ArrayList<String>()
-        val body = victim.position()
+        // Where he dies, not where he spawned: by tick 40 he may have stepped toward a post.
+        var body = victim.position()
         helper.runAtTickTime(40) {
+            body = victim.position()
             if (killer) victim.hurt(helper.level.damageSources().mobAttack(shooter), 1000f) else victim.kill()
             lines += "tick 40: victim dead=${!victim.isAlive} killer=$killer"
         }
