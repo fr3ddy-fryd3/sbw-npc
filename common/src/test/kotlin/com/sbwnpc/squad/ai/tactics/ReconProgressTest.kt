@@ -27,4 +27,10 @@ class ReconProgressTest {
         val near = Point3(30.0, 70.0, 40.0)
         assertEquals(near, ReconProgress.shortOf(objective, near, 90.0))
     }
+
+    @Test fun `the fall-back point lies 64 blocks out even when the squad stands nearer`() {
+        val point = ReconProgress.along(Point3(0.0, 64.0, 0.0), Point3(0.0, 64.0, 40.0), ReconProgress.FALL_BACK_DISTANCE)
+        assertEquals(64.0, point.z, 1e-9)
+        assertEquals(0.0, point.x, 1e-9)
+    }
 }

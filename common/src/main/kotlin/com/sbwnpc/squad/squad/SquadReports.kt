@@ -106,6 +106,11 @@ object SquadReports {
         send(server, squad, Kind.RESUPPLY, "${className(npc)} going to resupply")
     }
 
+    /** A recon squad was found and leaves (#194). */
+    fun reconDiscovered(server: MinecraftServer, squad: Squad) {
+        send(server, squad, Kind.INTEL, "Discovered, withdrawing")
+    }
+
     /** A recon squad's report from its observation post (#194). */
     fun intel(server: MinecraftServer, squad: Squad, enemies: Int) {
         send(server, squad, Kind.INTEL, if (enemies > 0) "Observation post: $enemies enemies at the objective" else "Observation post: nobody seen at the objective")
