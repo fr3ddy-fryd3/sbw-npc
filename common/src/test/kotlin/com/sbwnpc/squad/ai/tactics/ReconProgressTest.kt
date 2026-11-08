@@ -33,4 +33,16 @@ class ReconProgressTest {
         assertEquals(64.0, point.z, 1e-9)
         assertEquals(0.0, point.x, 1e-9)
     }
+
+    @Test fun `the post counts new enemies every 10 s while it watches`() {
+        val progress = ReconProgress(1)
+        val a = java.util.UUID.randomUUID()
+        val b = java.util.UUID.randomUUID()
+        assertEquals(null, progress.tally(setOf(a), 0))
+        progress.update(95.0, 0)
+        progress.update(70.0, 10)
+        assertEquals(1 to 1, progress.tally(setOf(a), 10))
+        assertEquals(null, progress.tally(setOf(a, b), 100))
+        assertEquals(1 to 2, progress.tally(setOf(a, b), 10 + ReconProgress.UPDATE_TICKS))
+    }
 }

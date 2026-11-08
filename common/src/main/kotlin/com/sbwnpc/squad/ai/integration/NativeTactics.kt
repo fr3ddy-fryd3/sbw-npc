@@ -343,7 +343,7 @@ object NativeTactics {
     /** Whether fire support of [squad] holds its fire (#194): its operation awaits its recon report, and shells would give the scouts away. */
     fun holdsReconSightings(level: ServerLevel, squad: UUID?): Boolean {
         val world = squad?.let { worlds[level] } ?: return false
-        return world.operations.operationOf(squad)?.let { world.operationWaits(it, level.gameTime) } == true
+        return world.operations.committedTo(squad)?.let { world.operationWaits(it, level.gameTime) } == true
     }
 
     /** See [intelWait]. */
@@ -661,6 +661,10 @@ object NativeTactics {
                     reportIntel(saved, objective, now)
                 }
             }
+            progress.tally(enemiesAt(saved, objective, now), now)?.let { (fresh, total) ->
+                DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_update new={} total={}", saved.id, fresh, total)
+                com.sbwnpc.squad.squad.SquadReports.postUpdate(level.server, saved, fresh, total)
+            }
             reconnoitring += saved.id
             if (stage == ReconStage.STAGING) stalking -= saved.id else stalking += saved.id
             return stage to progress.point(objective, centre)
@@ -668,7 +672,7 @@ object NativeTactics {
 
         /** The report from the post (owner 26.10): the enemies its side knows round the objective, or nobody. */
         private fun reportIntel(saved: Squad, objective: Point3, now: Long) {
-            val seen = TeamAwareness.knownContacts(saved.faction, now).mapNotNull { level.getEntity(it) }.count { hypot(it.x - objective.x, it.z - objective.z) <= INTEL_RADIUS }
+            val seen = enemiesAt(saved, objective, now).size
             DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=report enemies={}", saved.id, seen)
             level.server.let { com.sbwnpc.squad.squad.SquadReports.intel(it, saved, seen) }
         }
@@ -685,7 +689,7 @@ object NativeTactics {
          */
         private fun awaitingIntel(saved: Squad, now: Long): Boolean {
             val manager = SquadManager.get(level)
-            val operation = operations.operationOf(saved.id)
+            val operation = operations.committedTo(saved.id)
             val recons = operation?.members?.keys.orEmpty().mapNotNull(manager::get).filter { manager.isReconSquad(it) && it.order == SquadOrder.ATTACK && it.members.isNotEmpty() }
             if (operation == null || recons.isEmpty() || !attackingInfantry(saved)) {
                 intelWaits.remove(saved.id)
@@ -717,6 +721,9 @@ object NativeTactics {
             return squad.order == SquadOrder.ATTACK && !manager.isReconSquad(squad) && !manager.isMortarSquad(squad) && !manager.isDroneSquad(squad)
         }
 
+        // The enemies [saved]'s side knows round [objective]: what its recon post counts and reports.
+        private fun enemiesAt(saved: Squad, objective: Point3, now: Long): Set<UUID> = TeamAwareness.knownContacts(saved.faction, now).filterTo(HashSet()) { id -> level.getEntity(id)?.let { hypot(it.x - objective.x, it.z - objective.z) <= INTEL_RADIUS } == true }
+
         /** Whether [squad], a recon squad, holds its fire now ([ReconRules.holdsFire]). */
         fun squadHoldsFire(squad: Squad): Boolean = ReconRules.holdsFire(company(squad), squad.order == SquadOrder.ATTACK, recon.sawEnemy(squad), recon.discovered(squad), recon.reported(squad))
 
@@ -746,7 +753,10 @@ object NativeTactics {
         // Who else is in [squad]'s operation, as the recon rules see it.
         private fun company(squad: Squad): ReconRules.Company {
             val manager = SquadManager.get(level)
-            val others = operations.operationOf(squad.id)?.members?.keys.orEmpty().filter { it != squad.id }.mapNotNull(manager::get)
+            // A squad on its way to join counts already (playtest 08.11): sixteen riflemen sent after a
+            // recon squad and its drone operators left the scouts acting as if they had no infantry.
+            val operation = operations.operationOf(squad.id)
+            val others = (operation?.members?.keys.orEmpty() + operation?.let { operations.reinforcing(it.id) }.orEmpty()).filter { it != squad.id }.mapNotNull(manager::get)
             return when {
                 others.isEmpty() -> ReconRules.Company.ALONE
                 others.any { !manager.isReconSquad(it) && !manager.isMortarSquad(it) && !manager.isDroneSquad(it) } -> ReconRules.Company.INFANTRY

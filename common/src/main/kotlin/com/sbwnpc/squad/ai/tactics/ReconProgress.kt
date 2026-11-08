@@ -46,6 +46,22 @@ class ReconProgress(val stamp: Int) {
         return stage
     }
 
+    private val seen = HashSet<java.util.UUID>()
+    private var nextUpdate = Long.MIN_VALUE
+
+    /**
+     * The post's running count (owner 08.11): at most every [UPDATE_TICKS] while watching, how many of
+     * [present] (enemies round the objective now) it had not reported before, and how many there are.
+     * Null when no update is due.
+     */
+    fun tally(present: Set<java.util.UUID>, now: Long): Pair<Int, Int>? {
+        if (stage != ReconStage.WATCH || now < nextUpdate) return null
+        nextUpdate = now + UPDATE_TICKS
+        val fresh = present.count { it !in seen }
+        seen += present
+        return fresh to present.size
+    }
+
     /** Where the squad whose centre is at [centre] makes for in the current stage. */
     fun point(objective: Point3, centre: Point3): Point3 =
         when (stage) {
@@ -72,6 +88,9 @@ class ReconProgress(val stamp: Int) {
 
         /** Watching before the report: 20 s (owner 26.10). */
         const val WATCH_TICKS = 400L
+
+        /** Between the post's running reports: 10 s (owner 08.11). */
+        const val UPDATE_TICKS = 200L
 
         /** Reported with no infantry to join, it holds this far from the objective (owner 26.10). */
         const val FALL_BACK_DISTANCE = 64.0
