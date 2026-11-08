@@ -41,7 +41,7 @@ internal class TubeLaying(private val npc: NpcEntity, private val hand: CrewHand
             DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar {} holds fire: friendlies within {} of {}", npc.uuid, dangerRadius(aim), aim.toShortString())
             return
         }
-        if (MortarCycle.fireIfReady(m, npc) && target.source == FireSource.ATTACK_PREPARATION) world.stateOf(npc.uuid)?.preparationFired(target.key)
+        if (MortarCycle.fireIfReady(m, npc) && target.source == FireSource.ATTACK_PREPARATION) npc.currentSquad()?.let { world.preparation.fired(it.id, target.key) }
     }
 
     /**

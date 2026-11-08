@@ -23,7 +23,7 @@ import com.sbwnpc.squad.squad.FireSupport as InfantrySupport
  * the operator scans for enemies, reports what he notices, and [FireSupportTargets] picks the
  * target in today's priority. The plan reads the result as `crew.fire`.
  */
-internal class CrewSpotter(private val level: ServerLevel) {
+internal class CrewSpotter(private val level: ServerLevel, private val preparation: PreparationLedger) {
     fun update(unit: CrewUnit, squad: Squad?, men: List<NpcEntity>, state: CrewState, now: Long) {
         val eyes = unit.tube?.let(MortarClaims::operator)?.let { id -> men.firstOrNull { it.uuid == id } } ?: men.first()
         scan(eyes, state, now)
@@ -31,7 +31,7 @@ internal class CrewSpotter(private val level: ServerLevel) {
         val reported = faction?.let { TeamAwareness.sightings(it, now) }?.firstOrNull { (level.getEntity(it.target) as? LivingEntity)?.isAlive == true }
         val own = state.ownSighting?.takeIf { now - state.ownSeenAt <= FireSupportTargets.OWN_SIGHTING_HOLD_TICKS }
         val sighted = faction?.let { TeamAwareness.sightings(it, now) }.orEmpty().mapTo(HashSet()) { it.target.toString() } + listOfNotNull(own?.toString())
-        val options = (squad?.let { ordered(it, state) } ?: FireOptions()).copy(ownSighting = own, factionSighting = reported?.target, sighted = sighted)
+        val options = (squad?.let(::ordered) ?: FireOptions()).copy(ownSighting = own, factionSighting = reported?.target, sighted = sighted)
         val chosen = FireSupportTargets.choose(options, state.target)
         if (chosen != state.target) DebugFlags.log(LogGroup.FIRE_SUPPORT, "crew={} event=target from={} to={}", unit.crew.agent.id, state.target, chosen)
         state.target = chosen
@@ -49,14 +49,14 @@ internal class CrewSpotter(private val level: ServerLevel) {
      * an enemy its side has seen. Alone, it shells the area while infantry approaches and then the
      * objective, as before.
      */
-    private fun ordered(squad: Squad, state: CrewState): FireOptions {
+    private fun ordered(squad: Squad): FireOptions {
         val key = "${squad.id}:${squad.orderStamp}"
         val attack = squad.order == SquadOrder.ATTACK && squad.objective != null
-        val partnered = attack && InfantrySupport.partnered(level, squad)
+        val partnered = attack && preparation.partnered(squad.id, key) { InfantrySupport.partnered(level, squad) }
         return FireOptions(
             barrage = squad.order == SquadOrder.BARRAGE && squad.objective != null,
             preparation = attack &&
-                if (partnered) state.preparationShotsFor(key) < InfantrySupport.PREPARATION_SALVOS else InfantrySupport.infantryApproaching(level, squad),
+                if (partnered) preparation.shots(squad.id, key) < InfantrySupport.PREPARATION_SALVOS else InfantrySupport.infantryApproaching(level, squad),
             commanded = squad.takeIf { it.order == SquadOrder.ATTACK }?.let { commanded(it, objective = !partnered) },
             orderKey = key,
         )

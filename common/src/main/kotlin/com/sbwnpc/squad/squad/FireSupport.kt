@@ -34,11 +34,17 @@ object FireSupport {
      */
     const val PREPARATION_SALVOS = 5
 
-    /** Whether any squad other than a mortar squad attacks under [squad]'s command. */
+    /**
+     * Whether riflemen, drone operators or helicopters attack under [squad]'s command: any squad
+     * but mortars, tanks and transports, which find no enemy for the tube themselves.
+     */
     fun partnered(level: ServerLevel, squad: Squad): Boolean {
         val command = squad.command?.takeIf { squad.commandOutcome == CommandOutcome.ACTIVE }?.id ?: return false
         val manager = SquadManager.get(level)
-        return manager.all().any { it.id != squad.id && it.command?.id == command && it.commandOutcome == CommandOutcome.ACTIVE && !manager.isMortarSquad(it) }
+        return manager.all().any {
+            it.id != squad.id && it.command?.id == command && it.commandOutcome == CommandOutcome.ACTIVE &&
+                !manager.isMortarSquad(it) && !manager.isTankSquad(it) && !manager.isTransportSquad(it)
+        }
     }
 
     /** Whether the infantry attacking with [squad] is still on its way to the objective. */
