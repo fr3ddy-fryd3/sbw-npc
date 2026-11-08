@@ -21,6 +21,9 @@ object Hearing {
     /** A gun's own sound radius (SBW's `SoundRadius`, 8–32) is this many times how far it's heard. */
     const val GUNSHOT_SCALE = 4.5
 
+    /** A burst this near a man who hears it puts him under shelling (owner 08.11, [NpcEntity.shell]). */
+    const val SHELL_NEAR = 24.0
+
     /** Allied callouts after gunfire; the threat point is supplied by the firing NPC. */
     const val ALLIED_GUNSHOT_RADIUS = 70.0
 
@@ -119,7 +122,10 @@ object Hearing {
         val radius = (power * EXPLOSION_SCALE).coerceIn(MIN_EXPLOSION, MAX_EXPLOSION)
         val heard = listeners(level, at, radius, source, allSides = false)
         val lookers = checkTeams(heard.listeners, at)
-        heard.listeners.forEach { it.hear(at, goLook = it.squadId == null || it in lookers) }
+        heard.listeners.forEach {
+            if (it.distanceToSqr(at) <= SHELL_NEAR * SHELL_NEAR) it.shell(at)
+            it.hear(at, goLook = it.squadId == null || it in lookers)
+        }
         log("explosion $power", source, at, radius, heard)
     }
 

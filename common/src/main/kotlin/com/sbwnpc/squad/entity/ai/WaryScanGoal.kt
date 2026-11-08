@@ -34,9 +34,11 @@ class WaryScanGoal(private val npc: NpcEntity) : Goal() {
     override fun tick() {
         val threat = npc.waryToward() ?: return
         if (npc.tickCount >= nextTurn) {
-            nextTurn = npc.tickCount + TURN_TICKS
+            // Under shelling he looks for where it comes from: twice as often, over a wider sector.
+            val shelled = npc.shelled()
+            nextTurn = npc.tickCount + if (shelled) TURN_TICKS / 2 else TURN_TICKS
             val bearing = atan2(threat.z - npc.z, threat.x - npc.x)
-            val angle = bearing + (npc.random.nextDouble() * 2 - 1) * SECTOR
+            val angle = bearing + (npc.random.nextDouble() * 2 - 1) * if (shelled) SHELLED_SECTOR else SECTOR
             point = Vec3(npc.x + cos(angle) * LOOK_DISTANCE, npc.eyeY, npc.z + sin(angle) * LOOK_DISTANCE)
         }
         // Vanilla's LookControl turns the head for two ticks per setLookAt, about 10 degrees each:
@@ -50,6 +52,9 @@ class WaryScanGoal(private val npc: NpcEntity) : Goal() {
 
         /** Half the sector swept round the threat's bearing, 70 degrees. */
         const val SECTOR = Math.PI * 7 / 18
+
+        /** Half the sector swept under shelling, 120 degrees: the shells say nothing of where the gun is. */
+        const val SHELLED_SECTOR = Math.PI * 2 / 3
 
         const val LOOK_DISTANCE = 16.0
     }
