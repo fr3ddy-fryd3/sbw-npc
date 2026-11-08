@@ -764,6 +764,9 @@ object NativeTactics {
             }
         }
 
+        // Whether water lies between a squad and its objective (owner 08.11).
+        private val crossings = WaterCrossings(level)
+
         /**
          * A travelling squad's seats as its plan gave them out ([TacticalDomain.BOARD], #255), with
          * the vehicles each man failed to board. Only the plan's board action writes the seats.
@@ -1412,6 +1415,7 @@ object NativeTactics {
                     lastHits.remove(id)
                     closeContacts.remove(id)
                     retreatSmoke.forget(id)
+                    crossings.forgetSquad(id)
                     grenades.forgetSquad(id)
                     recon.forget(id)
                     intelWaits.remove(id)
@@ -2274,11 +2278,15 @@ object NativeTactics {
                 val entry = if (marching && saved.order == SquadOrder.ATTACK) reinforcementPoint(saved.id, view.center.point()) else null
                 val following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW
                 val transit = journeys[saved.id] == saved.orderStamp
-                val reconnoitre = reconStage(saved, view.center.point(), now)
+                // With water between it and the objective (WaterCrossings) the recon stages and the wait for
+                // its report keep off: their points fell on the water and the near bank, and nobody crossed
+                // (playtest 08.11). The attack's own posts swim across.
+                val wet = crossings.crossing(saved, view.center, now)
+                val reconnoitre = reconStage(saved, view.center.point(), now)?.takeUnless { wet }
                 // Waiting for the recon report, infantry stops short of its firing line unless it is fired on.
                 // An enemy merely seen far off does not end it: in the playtest of 08.11 a sighting at
                 // the objective sent the infantry on past the scouts before they reported.
-                val intelHold = if (awaitingIntel(saved, now) && view.incoming.isEmpty()) saved.objective?.center?.point()?.let { ReconProgress.shortOf(it, view.center.point(), ReconProgress.STAGING_DISTANCE) } else null
+                val intelHold = if (awaitingIntel(saved, now) && view.incoming.isEmpty() && !wet) saved.objective?.center?.point()?.let { ReconProgress.shortOf(it, view.center.point(), ReconProgress.STAGING_DISTANCE) } else null
                 if (reconnoitre != null && reconnoitre.first != ReconStage.STAGING) {
                     val toward = saved.objective!!.center
                     view.members.forEach { (level.getEntity(it.id) as? NpcEntity)?.becomeWary(toward) }
@@ -2907,6 +2915,7 @@ object NativeTactics {
             seatsDue.clear()
             seatChecks.clear()
             retreatSmoke.clear()
+            crossings.clear()
             grenades.clear()
             recon.clear()
             reconProgress.clear()

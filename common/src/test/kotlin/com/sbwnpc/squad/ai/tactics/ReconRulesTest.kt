@@ -46,4 +46,9 @@ class ReconRulesTest {
         assertFalse(ReconRules.awaitsIntel(0, null, reconHidden = true, reported = true))
         assertFalse(ReconRules.awaitsIntel(0, null, reconHidden = false, reported = false))
     }
+
+    @Test fun `four wet blocks in a row are water to cross, a puddle is not`() {
+        assertTrue(ReconRules.waterBetween(listOf(false, true, true, true, true, false)))
+        assertFalse(ReconRules.waterBetween(listOf(true, true, true, false, true, true, true)))
+    }
 }

@@ -60,6 +60,22 @@ object ReconRules {
      */
     fun awaitsIntel(sinceOrder: Long, sincePost: Long?, reconHidden: Boolean, reported: Boolean): Boolean = reconHidden && !reported && sinceOrder < INTEL_CAP_TICKS && (sincePost ?: 0L) < INTEL_WAIT_TICKS
 
+    /** Water at least this many blocks long on the way is water to cross; a puddle is not. */
+    const val CROSSING_MIN = 4
+
+    /**
+     * Whether the way marked block by block in [wet] crosses [CROSSING_MIN] or more wet blocks in a row:
+     * then the recon stages and the wait for its report keep off (owner 08.11), see WaterCrossings.
+     */
+    fun waterBetween(wet: List<Boolean>): Boolean {
+        var run = 0
+        for (w in wet) {
+            run = if (w) run + 1 else 0
+            if (run >= CROSSING_MIN) return true
+        }
+        return false
+    }
+
     /** Whether a man of a squad that [holds] its fire may still shoot at a target [distance] blocks away. */
     fun mayFire(holds: Boolean, distance: Double) = !holds || distance < CLOSE
 }
