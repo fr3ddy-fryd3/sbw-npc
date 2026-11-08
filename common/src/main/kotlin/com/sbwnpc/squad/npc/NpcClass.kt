@@ -69,6 +69,13 @@ enum class NpcClass(
 
     /** Appended to preserve existing class ordinals in saved equipment and network packets. */
     SHOTGUNNER(listOf(loc("m_870")), combatClearance = 16.0, maxFireDistance = 48.0),
+
+    /**
+     * Recon (#194): finds the enemy, reports him and stays hidden; fires only once discovered. Faster
+     * than anyone (owner 26.10: 1.6, others 1.4), harder to notice and quicker to notice (`SpottingTime`),
+     * and kept at a medic's distance behind the line when it joins a fight. Appended for the ordinals.
+     */
+    SCOUT(listOf(loc("mp_5"), loc("vector")), shootDistanceMultiplier = 1.5, speedMultiplier = 1.6, attackStandoffDistance = 64.0),
     ;
 
     /** Ordinary assault stops at this range; holding orders can shoot out to twice it. */
@@ -98,6 +105,7 @@ enum class NpcClass(
             MEDIC, MORTAR, MORTAR_OPERATOR, MORTAR_LOADER -> 180
             DRONE_OPERATOR -> 120
             SHOTGUNNER -> 64
+            SCOUT -> 180
             TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
         }
 

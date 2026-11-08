@@ -61,6 +61,16 @@ class SpottingTimeTest {
         assertNull(seconds(37.0, 4, regular))
     }
 
+    @Test fun `a scout spots quicker and further, and is noticed slower and lost sooner (#194)`() {
+        val rifleman = Observer.of(NpcRank.ELITE, NpcClass.RIFLEMAN)
+        assertEquals(Observer(0.6, 1.5), Observer.of(NpcRank.ELITE, NpcClass.SCOUT))
+        val open = SpottingTime.Target(50.0, 15)
+        val hidden = open.copy(stealthy = true)
+        assertEquals(SpottingTime.seconds(rifleman, open)!! * 1.6, SpottingTime.seconds(rifleman, hidden)!!, 1e-9)
+        val edge = generateSequence(1.0) { it + 1.0 }.first { SpottingTime.seconds(rifleman, open.copy(distance = it)) == null }
+        assertEquals(null, SpottingTime.seconds(rifleman, hidden.copy(distance = edge * 0.8 + 1.0)))
+    }
+
     @Test fun `a sniper is quicker and sees further than the same rank of rifleman`() {
         val sniper = Observer.of(NpcRank.ELITE, NpcClass.SNIPER)
         assertEquals(1.4 * day * 0.7, seconds(100.0, 15, sniper)!!, 1e-9)

@@ -349,6 +349,9 @@ class SquadManager : VersionedSavedData() {
 
     fun isTransportSquad(squad: Squad): Boolean = squad.originalComposition.contains(NpcClass.HELICOPTER_PILOT) && !isGunshipSquad(squad)
 
+    /** A recon squad brought only scouts (#194). */
+    fun isReconSquad(squad: Squad): Boolean = squad.originalComposition.isNotEmpty() && squad.originalComposition.all { it == NpcClass.SCOUT }
+
     fun isMortarSquad(squad: Squad): Boolean =
         squad.originalComposition.any {
             it.canonical == NpcClass.MORTAR

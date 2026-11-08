@@ -39,7 +39,7 @@ object AllRolesLoadGameTests {
 
     private fun config(faction: SquadFaction, preset: SquadPreset, role: NpcClass = NpcClass.RIFLEMAN, vehicle: Boolean = false) = SquadToolItem.Config(role, NpcRank.RECRUIT, faction, preset, vehicle = vehicle, heliModel = HelicopterModel.AH_6)
 
-    /** Infantry of every size, two squads carried by an APC, fire support, armour, drones, an aircraft and lone grenadiers. */
+    /** Infantry of every size, two squads carried by an APC, fire support, armour, drones, an aircraft, recon and lone grenadiers. */
     private fun roster(faction: SquadFaction): List<Slot> =
         List(4) { Slot(config(faction, SquadPreset.SIXTEEN)) } +
             List(2) { Slot(config(faction, SquadPreset.SEVEN, vehicle = true)) } +
@@ -48,7 +48,8 @@ object AllRolesLoadGameTests {
             Slot(config(faction, SquadPreset.T90_CREW)) +
             Slot(config(faction, SquadPreset.DRONE_TEAM)) +
             Slot(config(faction, SquadPreset.HELI_CREW)) +
-            List(4) { Slot(config(faction, SquadPreset.SINGLE, role = NpcClass.GRENADIER)) }
+            Slot(config(faction, SquadPreset.RECON)) +
+            List(3) { Slot(config(faction, SquadPreset.SINGLE, role = NpcClass.GRENADIER)) }
 
     /** Two columns of eight slots per side, 24 blocks apart, so no squad spawns inside another. */
     private fun place(index: Int, west: Boolean): Vec3 {

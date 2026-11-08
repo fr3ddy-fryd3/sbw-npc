@@ -44,6 +44,9 @@ enum class SquadPreset(
         List(18) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SHOTGUNNER } + List(4) { NpcClass.SNIPER } + List(4) { NpcClass.MACHINE_GUNNER } + List(4) { NpcClass.MEDIC },
         grid = true,
     ),
+
+    /** Three scouts who observe and report without firing (#194); appended for the saved ordinals. */
+    RECON("Recon", List(RECON_SIZE) { NpcClass.SCOUT }, grid = true),
     ;
 
     fun next(): SquadPreset = ORDER[(ORDER.indexOf(this) + 1) % ORDER.size]
@@ -54,7 +57,7 @@ enum class SquadPreset(
         val DEFAULT = SINGLE
 
         /** The order the recruit tool steps through them: infantry by size, then the crews. */
-        private val ORDER = listOf(SINGLE, FIVE, SEVEN, SIXTEEN, THIRTY_TWO, MORTAR_CREW, T90_CREW, DRONE_TEAM, HELI_CREW)
+        private val ORDER = listOf(SINGLE, FIVE, SEVEN, SIXTEEN, THIRTY_TWO, RECON, MORTAR_CREW, T90_CREW, DRONE_TEAM, HELI_CREW)
 
         // Existing tool configurations that selected the removed six-NPC option now use SEVEN.
         fun byOrdinal(i: Int): SquadPreset =
@@ -63,3 +66,6 @@ enum class SquadPreset(
             }
     }
 }
+
+/** Scouts in a recon squad (owner 24.10, #194). */
+private const val RECON_SIZE = 3

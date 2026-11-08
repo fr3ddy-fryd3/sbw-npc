@@ -82,9 +82,13 @@ object SpottingTime {
 
         companion object {
             fun of(rank: NpcRank, npcClass: NpcClass): Observer {
-                val sniper = npcClass == NpcClass.SNIPER
+                val time = when (npcClass) {
+                    NpcClass.SNIPER -> SNIPER_TIME
+                    NpcClass.SCOUT -> SCOUT_TIME
+                    else -> 1.0
+                }
                 return Observer(
-                    rankTime(rank) * (if (sniper) SNIPER_TIME else 1.0),
+                    rankTime(rank) * time,
                     rankCutoff(rank) * classCutoff(npcClass),
                 )
             }
@@ -94,12 +98,17 @@ object SpottingTime {
             private const val MORTAR_CUTOFF = 1.5
             private const val DRONE_OPERATOR_CUTOFF = 1.25
 
+            // Recon spots faster and further (owner 26.10, #194).
+            private const val SCOUT_TIME = 0.6
+            private const val SCOUT_CUTOFF = 1.5
+
             /** Spotters with optics see further (owner's call, 21.10, for the mortar and the drone operator). */
             private fun classCutoff(npcClass: NpcClass): Double =
                 when (npcClass) {
                     NpcClass.SNIPER -> SNIPER_CUTOFF
                     NpcClass.MORTAR, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER -> MORTAR_CUTOFF
                     NpcClass.DRONE_OPERATOR -> DRONE_OPERATOR_CUTOFF
+                    NpcClass.SCOUT -> SCOUT_CUTOFF
                     else -> 1.0
                 }
 
@@ -123,6 +132,8 @@ object SpottingTime {
         val grassBlocks: Int = 0,
         val weather: Weather = Weather.CLEAR,
         val size: Size = Size.PERSON,
+        /** The target's own concealment: a scout takes [SCOUT_HIDDEN_TIME] as long to notice and is lost sooner. */
+        val stealthy: Boolean = false,
     )
 
     /**
@@ -131,10 +142,12 @@ object SpottingTime {
      */
     fun seconds(observer: Observer, target: Target): Double? {
         val light = Light.of(target.light.coerceIn(0, MAX_LIGHT))
-        if (target.distance > light.cutoff * observer.cutoffFactor * target.weather.reachFactor * target.size.reachFactor) return null
+        val hidden = if (target.stealthy) SCOUT_HIDDEN_REACH else 1.0
+        if (target.distance > light.cutoff * observer.cutoffFactor * target.weather.reachFactor * target.size.reachFactor * hidden) return null
         val base = BASE_SECONDS + DISTANCE_SECONDS * (target.distance / REFERENCE_DISTANCE).let { it * it }
         var factor = light.timeFactor * observer.timeFactor * target.weather.timeFactor * target.size.timeFactor *
             (1.0 + (CONE_EDGE_FACTOR - 1.0) * target.offAxis.coerceIn(0.0, 1.0))
+        if (target.stealthy) factor *= SCOUT_HIDDEN_TIME
         if (target.crouching) factor *= CROUCHING_FACTOR
         if (target.sprinting) factor *= SPRINTING_FACTOR
         repeat(target.grassBlocks.coerceAtLeast(0)) { factor *= GRASS_FACTOR }
@@ -142,6 +155,10 @@ object SpottingTime {
     }
 
     private const val MAX_LIGHT = 15
+
+    // A scout is noticed 1.6 times slower and lost at 0.8 of the distance; crouching still adds its own 1.5 (owner 26.10, #194).
+    const val SCOUT_HIDDEN_TIME = 1.6
+    const val SCOUT_HIDDEN_REACH = 0.8
 
     /** A wary observer spots 1.25 times as fast. */
     const val WARY_FACTOR = 1.25
