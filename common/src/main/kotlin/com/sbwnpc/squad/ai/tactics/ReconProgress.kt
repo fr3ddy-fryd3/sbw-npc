@@ -34,19 +34,51 @@ class ReconProgress(val stamp: Int) {
     /** Reported beside infantry, it keeps its post until the assault (owner 08.11) instead of falling back. */
     var holdsPost = false
 
-    /** When it reached its post, or null before. */
+    /** When it first reached a post, or null before: the operation's wait for its report counts from it. */
     var watchFrom: Long? = null
         private set
 
+    /** How far short of the objective its post lies; nearer each time it sees nobody ([closer]). */
+    var postDistance = POST_DISTANCE
+        private set
+
+    /**
+     * The post it watches from: where it stood on arriving. Its men observe from here; an OBSERVE on
+     * the objective itself walked them to within 10 blocks of it, onto the enemy.
+     */
+    var post: Point3? = null
+        private set
+
+    private var postFrom = 0L
+
     /** Advances the stage for a squad whose centre stands [distance] blocks from the objective at [now]; returns the stage. */
-    fun update(distance: Double, now: Long): ReconStage {
+    fun update(distance: Double, now: Long, centre: Point3? = null): ReconStage {
         stage = when (stage) {
             ReconStage.STAGING -> if (distance <= STAGING_DISTANCE + ARRIVAL) ReconStage.STALK else ReconStage.STAGING
-            ReconStage.STALK -> if (distance <= POST_DISTANCE) ReconStage.WATCH.also { watchFrom = now } else ReconStage.STALK
-            ReconStage.WATCH -> if (now - (watchFrom ?: now) >= WATCH_TICKS) ReconStage.REPORTED else ReconStage.WATCH
+            ReconStage.STALK -> if (distance <= postDistance) arrive(now, centre) else ReconStage.STALK
+            ReconStage.WATCH -> if (now - postFrom >= WATCH_TICKS) ReconStage.REPORTED else ReconStage.WATCH
             ReconStage.REPORTED -> ReconStage.REPORTED
         }
         return stage
+    }
+
+    private fun arrive(now: Long, centre: Point3?): ReconStage {
+        if (watchFrom == null) watchFrom = now
+        postFrom = now
+        post = centre
+        nextUpdate = now + UPDATE_TICKS
+        return ReconStage.WATCH
+    }
+
+    /**
+     * Seeing nobody from its post (owner 08.11), it moves [POST_STEP] blocks nearer and watches again,
+     * down to [MIN_POST_DISTANCE]; false once there, and it reports what it has.
+     */
+    fun closer(): Boolean {
+        if (stage != ReconStage.WATCH || postDistance <= MIN_POST_DISTANCE) return false
+        postDistance = maxOf(MIN_POST_DISTANCE, postDistance - POST_STEP)
+        stage = ReconStage.STALK
+        return true
     }
 
     private val seen = HashSet<java.util.UUID>()
@@ -72,13 +104,13 @@ class ReconProgress(val stamp: Int) {
         when (stage) {
             ReconStage.STAGING -> shortOf(objective, centre, STAGING_DISTANCE)
 
-            ReconStage.STALK -> shortOf(objective, centre, POST_DISTANCE - ARRIVAL)
+            ReconStage.STALK -> shortOf(objective, centre, postDistance - ARRIVAL)
 
-            ReconStage.WATCH -> objective
+            ReconStage.WATCH -> post ?: centre
 
             // With no infantry to join (reported with infantry, it fights and is no longer here):
             // back along its approach to 64 blocks short of the objective, and it holds there.
-            ReconStage.REPORTED -> if (holdsPost) objective else fallBack ?: objective
+            ReconStage.REPORTED -> if (holdsPost) post ?: centre else fallBack ?: centre
         }
 
     companion object {
@@ -90,6 +122,12 @@ class ReconProgress(val stamp: Int) {
 
         /** The stalk ends this far from the objective, where the observer's post search takes over. */
         const val POST_DISTANCE = 72.0
+
+        /** Each time it sees nobody from its post, the next one lies this much nearer (owner 08.11). */
+        const val POST_STEP = 16.0
+
+        /** It never goes nearer than this: never onto the enemy. */
+        const val MIN_POST_DISTANCE = 40.0
 
         /** Watching before the report: 20 s (owner 26.10). */
         const val WATCH_TICKS = 400L

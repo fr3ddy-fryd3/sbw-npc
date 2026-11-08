@@ -653,7 +653,7 @@ object NativeTactics {
             }
             val progress = reconProgress[saved.id]?.takeIf { it.stamp == saved.orderStamp } ?: ReconProgress(saved.orderStamp).also { reconProgress[saved.id] = it }
             val before = progress.stage
-            val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now)
+            val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now, centre)
             if (stage != before) {
                 DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=stage from={} to={}", saved.id, before, stage)
                 if (stage == ReconStage.REPORTED) {
@@ -665,8 +665,13 @@ object NativeTactics {
                 }
             }
             progress.tally(enemiesAt(saved, objective, now), now)?.let { (fresh, total) ->
-                DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_update new={} total={}", saved.id, fresh, total)
-                com.sbwnpc.squad.squad.SquadReports.postUpdate(level.server, saved, fresh, total)
+                if (total == 0 && progress.closer()) {
+                    DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=closer post={}", saved.id, progress.postDistance)
+                    SquadReports.movingCloser(level.server, saved, progress.postDistance.toInt())
+                } else {
+                    DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_update new={} total={}", saved.id, fresh, total)
+                    SquadReports.postUpdate(level.server, saved, fresh, total)
+                }
             }
             reconnoitring += saved.id
             if (stage == ReconStage.STAGING) stalking -= saved.id else stalking += saved.id
@@ -692,7 +697,7 @@ object NativeTactics {
          * post does not start it. Latched per operation.
          */
         private fun noteAssault(saved: Squad, incoming: Boolean, centre: Vec3, enemies: List<Vec3>) {
-            if (intelWaits[saved.id] != IntelWait.WITH_RECON) return
+            if (intelWaits[saved.id] != IntelWait.WITH_RECON || !attackingInfantry(saved)) return
             val operation = operations.committedTo(saved.id) ?: return
             if (!incoming && enemies.none { hypot(it.x - centre.x, it.z - centre.z) <= ASSAULT_RANGE }) return
             if (assaulting.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=assault squad={} incoming={}", operation.id, saved.id, incoming)
@@ -709,7 +714,10 @@ object NativeTactics {
             val manager = SquadManager.get(level)
             val operation = operations.committedTo(saved.id)
             val recons = operation?.members?.keys.orEmpty().mapNotNull(manager::get).filter { manager.isReconSquad(it) && it.order == SquadOrder.ATTACK && it.members.isNotEmpty() }
-            if (operation == null || recons.isEmpty() || !attackingInfantry(saved)) {
+            // Drone operators wait beside the infantry (playtest 08.11): left to their own post they
+            // walked up almost onto the objective before the scouts had reported.
+            val waits = attackingInfantry(saved) || (saved.order == SquadOrder.ATTACK && manager.isDroneSquad(saved))
+            if (operation == null || recons.isEmpty() || !waits) {
                 intelWaits.remove(saved.id)
                 return false
             }
@@ -743,7 +751,7 @@ object NativeTactics {
         private fun enemiesAt(saved: Squad, objective: Point3, now: Long): Set<UUID> = TeamAwareness.knownContacts(saved.faction, now).filterTo(HashSet()) { id -> level.getEntity(id)?.let { hypot(it.x - objective.x, it.z - objective.z) <= INTEL_RADIUS } == true }
 
         /** Whether [squad], a recon squad, holds its fire now ([ReconRules.holdsFire]). */
-        fun squadHoldsFire(squad: Squad): Boolean = ReconRules.holdsFire(company(squad), squad.order == SquadOrder.ATTACK, recon.sawEnemy(squad), recon.discovered(squad), operations.committedTo(squad.id)?.id in assaulting)
+        fun squadHoldsFire(squad: Squad): Boolean = ReconRules.holdsFire(company(squad), squad.order == SquadOrder.ATTACK && recon.sawEnemy(squad), recon.discovered(squad), recon.reported(squad), operations.committedTo(squad.id)?.id in assaulting)
 
         /**
          * A recon squad discovered since the last pass that does not fight leaves at once, as a RETREAT
@@ -2325,7 +2333,7 @@ object NativeTactics {
                     val decision = entry?.takeUnless { transit }?.let { DutyDecision(RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)), null) } ?: reconnoitre?.let { (stage, point) ->
                         // On the post, watching or holding it after the report, the observer's post search places them;
                         // a plain MOVE to the objective would walk them onto the enemy.
-                        val duty = if (stage == ReconStage.WATCH || reconProgress[saved.id]?.holdsPost == true) CombatDuty.OBSERVE else CombatDuty.MOVE
+                        val duty = if (stage == ReconStage.WATCH || (stage == ReconStage.REPORTED && reconProgress[saved.id]?.holdsPost == true)) CombatDuty.OBSERVE else CombatDuty.MOVE
                         DutyDecision(RuledDuty("recon_${stage.name.lowercase()}", DutyChoice(duty, point)), null)
                     } ?: intelHold?.let { DutyDecision(RuledDuty("intel_wait", DutyChoice(CombatDuty.MOVE, it)), null) } ?: MemberDuties.choose(
                         DutyInputs(
@@ -2397,7 +2405,9 @@ object NativeTactics {
                     val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding && !fallingBack
                     val requireShelter = PostRequirements.shelter(duty, situation.incoming) && !fallingBack
                     val settled = strategyKept && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
-                    val moving = waypoint != null || member.id in wasArcing || bounding
+                    // A ruled point (recon stage, intel wait, reinforcement entry) moves with its stage: kept as
+                    // settled, the scouts stood on their staging line and never reached a post (playtest 08.11).
+                    val moving = waypoint != null || member.id in wasArcing || bounding || ruled.rule.startsWith("recon_") || ruled.rule == "intel_wait" || ruled.rule == "reinforcement_entry"
                     val byLegs = ruled.rule in LEG_RULES
                     // A blind slot brought nearer than the role's clearance lets its man come that near (#93).
                     val sightClearance = slotSights[member.id]?.sighted?.takeIf { waypoint == null && it.post == proposal.anchor }?.clearance

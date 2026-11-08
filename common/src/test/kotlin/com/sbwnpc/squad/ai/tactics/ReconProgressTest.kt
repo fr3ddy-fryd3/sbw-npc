@@ -41,21 +41,41 @@ class ReconProgressTest {
         assertEquals(null, progress.tally(setOf(a), 0))
         progress.update(95.0, 0)
         progress.update(70.0, 10)
-        assertEquals(1 to 1, progress.tally(setOf(a), 10))
-        assertEquals(null, progress.tally(setOf(a, b), 100))
-        assertEquals(1 to 2, progress.tally(setOf(a, b), 10 + ReconProgress.UPDATE_TICKS))
+        assertEquals(null, progress.tally(setOf(a), 10))
+        assertEquals(1 to 1, progress.tally(setOf(a), 10 + ReconProgress.UPDATE_TICKS))
+        assertEquals(null, progress.tally(setOf(a, b), 100 + ReconProgress.UPDATE_TICKS))
+        assertEquals(1 to 2, progress.tally(setOf(a, b), 10 + 2 * ReconProgress.UPDATE_TICKS))
     }
 
-    @Test fun `reported and holding its post it keeps counting, falling back it stops`() {
+    @Test fun `reported and holding its post it keeps counting and stays where it watched from`() {
+        val o = Point3(0.0, 64.0, 0.0)
+        val at = Point3(0.0, 64.0, 70.0)
         val a = java.util.UUID.randomUUID()
         val held = ReconProgress(1)
         held.update(95.0, 0)
-        held.update(70.0, 0)
+        held.update(70.0, 0, at)
+        assertEquals(at, held.point(o, Point3(0.0, 64.0, 60.0)))
         held.update(70.0, ReconProgress.WATCH_TICKS)
         held.holdsPost = true
-        assertEquals(Point3(0.0, 64.0, 0.0), held.point(Point3(0.0, 64.0, 0.0), Point3(0.0, 64.0, 70.0)))
+        assertEquals(at, held.point(o, Point3(0.0, 64.0, 60.0)))
         assertEquals(1 to 1, held.tally(setOf(a), ReconProgress.WATCH_TICKS))
         held.holdsPost = false
         assertEquals(null, held.tally(setOf(a), ReconProgress.WATCH_TICKS + ReconProgress.UPDATE_TICKS))
+    }
+
+    @Test fun `seeing nobody it steps nearer down to the closest post, never onto the objective`() {
+        val progress = ReconProgress(1)
+        progress.update(95.0, 0)
+        progress.update(70.0, 0, Point3(0.0, 64.0, 70.0))
+        var steps = 0
+        while (progress.closer()) {
+            steps++
+            assertEquals(ReconStage.STALK, progress.stage)
+            progress.update(progress.postDistance, 0, Point3(0.0, 64.0, progress.postDistance))
+        }
+        assertEquals(ReconProgress.MIN_POST_DISTANCE, progress.postDistance, 1e-9)
+        assertEquals(2, steps)
+        assertEquals(ReconStage.WATCH, progress.stage)
+        assertEquals(0L, progress.watchFrom)
     }
 }

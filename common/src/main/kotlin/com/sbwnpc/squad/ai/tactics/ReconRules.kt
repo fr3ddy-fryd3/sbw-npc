@@ -3,7 +3,8 @@ package com.sbwnpc.squad.ai.tactics
 /**
  * When a recon squad may fire (#194, owner 24.10 and 26.10): only once it is discovered, or when an
  * enemy is closer than [CLOSE] blocks. A recon squad that is alone in its operation, ordered to
- * attack, and has seen an enemy attacks it as any squad would; one whose operation holds infantry
+ * attack, and has seen an enemy attacks it as any squad would once it has reported (owner 08.11: it
+ * opened fire first, before any report); one whose operation holds infantry
  * stays on its post after its report and goes into the fight only when the infantry's assault begins
  * (owner 08.11: the post keeps the infantry's and the mortars' picture fresh until then).
  *
@@ -29,12 +30,12 @@ object ReconRules {
     const val CLOSE = 5.0
 
     /**
-     * Whether a recon squad holds its fire. [discovered] is the owner's sense: shot at, or targeted by
+     * Whether a recon squad holds its fire. [foundEnemy]: ordered to attack, it has seen an enemy. [discovered] is the owner's sense: shot at, or targeted by
      * an enemy; shots near it alone do not say it was seen.
      */
-    fun holdsFire(company: Company, attack: Boolean, sawEnemy: Boolean, discovered: Boolean, assault: Boolean = false): Boolean =
+    fun holdsFire(company: Company, foundEnemy: Boolean, discovered: Boolean, reported: Boolean, assault: Boolean = false): Boolean =
         when {
-            company == Company.ALONE && attack && sawEnemy -> false
+            company == Company.ALONE && foundEnemy && reported -> false
             company == Company.INFANTRY && assault -> false
             discovered -> false
             else -> true

@@ -121,6 +121,11 @@ object SquadReports {
         send(server, squad, Kind.INTEL, if (total == 0) "Observation post: nobody seen" else "Observation post: +$fresh new, $total at the objective")
     }
 
+    /** Seeing nobody from its post, a recon squad moves nearer (owner 08.11). */
+    fun movingCloser(server: MinecraftServer, squad: Squad, distance: Int) {
+        send(server, squad, Kind.INTEL, "Observation post: nobody seen, moving closer ($distance m out)")
+    }
+
     /** A recon squad's report from its observation post (#194). */
     fun intel(server: MinecraftServer, squad: Squad, enemies: Int) {
         send(server, squad, Kind.INTEL, if (enemies > 0) "Observation post: $enemies enemies at the objective" else "Observation post: nobody seen at the objective")

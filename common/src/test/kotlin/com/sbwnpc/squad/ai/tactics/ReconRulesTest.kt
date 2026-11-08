@@ -8,16 +8,15 @@ import org.junit.jupiter.api.Test
 class ReconRulesTest {
     @Test fun `hidden recon holds its fire on every order and in every company`() {
         Company.entries.forEach { company ->
-            assertTrue(ReconRules.holdsFire(company, attack = false, sawEnemy = true, discovered = false))
-            assertTrue(ReconRules.holdsFire(company, attack = true, sawEnemy = false, discovered = false))
+            assertTrue(ReconRules.holdsFire(company, foundEnemy = false, discovered = false, reported = true))
         }
-        assertTrue(ReconRules.holdsFire(Company.INFANTRY, attack = true, sawEnemy = true, discovered = false))
-        assertTrue(ReconRules.holdsFire(Company.SUPPORT, attack = true, sawEnemy = true, discovered = false))
+        assertTrue(ReconRules.holdsFire(Company.INFANTRY, foundEnemy = true, discovered = false, reported = true))
+        assertTrue(ReconRules.holdsFire(Company.SUPPORT, foundEnemy = true, discovered = false, reported = true))
     }
 
     @Test fun `discovered it fires, and a lone recon squad ordered to attack fires at the enemy it found`() {
-        Company.entries.forEach { assertFalse(ReconRules.holdsFire(it, attack = false, sawEnemy = false, discovered = true)) }
-        assertFalse(ReconRules.holdsFire(Company.ALONE, attack = true, sawEnemy = true, discovered = false))
+        Company.entries.forEach { assertFalse(ReconRules.holdsFire(it, foundEnemy = false, discovered = true, reported = false)) }
+        assertFalse(ReconRules.holdsFire(Company.ALONE, foundEnemy = true, discovered = false, reported = true))
     }
 
     @Test fun `a man at arm's length is answered whatever the rule`() {
@@ -27,9 +26,9 @@ class ReconRulesTest {
     }
 
     @Test fun `recon beside infantry hides until the assault and fights once it begins`() {
-        assertTrue(ReconRules.holdsFire(Company.INFANTRY, true, true, false, assault = false))
-        assertFalse(ReconRules.holdsFire(Company.INFANTRY, true, false, false, assault = true))
-        assertTrue(ReconRules.holdsFire(Company.SUPPORT, true, false, false, assault = true))
+        assertTrue(ReconRules.holdsFire(Company.INFANTRY, true, false, true, assault = false))
+        assertFalse(ReconRules.holdsFire(Company.INFANTRY, false, false, true, assault = true))
+        assertTrue(ReconRules.holdsFire(Company.SUPPORT, false, false, true, assault = true))
     }
 
     @Test fun `discovered it withdraws unless infantry is beside it or it is alone attacking a found enemy`() {
@@ -51,5 +50,10 @@ class ReconRulesTest {
     @Test fun `four wet blocks in a row are water to cross, a puddle is not`() {
         assertTrue(ReconRules.waterBetween(listOf(false, true, true, true, true, false)))
         assertFalse(ReconRules.waterBetween(listOf(true, true, true, false, true, true, true)))
+    }
+
+    @Test fun `alone it holds its fire until it has reported`() {
+        assertTrue(ReconRules.holdsFire(Company.ALONE, foundEnemy = true, discovered = false, reported = false))
+        assertFalse(ReconRules.holdsFire(Company.ALONE, foundEnemy = true, discovered = false, reported = true))
     }
 }
