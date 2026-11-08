@@ -26,9 +26,11 @@ import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
+import kotlin.math.floor
 
 /**
  * One crew as [CrewRoster] found it this update: its [crew] for the plan, the [squad] it fires for
@@ -46,7 +48,7 @@ private fun crewUnit(men: List<NpcEntity>, squad: UUID?, tube: UUID?): CrewUnit 
  * What a crew's facts keep between updates (#258): the scan's progress at noticing each enemy, its
  * last own sighting, the target it chose, and how long that target has been out of the tube's reach.
  */
-internal class CrewState(val noticing: Noticing) {
+internal class CrewState(val noticing: Noticing, private val ground: (Int, Int) -> Int) {
     var nextScan = Long.MIN_VALUE
     var ownSighting: UUID? = null
     var ownSeenAt = Long.MIN_VALUE
@@ -59,6 +61,11 @@ internal class CrewState(val noticing: Noticing) {
     /** Where to carry the tube for a target out of reach, set once it has been out of reach long enough. */
     var reachPoint: Point3? = null
     var lastTube: TubeState? = null
+
+    /** Salvos fired at the attack point for the order [preparationKey] names. */
+    var preparationShots = 0
+        private set
+    private var preparationKey: String? = null
     private var reachKey: String? = null
     private var unreachableSince: Long? = null
 
@@ -82,9 +89,24 @@ internal class CrewState(val noticing: Noticing) {
         val away = tube.subtract(aim).multiply(1.0, 0.0, 1.0)
         val distance = away.length()
         val keep = minOf(FireSupportWorld.REDEPLOY_RANGE, distance * NEARER_FRACTION)
-        reachPoint = (if (distance < MIN_DISTANCE) tube else aim.add(away.normalize().scale(keep))).point()
+        val carry = if (distance < MIN_DISTANCE) tube else aim.add(away.normalize().scale(keep))
+        // On the ground there, not at the target's height: a point inside a hill left the crew
+        // standing on the slope above it for good, never arriving (in-game 08.11).
+        reachPoint = Vec3(carry.x, ground(floor(carry.x).toInt(), floor(carry.z).toInt()).toDouble(), carry.z).point()
         DebugFlags.log(LogGroup.FIRE_SUPPORT, "event=out_of_reach target={} carry_to={}", target.key, reachPoint)
     }
+
+    /** Counts a salvo at the attack point for the order [key]; a new order starts the count again. */
+    fun preparationFired(key: String) {
+        if (preparationKey != key) {
+            preparationKey = key
+            preparationShots = 0
+        }
+        preparationShots++
+    }
+
+    /** Salvos already fired at the attack point for the order [key]. */
+    fun preparationShotsFor(key: String) = if (preparationKey == key) preparationShots else 0
 
     /** Forgets the target's reach: a new target, or a tube set up again where it was carried. */
     fun clearReach() {
@@ -199,7 +221,7 @@ internal class FireSupportWorld(private val level: ServerLevel) {
         val now = empty.now
         val men = unit.crew.members.mapNotNull { level.getEntity(it.id) as? NpcEntity }
         if (men.isEmpty()) return empty
-        val state = states.getOrPut(empty.owner) { CrewState(Noticing("mortar", LogGroup.FIRE_SUPPORT)) }
+        val state = states.getOrPut(empty.owner) { CrewState(Noticing("mortar", LogGroup.FIRE_SUPPORT)) { x, z -> level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) } }
         val carrier = men.firstOrNull { it.holds(NpcActivity.CARRYING_MORTAR) }
         val deployed = unit.tube?.let(level::getEntity)?.takeIf { carrier == null && roster.usable(men.first(), it) }
         val tube = tubeState(carrier, deployed, state)
@@ -307,8 +329,11 @@ internal class FireSupportWorld(private val level: ServerLevel) {
         /** Within this of where it was sent, the carrier sets the tube up, well inside [RELOCATE_RANGE]. */
         const val DEPLOY_RANGE = RELOCATE_RANGE - 2.0
 
-        /** A tube carried for a target out of reach is set up again this far short of it. */
-        const val REDEPLOY_RANGE = 200.0
+        /**
+         * A tube carried for a target out of reach is set up again this far short of it: well inside
+         * the 200 blocks a crew fires at, so the carry is not stopped at the edge of reach again.
+         */
+        const val REDEPLOY_RANGE = 160.0
         private const val HALF = 0.5
     }
 }

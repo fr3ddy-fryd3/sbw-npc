@@ -31,7 +31,7 @@ internal class CrewSpotter(private val level: ServerLevel) {
         val reported = faction?.let { TeamAwareness.sightings(it, now) }?.firstOrNull { (level.getEntity(it.target) as? LivingEntity)?.isAlive == true }
         val own = state.ownSighting?.takeIf { now - state.ownSeenAt <= FireSupportTargets.OWN_SIGHTING_HOLD_TICKS }
         val sighted = faction?.let { TeamAwareness.sightings(it, now) }.orEmpty().mapTo(HashSet()) { it.target.toString() } + listOfNotNull(own?.toString())
-        val options = (squad?.let(::ordered) ?: FireOptions()).copy(ownSighting = own, factionSighting = reported?.target, sighted = sighted)
+        val options = (squad?.let { ordered(it, state) } ?: FireOptions()).copy(ownSighting = own, factionSighting = reported?.target, sighted = sighted)
         val chosen = FireSupportTargets.choose(options, state.target)
         if (chosen != state.target) DebugFlags.log(LogGroup.FIRE_SUPPORT, "crew={} event=target from={} to={}", unit.crew.agent.id, state.target, chosen)
         state.target = chosen
@@ -43,17 +43,29 @@ internal class CrewSpotter(private val level: ServerLevel) {
         }
     }
 
-    /** What [squad]'s order gives the crew to fire at; with infantry on an ATTACK, the objective's area until the infantry gets there. */
-    private fun ordered(squad: Squad) =
-        FireOptions(
+    /**
+     * What [squad]'s order gives the crew to fire at. Attacking with other squads, it fires
+     * [InfantrySupport.PREPARATION_SALVOS] at the objective's area, then only at a live focus or
+     * an enemy its side has seen. Alone, it shells the area while infantry approaches and then the
+     * objective, as before.
+     */
+    private fun ordered(squad: Squad, state: CrewState): FireOptions {
+        val key = "${squad.id}:${squad.orderStamp}"
+        val attack = squad.order == SquadOrder.ATTACK && squad.objective != null
+        val partnered = attack && InfantrySupport.partnered(level, squad)
+        return FireOptions(
             barrage = squad.order == SquadOrder.BARRAGE && squad.objective != null,
-            preparation = squad.order == SquadOrder.ATTACK && squad.objective != null && InfantrySupport.infantryApproaching(level, squad),
-            commanded = squad.takeIf { it.order == SquadOrder.ATTACK }?.let(::commanded),
-            orderKey = "${squad.id}:${squad.orderStamp}",
+            preparation = attack &&
+                if (partnered) state.preparationShotsFor(key) < InfantrySupport.PREPARATION_SALVOS else InfantrySupport.infantryApproaching(level, squad),
+            commanded = squad.takeIf { it.order == SquadOrder.ATTACK }?.let { commanded(it, objective = !partnered) },
+            orderKey = key,
         )
+    }
 
-    /** The ATTACK order's target: its focus while alive, else its objective. */
-    private fun commanded(squad: Squad): String? = squad.focusEntity?.takeIf { (level.getEntity(it) as? LivingEntity)?.isAlive == true }?.toString() ?: squad.objective?.let { "objective:${it.x},${it.y},${it.z}" }
+    /** The ATTACK order's target: its focus while alive, else its [objective] point when allowed. */
+    private fun commanded(squad: Squad, objective: Boolean): String? =
+        squad.focusEntity?.takeIf { (level.getEntity(it) as? LivingEntity)?.isAlive == true }?.toString()
+            ?: squad.objective?.takeIf { objective }?.let { "objective:${it.x},${it.y},${it.z}" }
 
     /**
      * The nearest enemy the crew notices itself, reported to its faction. Noticed, not just in view

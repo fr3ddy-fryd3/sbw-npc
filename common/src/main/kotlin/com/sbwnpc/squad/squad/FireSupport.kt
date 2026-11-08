@@ -27,6 +27,20 @@ object FireSupport {
         }
     }
 
+    /**
+     * The salvos a mortar fires at an attack's point when other squads (riflemen, drone operators,
+     * helicopters) attack with it (owner, 08.11): enough to soften the point, then it waits for them
+     * to find the enemy instead of shelling an empty area for the whole approach.
+     */
+    const val PREPARATION_SALVOS = 5
+
+    /** Whether any squad other than a mortar squad attacks under [squad]'s command. */
+    fun partnered(level: ServerLevel, squad: Squad): Boolean {
+        val command = squad.command?.takeIf { squad.commandOutcome == CommandOutcome.ACTIVE }?.id ?: return false
+        val manager = SquadManager.get(level)
+        return manager.all().any { it.id != squad.id && it.command?.id == command && it.commandOutcome == CommandOutcome.ACTIVE && !manager.isMortarSquad(it) }
+    }
+
     /** Whether the infantry attacking with [squad] is still on its way to the objective. */
     fun infantryApproaching(level: ServerLevel, squad: Squad): Boolean {
         val objective = squad.objective?.center ?: return false
