@@ -111,8 +111,96 @@ data class BoundTurn(val number: Int, val moving: Set<java.util.UUID>, val posts
  * @property rally where the squad gathers under [CombatStrategy.REGROUP].
  * @property retreating it falls back on a RETREAT order (#253).
  */
-data class SquadShaping(val turn: BoundTurn? = null, val rally: Point3? = null, val retreating: Boolean = false)
-data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
+data class SquadShaping(val turn: BoundTurn? = null, val rally: Point3? = null, val retreating: Boolean = false, val manoeuvre: AgentId? = null)
+
+/**
+ * What the squad gives a fire team to do (#184). The team decides how: who fires from where and
+ * how its men rush.
+ */
+enum class TeamRole {
+    /** Every man does the duty his squad gave him, as one team. */
+    ALL,
+
+    /** The team fires to cover the squad's moving team, from where it stands. */
+    SUPPORT,
+
+    /** The team moves: round a flank, or the moving half of a bounding squad. */
+    MANOEUVRE,
+
+    /** The team watches the squad's rear and sides. */
+    GUARD,
+}
+
+/**
+ * A fire team's [members] and the [role] its squad gave it.
+ *
+ * @property covering the men whose fire covers a manoeuvring team's rushes (the bounding squad's
+ *   supporting teams). Empty, the team covers its own rushes.
+ * @property posts where a supporting team's men fire from while the squad bounds: where they stood
+ *   when the turn began. Empty, they keep the posts the squad gave them.
+ */
+data class TeamMission(val agent: AgentId, val members: List<PositionIntent>, val role: TeamRole = TeamRole.ALL, val covering: Set<java.util.UUID> = emptySet(), val posts: Map<java.util.UUID, Point3> = emptyMap())
+
+/**
+ * The squad's choice of each team's [TeamRole] (#184). A bounding squad's moving team manoeuvres
+ * covered by the others, which support from their turn posts; a flanking squad's manoeuvre team
+ * goes round while the others support head-on; a team that only watches guards; otherwise all.
+ */
+object TeamRoles {
+    fun assign(teams: List<TeamMission>, shaping: SquadShaping): List<TeamMission> {
+        val turn = shaping.turn
+        val supporting = if (turn != null) teams.filter { team -> team.members.none { it.actor.id in turn.moving } } else teams.filter { it.agent != shaping.manoeuvre }
+        return teams.map { team ->
+            when {
+                team.members.isNotEmpty() && team.members.all { it.duty.watching } -> team.copy(role = TeamRole.GUARD)
+
+                turn != null && team.members.any { it.actor.id in turn.moving } ->
+                    team.copy(role = TeamRole.MANOEUVRE, covering = supporting.flatMapTo(HashSet()) { s -> s.members.map { it.actor.id } })
+
+                turn != null -> team.copy(role = TeamRole.SUPPORT, posts = turn.posts.filterKeys { id -> team.members.any { it.actor.id == id } })
+
+                shaping.manoeuvre == null || teams.none { it.agent == shaping.manoeuvre } -> team
+
+                team.agent == shaping.manoeuvre -> team.copy(role = TeamRole.MANOEUVRE)
+
+                else -> team.copy(role = TeamRole.SUPPORT)
+            }
+        }
+    }
+
+    /**
+     * [mission]'s men as a supporting team fires: its movers fire from their [TeamMission.posts]
+     * instead of rushing. No cover required there: on open ground it refused every post and the
+     * team never fired. Without posts (supporting a flank) the squad's own posts stand.
+     */
+    fun support(mission: TeamMission): TeamMission {
+        if (mission.posts.isEmpty()) return mission
+        return mission.copy(
+            members = mission.members.map { intent ->
+                if (!rushes(intent)) {
+                    intent
+                } else {
+                    intent.copy(duty = CombatDuty.FIRE, anchor = mission.posts[intent.actor.id] ?: intent.origin, requireCover = false, legs = false)
+                }
+            },
+        )
+    }
+
+    /**
+     * [mission]'s movers as a team covered by others rushes: each rush waits for their fire
+     * ([PositionIntent.coveredBy]), and no shelter is needed at the end of a leg: kept, it refused
+     * every post on open ground and the team never moved.
+     */
+    // A man of the team who rushes by legs for it; assault and ordered men keep their own runs.
+    private fun rushes(intent: PositionIntent) = intent.legs && intent.duty == CombatDuty.MOVE && !intent.assault && !intent.ordered
+
+    fun covered(mission: TeamMission): TeamMission =
+        mission.copy(
+            members = mission.members.map { intent ->
+                if (!rushes(intent)) intent else intent.copy(requireCover = false, requireShelter = false, coveredBy = mission.covering)
+            },
+        )
+}
 
 /** A squad's [teams] of ground men, its mortar crews ([support], #258), its helicopters ([air], #260) and its tanks ([tanks], #185), which the squad's strategy never shapes. */
 data class SquadMission(val agent: AgentId, val teams: List<TeamMission>, val support: List<SupportCrew> = emptyList(), val air: List<Aircraft> = emptyList(), val tanks: List<Tank> = emptyList())
@@ -236,6 +324,9 @@ object TacticalFacts {
 
     /** The squad's current turn while it advances by [CombatStrategy.BOUND_OVERWATCH]. */
     val BOUND_TURN = FactKey("squad.bound_turn", BoundTurn::class.java)
+
+    /** The fire team a squad attacking alone sends round its flank (#184), absent while it does not split. */
+    val MANOEUVRE_TEAM = FactKey("squad.manoeuvre_team", AgentId::class.java)
 
     /** Where the squad gathers while it regroups under [CombatStrategy.REGROUP]. */
     val RALLY = FactKey("squad.rally", Point3::class.java)
@@ -472,16 +563,21 @@ object TacticalDomain {
                         decompose = { (mission, strategy), facts ->
                             // Only a bounding squad has a turn and only a regrouping one a rally; otherwise the facts are
                             // absent and never change.
-                            val shaping = SquadShaping(facts.value(TacticalFacts.BOUND_TURN), facts.value(TacticalFacts.RALLY), facts.value(TacticalFacts.SITUATION)?.retreating == true)
-                            val tasks = mission.teams.map { team ->
-                                val selected = team.copy(
+                            val shaping = SquadShaping(
+                                facts.value(TacticalFacts.BOUND_TURN).takeIf { strategy == CombatStrategy.BOUND_OVERWATCH },
+                                facts.value(TacticalFacts.RALLY),
+                                facts.value(TacticalFacts.SITUATION)?.retreating == true,
+                                facts.value(TacticalFacts.MANOEUVRE_TEAM).takeIf { approach == SquadApproach.FLANK },
+                            )
+                            val shaped = mission.teams.map { team ->
+                                team.copy(
                                     // A member assaulting for the operation keeps its role whatever the squad's own strategy,
                                     // and so does one moving for his order itself: HOLD turned a following squad's bounds
                                     // back into fire from where it stood (#116).
                                     members = team.members.map { intent -> if (intent.assault || intent.ordered) intent else strategy.rules.shape(intent, shaping) },
                                 )
-                                DelegationTask(team.agent, TEAM.call(selected))
                             }
+                            val tasks = TeamRoles.assign(shaped, shaping).map { DelegationTask(it.agent, TEAM.call(it)) }
                             children(tasks + FireSupport.delegations(mission) + AirSupport.delegations(mission) + TankSupport.delegations(mission))
                         },
                     )
@@ -494,24 +590,37 @@ object TacticalDomain {
             },
         ),
     )
+
+    // All men or a flank's manoeuvre team rush on their own fire; a bounding squad's moving team on its supporters'.
+    private val selfCovering = { mission: TeamMission -> mission.role == TeamRole.ALL || (mission.role == TeamRole.MANOEUVRE && mission.covering.isEmpty()) }
+    private val hasRole = { mission: TeamMission, role: TeamRole -> Condition { if (mission.role == role) Verdict.Allowed else Verdict.Rejected("role_${mission.role.name.lowercase()}") } }
+    private val teamNetwork = { mission: TeamMission, facts: FactView ->
+        val men = children(mission.members.map { DelegationTask(it.actor, NPC.call(it)) })
+        // Only while its squad fights and its order lets a man leave his place for a gun.
+        val guns = facts.value(TacticalFacts.STATIONS)?.let { NetworkNode("man_stations", MAN_STATIONS_TASK.call(StationManning(mission.agent, it))) }
+        TaskNetwork(men.nodes + listOfNotNull(guns))
+    }
     val team = HtnDomain(
         AgentLevel.TEAM,
         listOf(
             CompoundTask(
                 TEAM,
+                // A team covering its own rushes chooses how; a supporting, covered or guarding one has
+                // one way to carry its role out.
                 TeamRush.entries.map { rush ->
-                    Method(
+                    Method<TeamMission>(
                         rush.name.lowercase(),
-                        eligible = { mission -> TeamRushes.eligible(rush, mission) },
+                        eligible = { mission -> if (selfCovering(mission)) TeamRushes.eligible(rush, mission) else Condition { Verdict.Rejected("role_${mission.role.name.lowercase()}") } },
                         score = { mission, _ -> TeamRushes.score(rush, mission) },
-                        decompose = { mission, facts ->
-                            val men = children(TeamRushes.shape(rush, mission).members.map { DelegationTask(it.actor, NPC.call(it)) })
-                            // Only while its squad fights and its order lets a man leave his place for a gun.
-                            val guns = facts.value(TacticalFacts.STATIONS)?.let { NetworkNode("man_stations", MAN_STATIONS_TASK.call(StationManning(mission.agent, it))) }
-                            TaskNetwork(men.nodes + listOfNotNull(guns))
-                        },
+                        decompose = { mission, facts -> teamNetwork(TeamRushes.shape(rush, mission), facts) },
                     )
-                },
+                } + listOf(
+                    Method<TeamMission>("support", eligible = { mission -> hasRole(mission, TeamRole.SUPPORT) }, decompose = { mission, facts -> teamNetwork(TeamRoles.support(mission), facts) }),
+                    Method<TeamMission>("manoeuvre_covered", eligible = { mission ->
+                        Condition { if (mission.role == TeamRole.MANOEUVRE && mission.covering.isNotEmpty()) Verdict.Allowed else Verdict.Rejected("not_covered_manoeuvre") }
+                    }, decompose = { mission, facts -> teamNetwork(TeamRoles.covered(mission), facts) }),
+                    Method<TeamMission>("guard", eligible = { mission -> hasRole(mission, TeamRole.GUARD) }, decompose = { mission, facts -> teamNetwork(mission, facts) }),
+                ),
             ),
             delegate(),
             PrimitiveTask(MAN_STATIONS_TASK) { manning ->
@@ -519,6 +628,7 @@ object TacticalDomain {
             },
         ) + crewTasks.first + airTasks.first + tankTasks.first,
     )
+
     val COVER_MOVE = ActionKey("npc.cover_move", CoverMove::class.java)
     val COVER_CYCLE = ActionKey("npc.cover_cycle", CoverCycle::class.java)
     val DIG = ActionKey("npc.dig", DigIn::class.java)
@@ -873,7 +983,7 @@ object TacticalDomain {
  *   that started without the fire anyway crossed open ground uncovered (in-game 03.11). Once the
  *   30 s are up it may bound again, and stall again if its halves still have nothing to fire at.
  */
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val regroupSpent: Boolean = false, val underFire: Boolean = incoming, val retreating: Boolean = false, val coverStalled: Boolean = false, val assessment: SquadAssessment = SquadAssessment())
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val movingTeams: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val regroupSpent: Boolean = false, val underFire: Boolean = incoming, val retreating: Boolean = false, val coverStalled: Boolean = false, val assessment: SquadAssessment = SquadAssessment())
 
 /**
  * What a squad's strategies and approaches weigh besides the bare [CombatSituation] flags,

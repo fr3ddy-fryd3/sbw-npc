@@ -76,7 +76,7 @@ object DutyUtility {
      * A sniper or machine gunner takes the rise by the front ([DutyInputs.height]) instead of his
      * place in the line (owner, 3.11): from above he covers both halves of a bounding squad, and
      * where a rise is, his post on it is searched as any height post's. On flat ground he keeps
-     * his place, and the squad's halves keep a heavy gun each ([BoundHalves]).
+     * his place, and each of the squad's fire teams keeps its heavy gun ([FireTeams]).
      */
     const val OBSERVE_HEIGHT = "observe_height"
 

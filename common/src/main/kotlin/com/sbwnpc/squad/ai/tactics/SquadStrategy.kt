@@ -216,7 +216,7 @@ private object BoundingOverwatch : SquadStrategy {
     // has no halves to cover each other, and held, bounding kept it from regrouping. A squad whose
     // halves did not fire for a rush advances cover to cover instead of waiting on them.
     override fun allowed(situation: CombatSituation) =
-        situation.contact && !situation.scattered && !situation.coverStalled && situation.movers >= MIN_MOVERS &&
+        situation.contact && !situation.scattered && !situation.coverStalled && situation.movers >= MIN_MOVERS && situation.movingTeams >= 2 &&
             (situation.retreating || (situation.offensive && situation.continuation && !situation.higherEnemy))
 
     // Falling back in contact it always outscores an Advance, hit or not: the halves covering each
@@ -225,15 +225,8 @@ private object BoundingOverwatch : SquadStrategy {
     // factor below 1 (a weak enemy, sheltered ground) cost it that margin in the bounding scene.
     override fun score(situation: CombatSituation) = UtilityScore.product((if (situation.underFire || situation.retreating) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS, emptyList(), reason)
 
-    override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
-        val turn = shaping.turn
-        if (turn == null || !intent.legs || intent.duty != CombatDuty.MOVE) return intent
-        // The other half's fire is his cover: kept, the need for shelter at the end of each leg
-        // refused every post on open ground, and the half never moved.
-        if (intent.actor.id in turn.moving) return intent.copy(requireCover = false, requireShelter = false, coveredBy = turn.posts.keys)
-        val post = turn.posts[intent.actor.id] ?: intent.origin
-        return intent.copy(duty = CombatDuty.FIRE, anchor = post, requireCover = false, legs = false)
-    }
+    // The halves are fire teams (#184): their roles, not the squad, decide who fires and who rushes (TeamRoles).
+    override fun shape(intent: PositionIntent, shaping: SquadShaping) = intent
 
     const val MIN_MOVERS = 4
 
