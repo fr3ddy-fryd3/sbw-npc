@@ -128,7 +128,7 @@ object HearingGameTests {
         for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         // A 3x3 roof on four posts at x 32..34, z 19..21, three blocks up.
         for (x in 31..35) for (z in 18..22) helper.setBlock(BlockPos(x, 4, z), Blocks.OAK_PLANKS)
-        listOf(31 to 18, 35 to 18, 31 to 22, 35 to 22).forEach { (x, z) -> (1..3).forEach { y -> helper.setBlock(BlockPos(x, y, z), Blocks.OAK_LOG) } }
+        for ((x, z) in listOf(31 to 18, 35 to 18, 31 to 22, 35 to 22)) for (y in 1..3) helper.setBlock(BlockPos(x, y, z), Blocks.OAK_LOG)
         val man = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 20.5), SquadFaction.PIG)
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
