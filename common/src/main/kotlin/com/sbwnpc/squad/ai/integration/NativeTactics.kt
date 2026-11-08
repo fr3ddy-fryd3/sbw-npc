@@ -310,14 +310,17 @@ object NativeTactics {
 
     /** [npc] was hit by an enemy's round: a scout's squad is discovered (#194). */
     fun scoutHit(npc: NpcEntity) {
-        if (npc.npcClass == NpcClass.SCOUT) npc.currentSquad()?.let { world(npc).recon.discover(it, "hit", npc.incomingFire.point(npc.level().gameTime)) }
+        if (npc.npcClass == NpcClass.SCOUT) reconSquadOf(npc)?.let { world(npc).recon.discover(it, "hit", npc.incomingFire.point(npc.level().gameTime)) }
     }
 
     /** [hunter] took [target] as his target: a scout so taken has been seen, and a scout who takes one has seen an enemy (#194). */
     fun targetTaken(hunter: NpcEntity, target: LivingEntity) {
-        if (target is NpcEntity && target.npcClass == NpcClass.SCOUT && SquadTeams.isHostile(hunter, target)) target.currentSquad()?.let { world(target).recon.discover(it, "targeted", hunter.position()) }
-        if (hunter.npcClass == NpcClass.SCOUT) hunter.currentSquad()?.let { world(hunter).recon.saw(it) }
+        if (target is NpcEntity && target.npcClass == NpcClass.SCOUT && SquadTeams.isHostile(hunter, target)) reconSquadOf(target)?.let { world(target).recon.discover(it, "targeted", hunter.position()) }
+        if (hunter.npcClass == NpcClass.SCOUT) reconSquadOf(hunter)?.let { world(hunter).recon.saw(it) }
     }
+
+    // A scout recruited alone or into another squad gives nothing away for it: only a recon squad hides.
+    private fun reconSquadOf(npc: NpcEntity) = npc.currentSquad()?.takeIf { s -> (npc.level() as? ServerLevel)?.let { SquadManager.get(it).isReconSquad(s) } == true }
 
     /**
      * Whether [npc]'s recon squad holds its fire now ([ReconRules.holdsFire]). Only a squad of scouts
@@ -726,7 +729,7 @@ object NativeTactics {
             recon.pending.toList().forEach { (id, threat) ->
                 recon.pending.remove(id)
                 val squad = manager.get(id) ?: return@forEach
-                if (!ReconRules.retreats(company(squad), squad.order == SquadOrder.ATTACK, recon.sawEnemy(squad)) || squad.order == SquadOrder.RETREAT) return@forEach
+                if (!ReconRules.retreats(company(squad), squad.order == SquadOrder.ATTACK, recon.sawEnemy(squad)) || squad.order == SquadOrder.RETREAT || squad.order == SquadOrder.FOLLOW) return@forEach
                 val men = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }
                 if (men.isEmpty()) return@forEach
                 val centre = Point3(men.map { it.x }.average(), men.map { it.y }.average(), men.map { it.z }.average())
