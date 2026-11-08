@@ -118,6 +118,12 @@ class NpcUnderFireDomainTest {
         assertEquals(roof, post.anchor)
         assertTrue(post.roofed)
         assertEquals(CombatDuty.TAKE_COVER, post.duty)
+        // No roof and no sector: nothing to take cover from, he keeps his duty (take_cover needs a sector).
+        assertEquals(TacticalDomain.POSITION, first(unseen).key)
+        assertNotEquals(true, (first(unseen).parameters as PositionIntent).roofed)
+        // His post search under that roof failed: he no longer heads for it.
+        val failed = unseen.observe(TacticalFacts.ROOF, roof).observe(TacticalFacts.POST_FAILURE, LocalPositionFailure(Point3(12.5, 1.0, 4.5), 1, 1, emptyMap()))
+        assertNotEquals(true, (first(failed).parameters as? PositionIntent)?.roofed)
         // A known sector wins over the roof.
         assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true).observe(TacticalFacts.ROOF, roof)).key)
         // A man moving for an assault keeps moving.

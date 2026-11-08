@@ -21,7 +21,9 @@ object UnderFire {
      */
     private val PositionIntent.answers get() = !assault && !ordered
 
-    private val FactView.firing get() = value(TacticalFacts.UNDER_FIRE) == true
+    // Suppressed with no known sector there is nothing to take cover from: take_cover read the sector
+    // unchecked and the plan failed. Such a man shelters under a roof (Shelter) or keeps his duty.
+    private val FactView.firing get() = value(TacticalFacts.UNDER_FIRE) == true && value(TacticalFacts.FIRE_SECTOR) != null
 
     private val FactView.digs get() = value(TacticalFacts.DIGS) ?: 0
 

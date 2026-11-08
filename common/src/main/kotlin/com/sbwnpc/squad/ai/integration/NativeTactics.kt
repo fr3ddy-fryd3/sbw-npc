@@ -1279,7 +1279,7 @@ object NativeTactics {
         }
 
         private fun roofFor(npc: NpcEntity, underFire: Boolean, sector: FireSector?, digs: Int, now: Long): Point3? {
-            val unseen = (npc.shelled() || underFire) && sector == null && npc.target == null
+            val unseen = (npc.shelled() || underFire) && sector == null && npc.target == null && npc.vehicle == null
             return if (unseen && digs == 0) roofs.near(npc, now) else null
         }
 
