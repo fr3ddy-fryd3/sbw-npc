@@ -13,15 +13,17 @@ object MortarCycle {
     const val FULL_CREW_TICKS = 100L
     const val SOLO_TICKS = FULL_CREW_TICKS * 3
 
-    fun fireIfReady(mortar: Entity, gunner: NpcEntity) {
+    /** Fires [mortar] when its cooldown is over; whether SBW accepted the shot. */
+    fun fireIfReady(mortar: Entity, gunner: NpcEntity): Boolean {
         val now = mortar.level().gameTime
         val crew = MortarClaims.activeCrew(mortar)
         val interval = if (crew >= 2) FULL_CREW_TICKS else SOLO_TICKS
         val data = Ports.loader.persistentData(mortar)
-        if (data.contains(LAST_SHOT) && now - data.getLong(LAST_SHOT) < interval) return
-        if (!Ports.mortars.fire(mortar, gunner)) return
+        if (data.contains(LAST_SHOT) && now - data.getLong(LAST_SHOT) < interval) return false
+        if (!Ports.mortars.fire(mortar, gunner)) return false
         data.putLong(LAST_SHOT, now)
         DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar={} npc={} event=shot_accepted tick={} crew={} interval={} shells={}", mortar.uuid, gunner.uuid, now, crew, interval, gunner.mortarShellsLeft)
+        return true
     }
 
     fun pack(mortar: Entity): CompoundTag =

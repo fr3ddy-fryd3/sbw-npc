@@ -23,7 +23,7 @@ import com.sbwnpc.squad.squad.FireSupport as InfantrySupport
  * the operator scans for enemies, reports what he notices, and [FireSupportTargets] picks the
  * target in today's priority. The plan reads the result as `crew.fire`.
  */
-internal class CrewSpotter(private val level: ServerLevel) {
+internal class CrewSpotter(private val level: ServerLevel, private val preparation: PreparationLedger) {
     fun update(unit: CrewUnit, squad: Squad?, men: List<NpcEntity>, state: CrewState, now: Long) {
         val eyes = unit.tube?.let(MortarClaims::operator)?.let { id -> men.firstOrNull { it.uuid == id } } ?: men.first()
         scan(eyes, state, now)
@@ -43,17 +43,29 @@ internal class CrewSpotter(private val level: ServerLevel) {
         }
     }
 
-    /** What [squad]'s order gives the crew to fire at; with infantry on an ATTACK, the objective's area until the infantry gets there. */
-    private fun ordered(squad: Squad) =
-        FireOptions(
+    /**
+     * What [squad]'s order gives the crew to fire at. Attacking with other squads, it fires
+     * [InfantrySupport.PREPARATION_SALVOS] at the objective's area, then only at a live focus or
+     * an enemy its side has seen. Alone, it shells the area while infantry approaches and then the
+     * objective, as before.
+     */
+    private fun ordered(squad: Squad): FireOptions {
+        val key = "${squad.id}:${squad.orderStamp}"
+        val attack = squad.order == SquadOrder.ATTACK && squad.objective != null
+        val partnered = attack && preparation.partnered(squad.id, key) { InfantrySupport.partnered(level, squad) }
+        return FireOptions(
             barrage = squad.order == SquadOrder.BARRAGE && squad.objective != null,
-            preparation = squad.order == SquadOrder.ATTACK && squad.objective != null && InfantrySupport.infantryApproaching(level, squad),
-            commanded = squad.takeIf { it.order == SquadOrder.ATTACK }?.let(::commanded),
-            orderKey = "${squad.id}:${squad.orderStamp}",
+            preparation = attack &&
+                if (partnered) preparation.shots(squad.id, key) < InfantrySupport.PREPARATION_SALVOS else InfantrySupport.infantryApproaching(level, squad),
+            commanded = squad.takeIf { it.order == SquadOrder.ATTACK }?.let { commanded(it, objective = !partnered) },
+            orderKey = key,
         )
+    }
 
-    /** The ATTACK order's target: its focus while alive, else its objective. */
-    private fun commanded(squad: Squad): String? = squad.focusEntity?.takeIf { (level.getEntity(it) as? LivingEntity)?.isAlive == true }?.toString() ?: squad.objective?.let { "objective:${it.x},${it.y},${it.z}" }
+    /** The ATTACK order's target: its focus while alive, else its [objective] point when allowed. */
+    private fun commanded(squad: Squad, objective: Boolean): String? =
+        squad.focusEntity?.takeIf { (level.getEntity(it) as? LivingEntity)?.isAlive == true }?.toString()
+            ?: squad.objective?.takeIf { objective }?.let { "objective:${it.x},${it.y},${it.z}" }
 
     /**
      * The nearest enemy the crew notices itself, reported to its faction. Noticed, not just in view
