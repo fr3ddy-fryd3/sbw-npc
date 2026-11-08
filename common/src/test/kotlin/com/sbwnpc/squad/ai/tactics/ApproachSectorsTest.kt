@@ -166,4 +166,15 @@ class ApproachSectorsTest {
         assertEquals(head, steered.getValue("pin"), 1e-9)
         assertEquals(Math.IEEEremainder(head - ApproachSectors.FLANK_ANGLE, 2 * Math.PI), Math.IEEEremainder(steered.getValue("flank"), 2 * Math.PI), 1e-9)
     }
+
+    @Test fun `going back to the envelop returns the steered group to its first flank sector`() {
+        val sectors = ApproachSectors<String>()
+        val objective = Point3(0.0, 64.0, 0.0)
+        val groups = mapOf("pin" to Point3(50.0, 64.0, 0.0), "flank" to Point3(30.0, 64.0, 40.0))
+        val first = sectors.bearings(objective, groups, contact = true, pinning = "pin").getValue("flank")
+        sectors.steer("flank", -ApproachSectors.FLANK_ANGLE)
+        sectors.steer("flank", 1.2)
+        sectors.restore("flank")
+        assertEquals(first, sectors.bearings(objective, groups, contact = true, pinning = "pin").getValue("flank"), 1e-9)
+    }
 }

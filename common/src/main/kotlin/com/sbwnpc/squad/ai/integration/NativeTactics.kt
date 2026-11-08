@@ -967,7 +967,7 @@ object NativeTactics {
             val input = manoeuvreInputs[operation]
             val group = manoeuvreGroups[operation]
             val offset = OperationManoeuvres.offset(option, input)
-            if (group != null && offset != null) sectors[operation]?.steer(group, offset)
+            if (group != null) sectors[operation]?.let { if (offset != null) it.steer(group, offset) else it.restore(group) }
             val scores = OperationManoeuvre.entries.filter { OperationManoeuvres.eligible(it, input).evaluate(FactSnapshot(AgentId(AgentLevel.OPERATION, operation), now)) == Verdict.Allowed }
                 .associate { it.name to OperationManoeuvres.score(it, input).explain() }
             DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=manoeuvre from={} to={} scores={} input={}", operation, old, option, scores, input)

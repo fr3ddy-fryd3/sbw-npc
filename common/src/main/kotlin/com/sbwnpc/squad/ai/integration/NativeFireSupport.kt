@@ -63,6 +63,9 @@ internal class CrewState(val noticing: Noticing, private val ground: (Int, Int) 
     /** Where to carry the tube for a target out of reach, set once it has been out of reach long enough. */
     var reachPoint: Point3? = null
     var lastTube: TubeState? = null
+
+    /** Whether the crew's last facts found it out of shells, read by [FireSupportWorld.preparing]. */
+    var shellsOut = false
     private var reachKey: String? = null
     private var unreachableSince: Long? = null
 
@@ -252,7 +255,8 @@ internal class FireSupportWorld(private val level: ServerLevel) {
             state.nextScan = now + FireSupportTargets.SCAN_INTERVAL_TICKS
             spotter.update(unit, squad, men, state, now)
         }
-        result = result.observe(CrewFacts.OUT_OF_REACH, state.reachPoint != null).observe(CrewFacts.SHELLS_OUT, shellsOut(unit, men))
+        state.shellsOut = shellsOut(unit, men)
+        result = result.observe(CrewFacts.OUT_OF_REACH, state.reachPoint != null).observe(CrewFacts.SHELLS_OUT, state.shellsOut)
         state.reachPoint?.let { result = result.observe(CrewFacts.REACH_POINT, it) }
         state.target?.let { result = result.observe(CrewFacts.FIRE, it) }
         // A packed tube has no posts: its carrier is the operator, or the duties fall back to the
@@ -291,11 +295,11 @@ internal class FireSupportWorld(private val level: ServerLevel) {
 
     /**
      * Whether a crew of [squad] is still firing an attack's preparation (#173): laid on the attack
-     * point and in reach, so the assault waits for it. Out of salvos, out of reach or without a
-     * tube, it is not, and the assault goes.
+     * point and in reach, so the assault waits for it. Out of salvos, out of reach, out of shells
+     * or with its tube not set up, it is not, and the assault goes.
      */
     val preparing: (UUID) -> Boolean = { squad ->
-        roster.crews(squad).any { crew -> states[crew.agent]?.let { it.target?.source == FireSource.ATTACK_PREPARATION && it.reachPoint == null } == true }
+        roster.crews(squad).any { crew -> states[crew.agent]?.let { it.target?.source == FireSource.ATTACK_PREPARATION && it.reachPoint == null && it.lastTube == TubeState.DEPLOYED && !it.shellsOut } == true }
     }
 
     /** The state of [man]'s crew, read by his duty for where the target stands and to report reach. */
