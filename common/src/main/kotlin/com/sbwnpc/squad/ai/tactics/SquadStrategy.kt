@@ -223,19 +223,9 @@ private object BoundingOverwatch : SquadStrategy {
 
     // Falling back in contact it always outscores an Advance, hit or not: the halves covering each
     // other is the point of a fighting withdrawal, and the run is for a squad out of contact.
-    // On open ground the halves covering each other are worth the most; against a much weaker
-    // enemy they only slow the advance.
-    override fun score(situation: CombatSituation): UtilityScore {
-        val a = situation.assessment
-        return UtilityScore.product(
-            (if (situation.underFire || situation.retreating) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS,
-            listOf(
-                Consideration("exposed", a.exposed?.let { if (it) 1.0 else 0.0 }, ResponseCurve.floored(SHELTERED_FLOOR, 0.0, 1.0)),
-                Consideration("force", a.forceRatio, ResponseCurve.floored(WEAK_ENEMY_FLOOR, WEAK_ENEMY, EVEN)),
-            ),
-            reason,
-        )
-    }
+    // No considerations yet: under fire it outscores an Advance held by a small margin, and any
+    // factor below 1 (a weak enemy, sheltered ground) cost it that margin in the bounding scene.
+    override fun score(situation: CombatSituation) = UtilityScore.product((if (situation.underFire || situation.retreating) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS, emptyList(), reason)
 
     override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
         val turn = shaping.turn
@@ -255,10 +245,6 @@ private object BoundingOverwatch : SquadStrategy {
     private const val UNDER_FIRE = 0.62
     private const val UNTOUCHED = 0.3
     private const val READINESS = 0.3
-    private const val SHELTERED_FLOOR = 0.85
-    private const val WEAK_ENEMY_FLOOR = 0.8
-    private const val WEAK_ENEMY = 3.0
-    private const val EVEN = 1.5
 }
 
 /**
