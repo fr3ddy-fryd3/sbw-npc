@@ -152,4 +152,18 @@ class ApproachSectorsTest {
         assertEquals(60, bearings["off"])
         assertEquals(-60, bearings["beside"])
     }
+
+    @Test fun `the manoeuvre steers the flank group to its side, never the pinning group or past 90 degrees`() {
+        val sectors = ApproachSectors<String>()
+        val objective = Point3(0.0, 64.0, 0.0)
+        val first = sectors.bearings(objective, mapOf("pin" to Point3(50.0, 64.0, 0.0), "flank" to Point3(30.0, 64.0, 40.0)), contact = true, pinning = "pin")
+        val head = sectors.headOnBearing!!
+        assertEquals(head, first.getValue("pin"), 1e-9)
+        sectors.steer("flank", -ApproachSectors.FLANK_ANGLE)
+        sectors.steer("pin", ApproachSectors.FLANK_ANGLE)
+        sectors.steer("flank", 2.0)
+        val steered = sectors.bearings(objective, mapOf("pin" to Point3(50.0, 64.0, 0.0), "flank" to Point3(30.0, 64.0, 40.0)), contact = true, pinning = "pin")
+        assertEquals(head, steered.getValue("pin"), 1e-9)
+        assertEquals(Math.IEEEremainder(head - ApproachSectors.FLANK_ANGLE, 2 * Math.PI), Math.IEEEremainder(steered.getValue("flank"), 2 * Math.PI), 1e-9)
+    }
 }

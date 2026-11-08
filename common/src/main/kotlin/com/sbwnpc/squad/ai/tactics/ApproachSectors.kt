@@ -55,6 +55,20 @@ class ApproachSectors<K : Any> {
         return offsets.mapValues { normalize(head + it.value) }
     }
 
+    /** The head-on bearing from the objective, fixed at first contact; null before it. */
+    val headOnBearing get() = headOn
+
+    /**
+     * Sends [group], already given a flank sector, to [offset] from head-on instead (the operation's
+     * manoeuvre, #173). The pinning group keeps the head-on line; an offset past 90° is refused, so
+     * no group fires across the point at another.
+     */
+    fun steer(group: K, offset: Double) {
+        val current = offsets[group] ?: return
+        if (current == 0.0 || abs(offset) > PI / 2) return
+        offsets[group] = offset
+    }
+
     /**
      * The [joining] groups' sectors all at once: as even across the sectors as the groups already
      * there allow, then with the least walking round the objective from where each [stands].
