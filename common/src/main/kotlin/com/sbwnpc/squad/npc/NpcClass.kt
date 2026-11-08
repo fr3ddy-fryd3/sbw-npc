@@ -34,14 +34,14 @@ enum class NpcClass(
      *  grenade, digging-in all work normally for a manually-placed grenadier). */
     GRENADIER(listOf(loc("m_79")), shootDistanceMultiplier = 1.5, speedMultiplier = 1.3),
 
-    /** Support role: heals wounded squadmates (`MedicHealBehaviour`) between/instead of fighting
+    /** Support role: heals wounded squadmates (the plan's treatment, `MedicCare`) between/instead of fighting
      *  with its own SMG — see that behaviour's doc comment for the shoot-vs-heal priority. Replaces
      *  `GRENADIER`'s slot(s) in the squad-composition presets ("8: Standard", "16: Large").
      *
      *  Paced and positioned like a SNIPER: the long engagement range stops normal advancing,
      *  and attackStandoffDistance places its combat post behind the riflemen.
-     *  MedicHealBehaviour itself temporarily overrides the 1.3 pace to
-     *  [com.sbwnpc.squad.entity.ai.MedicHealBehaviour] sprint speed while actually running to treat
+     *  The treatment itself temporarily overrides the 1.3 pace to
+     *  its 1.6 sprint speed while actually running to treat
      *  someone — see that class. */
     MEDIC(listOf(loc("mp_5"), loc("vector")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, attackStandoffDistance = 64.0),
 

@@ -7,7 +7,6 @@ import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
 import com.sbwnpc.squad.entity.ai.IdleWanderGoal
-import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarDeployment
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
@@ -1080,7 +1079,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(),
             VehicleCombatSupportBehaviour(),
             com.sbwnpc.squad.entity.ai.FollowRideBehaviour(),
-            MedicHealBehaviour(),
             com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(),
             // Keep one journey executor through Idle/Fight changes: a remembered remote contact
             // must not prevent the squad from boarding or marching to its distant objective.

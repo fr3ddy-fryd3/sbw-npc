@@ -81,7 +81,6 @@ class DecisionLayerRuleTest {
             "GunAttackBehaviour" to UNAUDITED,
             "HelicopterGunnerBehaviour" to UNAUDITED,
             "HelicopterRideBehaviour" to UNAUDITED,
-            "MedicHealBehaviour" to "mandatory rule medic_help, ranked in MandatoryRule (#257)",
             "OutOfAmmoBehaviour" to "mandatory rule out_of_ammo, ranked in MandatoryRule (#257)",
             "ResupplyBehaviour" to "mandatory rule resupply, ranked in MandatoryRule (#257)",
             "SeekCoverBehaviour" to "D, kept only for the roles the planner does not cover until #256; planned men take cover in their plan (#251)",
@@ -103,7 +102,7 @@ class DecisionLayerRuleTest {
 
         val SUSPENDING = mapOf(
             NpcActivity.RESUPPLY to UNAUDITED,
-            NpcActivity.HEAL to UNAUDITED,
+            NpcActivity.HEAL to "held by the plan's own treatment (MedicCare, #189), a PlanExecutor that does not suspend it",
             NpcActivity.COVER to "held by the plan's own cover actions, which do not suspend it (#251), and by SeekCoverBehaviour for unplanned roles",
             NpcActivity.PEEK to "held by the plan's own cover actions, which do not suspend it (#251), and by SeekCoverBehaviour for unplanned roles",
             NpcActivity.EVADE to UNAUDITED,

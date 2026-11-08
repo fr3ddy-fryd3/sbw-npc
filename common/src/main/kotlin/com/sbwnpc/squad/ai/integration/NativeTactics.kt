@@ -418,6 +418,7 @@ object NativeTactics {
 
         // Who may throw a grenade and at what (#263).
         private val grenades = GrenadeChoice(level)
+        private val medics = MedicCare(level)
 
         // The mandatory rule each man's plan was last suspended for (#257), for the decision trace.
         private val suspendedBy = HashMap<UUID, MandatoryRule>()
@@ -676,6 +677,15 @@ object NativeTactics {
                 },
             )
 
+        /** A medic's treatment (#189), of the patient [MedicCare] allocated him. */
+        private fun medicBinding() =
+            listOf(
+                ActionBinding(MedicalCare.ACTION) { ticket, treatment ->
+                    require(ticket.owner.agent == treatment.actor)
+                    medics.action(requireNotNull(level.getEntity(treatment.actor.id) as? NpcEntity), treatment.patient)
+                },
+            )
+
         /** A crewman's duty (#258), run on his own [CrewHand]. */
         private fun crewBinding() =
             listOf(
@@ -802,7 +812,7 @@ object NativeTactics {
                             require(ticket.owner.agent == pause.actor)
                             firePause(pause, requireNotNull(level.getEntity(pause.actor.id) as? NpcEntity))
                         },
-                    ) + allotmentBindings() + coverBindings() + engageBinding() + grenadeBinding() + crewBinding() + airBindings() + tankBinding() + droneBinding() + listOf(
+                    ) + allotmentBindings() + coverBindings() + engageBinding() + grenadeBinding() + medicBinding() + crewBinding() + airBindings() + tankBinding() + droneBinding() + listOf(
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
@@ -1142,6 +1152,7 @@ object NativeTactics {
         private fun manFacts(facts: FactSnapshot, id: AgentId, npc: NpcEntity, now: Long): FactSnapshot {
             var result = EngageFacts.observe(facts, npc, engageOf(npc), engageBands.getOrPut(npc.uuid, ::EngageBands), now)
             result = grenades.observe(result, npc, now)
+            result = medics.observe(result, npc, now)
             if (fireSupport.roster.unitOf(npc.uuid) != null) result = fireSupport.manFacts(result, npc)
             if (air.roster.unitOf(npc.uuid) != null) result = air.manFacts(result, npc)
             if (tanks.roster.unitOf(npc.uuid) != null) result = tanks.manFacts(result, npc)
@@ -1389,6 +1400,7 @@ object NativeTactics {
                 commandCrews(now, desiredAgents)
                 commandAircraft(now, desiredAgents)
                 commandLoneOperators(now, desiredAgents)
+                commandLoneMedics(now, desiredAgents)
                 commandEngagers(now, desiredAgents)
                 agents.keys.filter { it !in desiredAgents }.toList().forEach { id ->
                     DebugFlags.log(LogGroup.ORDER, "[htn] actor={} level={} event=agent_dropped reason=actor_not_active", id.id, id.level)
@@ -1412,6 +1424,7 @@ object NativeTactics {
                 engageBands.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 crowding.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 grenades.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
+                medics.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 suspendedBy.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -1511,6 +1524,22 @@ object NativeTactics {
                 val fresh = agent !in agents
                 ensure(agent).command(UUID.nameUUIDFromBytes("drone:${npc.uuid}".toByteArray()), DroneStrike.ALONE.call(StrikeCall(agent)), facts(agent, now))
                 if (fresh) DecisionTrace.man(npc.uuid, now, "agent", "squadless_operator")
+            }
+        }
+
+        /**
+         * Keeps a root agent for every squadless medic (#189), idle or following a player, so his
+         * patients are still treated: his treatment, his fight, else nothing. It stands in for his
+         * engage-only agent, as a lone operator's does, so he has one NPC agent, not two.
+         */
+        private fun commandLoneMedics(now: Long, desired: MutableSet<AgentId>) {
+            val lone = NpcRegistry.all(level).filter { it.npcClass == NpcClass.MEDIC && it.isAlive && it.currentSquad() == null && AgentId(AgentLevel.NPC, it.uuid) !in desired }
+            lone.forEach { npc ->
+                val agent = AgentId(AgentLevel.NPC, npc.uuid)
+                desired += agent
+                val fresh = agent !in agents
+                ensure(agent).command(UUID.nameUUIDFromBytes("care:${npc.uuid}".toByteArray()), TacticalDomain.CARE_TASK.call(EngageTask(agent)), facts(agent, now))
+                if (fresh) DecisionTrace.man(npc.uuid, now, "agent", "squadless_medic")
             }
         }
 
@@ -2696,6 +2725,7 @@ object NativeTactics {
             seatChecks.clear()
             retreatSmoke.clear()
             grenades.clear()
+            medics.clear()
             suspendedBy.clear()
         }
     }

@@ -40,7 +40,7 @@ enum class NpcActivity(val holds: Set<Cap>) {
      */
     RESUPPLY(setOf(Cap.FEET)),
 
-    /** A medic walking to or treating a critically wounded ally: [com.sbwnpc.squad.entity.ai.MedicHealBehaviour]. */
+    /** A medic walking to or treating a critically wounded ally: the plan's treatment, `MedicCare` (#189). */
     HEAL(setOf(Cap.FEET, Cap.FIRE, Cap.LOOK)),
 
     /** Moving to, holding or leaving cover: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. */

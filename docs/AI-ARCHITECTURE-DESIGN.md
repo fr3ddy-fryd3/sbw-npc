@@ -390,8 +390,10 @@ Losses are counted per execution epoch of the operation and are not reset on eac
 Reinforcement adds capability but does not erase the history of the dead. An aggressive Commander
 values progress more, a cautious one preserving its strength; the critical limits stay the same.
 
-The existing ammunition rules, the manual repeat of an ATTACK after a refusal and the priority of
-medical help stay until a change is agreed separately. The new architecture first expresses them
+The existing ammunition rules and the manual repeat of an ATTACK after a refusal stay until a
+change is agreed separately. Medical help keeps its priority, but who of a side's wounded each medic
+treats is the plan's (owner, 08.11, #189): an allocation picks the patient, the NPC domain's `treat`
+method comes before cover and duty, and the dressing is its executor. The new architecture first expresses them
 explicitly rather than replacing them with arbitrary new percentages.
 
 ## Proposal: choosing strategies and plans

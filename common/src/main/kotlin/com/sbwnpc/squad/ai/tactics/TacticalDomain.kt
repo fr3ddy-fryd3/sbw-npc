@@ -675,6 +675,9 @@ object TacticalDomain {
     /** The root of an engage-only agent: a grenade his squad lets him throw, else his engage (#263). */
     val FIGHT_TASK = TaskKey("npc.fight", EngageTask::class.java)
 
+    /** A squadless medic's root task (#189). */
+    val CARE_TASK = TaskKey("npc.care", EngageTask::class.java)
+
     /** One unit of the move his engage chose, see [EngageUnit]. */
     val ENGAGE = ActionKey("npc.engage_unit", EngageUnit::class.java)
     private val ENGAGE_UNIT = TaskKey("npc.engage_unit", EngageUnit::class.java)
@@ -697,6 +700,9 @@ object TacticalDomain {
                             Grenades.throws(facts, underFire)
                         }
                     }, decompose = { intent, facts -> TaskNetwork.sequence(Grenades.next(intent.actor, facts)) }),
+                    // A patient the allocation gave him comes before cover, his hole and his duty, as
+                    // medical help did before (#189): a critical man pulls a medic under fire out of his fight.
+                    Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { intent, facts -> MedicalCare.treat(intent.actor, facts) }),
                     // Under fire, or in the hole he dug, the man answers that first; every method
                     // below stands aside meanwhile (UnderFire.duty), so exactly one family applies.
                     // A drone in the air keeps him at its monitor through all of it (DroneStrike.flying).
@@ -853,10 +859,22 @@ object TacticalDomain {
                 listOf(
                     // An engage-only man has no cover or hole of his own in his plan to answer first.
                     Method("grenade", eligible = { _ -> Condition { facts -> Grenades.throws(facts, Verdict.Rejected("no_under_fire_plan")) } }, decompose = { task, facts -> TaskNetwork.sequence(Grenades.next(task.actor, facts)) }),
+                    Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { task, facts -> MedicalCare.treat(task.actor, facts) }),
                     Method("engage", eligible = { _ -> Condition.ALWAYS }, decompose = { task, _ -> TaskNetwork.sequence(ENGAGE_TASK.call(task)) }),
                 ),
             ),
+            // A squadless medic's root (#189): his patient, his fight, else nothing. Held whether or
+            // not he fights, it stands in for his engage-only agent, as a lone operator's does (#259).
+            CompoundTask(
+                CARE_TASK,
+                listOf(
+                    Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { task, facts -> MedicalCare.treat(task.actor, facts) }),
+                    Method("fight", eligible = { _ -> Condition.test(TacticalFacts.IN_CONTACT, "no_contact") { it } }, decompose = { task, _ -> TaskNetwork.sequence(FIGHT_TASK.call(task)) }),
+                    Method("stand_by", eligible = { _ -> Condition.ALWAYS }, decompose = { _, _ -> TaskNetwork.EMPTY }),
+                ),
+            ),
             Grenades.task(),
+            MedicalCare.task(),
             CompoundTask(
                 ENGAGE_TASK,
                 Engage.ORDER.map { move ->

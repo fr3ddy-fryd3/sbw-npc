@@ -49,6 +49,21 @@ class NpcUnderFireDomainTest {
         assertNotEquals(Grenades.ACTION, fight(GrenadeReason.NONE))
     }
 
+    @Test fun `a medic's patient comes before cover, his hole and his duty, in every root (#189)`() {
+        val patient = java.util.UUID(7, 7)
+        val treatment = Treatment(actor, patient)
+        assertEquals(treatment, first(facts(underFire = true).observe(MedicalFacts.PATIENT, patient)).parameters)
+        assertEquals(MedicalCare.ACTION, first(facts(underFire = true, digs = 1).observe(MedicalFacts.PATIENT, patient)).key)
+        assertEquals(MedicalCare.ACTION, first(facts(underFire = false).observe(MedicalFacts.PATIENT, patient)).key)
+        assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true)).key)
+        val root = { key: TaskKey<EngageTask>, input: FactSnapshot -> (HtnPlanningSession(TacticalDomain.npc, owner, key.call(EngageTask(actor)), input).advance(40) as? PlanningResult.Ready)?.plan?.tasks?.firstOrNull()?.spec?.action?.key }
+        assertEquals(MedicalCare.ACTION, root(TacticalDomain.FIGHT_TASK, facts(underFire = false).observe(MedicalFacts.PATIENT, patient)))
+        assertEquals(MedicalCare.ACTION, root(TacticalDomain.CARE_TASK, facts(underFire = false).observe(MedicalFacts.PATIENT, patient)))
+        // A squadless medic with no patient fights when in contact, else stands by with nothing to do.
+        assertEquals(null, root(TacticalDomain.CARE_TASK, facts(underFire = false).observe(TacticalFacts.IN_CONTACT, false)))
+        assertNotEquals(MedicalCare.ACTION, root(TacticalDomain.CARE_TASK, facts(underFire = false).observe(TacticalFacts.IN_CONTACT, true)))
+    }
+
     @Test fun `under fire with cover left he moves to cover and then dwells and peeks`() {
         val plan = plan(facts(underFire = true))
         assertEquals(listOf(TacticalDomain.COVER_MOVE, TacticalDomain.COVER_CYCLE), plan.tasks.map { it.spec.action.key })
