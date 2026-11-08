@@ -127,14 +127,12 @@ private object GainHeight : SquadStrategy {
 
     override fun allowed(situation: CombatSituation) = situation.contact && situation.higherEnemy && situation.offensive
 
-    override fun score(situation: CombatSituation) = UtilityScore.product(SCORE, listOf(Consideration("force", situation.assessment.forceRatio, ResponseCurve.floored(OUTNUMBERED_FLOOR, OUTNUMBERED, EVEN))), reason)
+    // Outnumbered, height is worth as much as ever, so it weighs nothing beyond the enemy above.
+    override fun score(situation: CombatSituation) = UtilityScore.product(SCORE, emptyList(), reason)
 
     override fun shape(intent: PositionIntent, shaping: SquadShaping) = intent.copy(minimumHeight = intent.origin.y - DROP, elevationWeight = ELEVATION_WEIGHT)
 
     private const val SCORE = 0.93
-    private const val OUTNUMBERED_FLOOR = 0.8
-    private const val OUTNUMBERED = 0.5
-    private const val EVEN = 1.2
 
     /** How far below where he stands a man may still take a post. */
     private const val DROP = 2
