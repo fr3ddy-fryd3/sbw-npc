@@ -18,7 +18,8 @@ enum class AttackPhase {
      * [ticksSinceContact] stays 0 until the attack first sees an enemy. [aborted] is set once
      * an assault of this attack has been called off; [peakThreatsNearby] is the most threats
      * seen round the objective during this attack. [sectorsHeld] is false while a group is still
-     * on its way round to its approach sector (see [ApproachSectors]).
+     * on its way round to its approach sector (see [ApproachSectors]). [preparing] is true while
+     * the operation's mortars still fire their preparation at the point (#173).
      */
     data class Inputs(
         val readyShooters: Int,
@@ -32,6 +33,7 @@ enum class AttackPhase {
         val aborted: Boolean = false,
         val peakThreatsNearby: Int = threatsNearby,
         val sectorsHeld: Boolean = true,
+        val preparing: Boolean = false,
     )
 
     fun next(inputs: Inputs): AttackPhase {
@@ -40,7 +42,7 @@ enum class AttackPhase {
         // Standing on the point does not win it against a defence that still outnumbers them.
         if (inputs.occupied && !losing) return if (inputs.threatsNearby > 0) CLEAR else ASSAULT
         return when (this) {
-            DEPLOY -> if (quiet || assaultable(inputs)) ASSAULT else DEPLOY
+            DEPLOY -> if (quiet || (assaultable(inputs) && !awaitsPreparation(inputs))) ASSAULT else DEPLOY
 
             // Lost ground before the objective is taken: back to the firing line rather than
             // walking the assault group into a fight it no longer wins.
@@ -86,6 +88,15 @@ enum class AttackPhase {
 
         /** How long (40 s) the firing line works before overwhelming numbers alone start the assault. */
         const val OVERWHELMING_ENGAGE_TICKS = 2 * ENGAGE_TICKS
+
+        /** How long (60 s) of the fight an assault waits for the mortars' preparation at most. */
+        const val PREPARATION_LIMIT_TICKS = 1200L
+
+        /** Fire on the attackers this recent (5 s) releases the assault at once: they are not to sit under it waiting. */
+        const val PREPARATION_FIRE_TICKS = 100L
+
+        // The preparation goes first while it lasts, but never past its limit or under fire (#173).
+        private fun awaitsPreparation(inputs: Inputs) = inputs.preparing && inputs.ticksEngaged < PREPARATION_LIMIT_TICKS && inputs.ticksSinceIncoming >= PREPARATION_FIRE_TICKS
 
         /** The firing line has done enough for the numbers it has, see [superior] and [overwhelming], and the flanks are in. */
         private fun assaultable(inputs: Inputs) = ((superior(inputs) && suppressed(inputs)) || overwhelming(inputs)) && flanksIn(inputs)

@@ -6,6 +6,7 @@ import com.sbwnpc.squad.ai.planning.AgentLevel
 import com.sbwnpc.squad.ai.planning.FactSnapshot
 import com.sbwnpc.squad.ai.tactics.CrewDuty
 import com.sbwnpc.squad.ai.tactics.CrewFacts
+import com.sbwnpc.squad.ai.tactics.FireSource
 import com.sbwnpc.squad.ai.tactics.FireSupport
 import com.sbwnpc.squad.ai.tactics.FireSupportTargets
 import com.sbwnpc.squad.ai.tactics.FireTarget
@@ -287,6 +288,15 @@ internal class FireSupportWorld(private val level: ServerLevel) {
 
     /** [npc]'s own crew facts: whether he is free to serve, and whether an enemy is at arm's length. */
     fun manFacts(facts: FactSnapshot, npc: NpcEntity): FactSnapshot = facts.observe(CrewFacts.FREE, MortarClaims.free(npc)).observe(CrewFacts.THREATENED, MortarClaims.threatened(npc))
+
+    /**
+     * Whether a crew of [squad] is still firing an attack's preparation (#173): laid on the attack
+     * point and in reach, so the assault waits for it. Out of salvos, out of reach or without a
+     * tube, it is not, and the assault goes.
+     */
+    val preparing: (UUID) -> Boolean = { squad ->
+        roster.crews(squad).any { crew -> states[crew.agent]?.let { it.target?.source == FireSource.ATTACK_PREPARATION && it.reachPoint == null } == true }
+    }
 
     /** The state of [man]'s crew, read by his duty for where the target stands and to report reach. */
     fun stateOf(man: UUID): CrewState? = roster.unitOf(man)?.let { states[it.crew.agent] }
