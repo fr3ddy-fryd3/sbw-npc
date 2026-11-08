@@ -34,10 +34,6 @@ class ReconProgress(val stamp: Int) {
     /** Reported beside infantry, it keeps its post until the assault (owner 08.11) instead of falling back. */
     var holdsPost = false
 
-    /** When it first reached a post, or null before: the operation's wait for its report counts from it. */
-    var watchFrom: Long? = null
-        private set
-
     /** How far short of the objective its post lies; nearer each time it sees nobody ([closer]). */
     var postDistance = POST_DISTANCE
         private set
@@ -49,21 +45,22 @@ class ReconProgress(val stamp: Int) {
     var post: Point3? = null
         private set
 
-    private var postFrom = 0L
+    /** When it reached its latest post, or null before the first: the operation's wait for its report counts from it. */
+    var postFrom: Long? = null
+        private set
 
     /** Advances the stage for a squad whose centre stands [distance] blocks from the objective at [now]; returns the stage. */
     fun update(distance: Double, now: Long, centre: Point3? = null): ReconStage {
         stage = when (stage) {
             ReconStage.STAGING -> if (distance <= STAGING_DISTANCE + ARRIVAL) ReconStage.STALK else ReconStage.STAGING
             ReconStage.STALK -> if (distance <= postDistance) arrive(now, centre) else ReconStage.STALK
-            ReconStage.WATCH -> if (now - postFrom >= WATCH_TICKS) ReconStage.REPORTED else ReconStage.WATCH
+            ReconStage.WATCH -> if (now - (postFrom ?: now) >= WATCH_TICKS) ReconStage.REPORTED else ReconStage.WATCH
             ReconStage.REPORTED -> ReconStage.REPORTED
         }
         return stage
     }
 
     private fun arrive(now: Long, centre: Point3?): ReconStage {
-        if (watchFrom == null) watchFrom = now
         postFrom = now
         post = centre
         nextUpdate = now + UPDATE_TICKS
