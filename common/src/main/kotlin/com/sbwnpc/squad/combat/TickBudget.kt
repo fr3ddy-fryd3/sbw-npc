@@ -51,7 +51,7 @@ object TickBudget {
 /** Reserve capacity for the oldest request, while other ready actors can use the remainder. */
 internal class RaycastWorkBudget {
     data class Key(val actor: UUID, val work: TickBudget.Work)
-    private data class Request(val since: Long, var seenAt: Long)
+    private data class Request(var since: Long, var seenAt: Long, var heldTurns: Int = 0)
     private val waiting = LinkedHashMap<Key, Request>()
     private val served = HashSet<Key>()
     private var tick = Long.MIN_VALUE
@@ -98,9 +98,25 @@ internal class RaycastWorkBudget {
      * Ends a granted turn. A finished search leaves the queue; an unfinished one keeps its place, so
      * the oldest searches finish first. Sent back to the tail after every turn, 300 searches started
      * together all advanced a little each turn and none finished for 100-200 ticks (#301).
+     *
+     * The place is kept for [HELD_TURNS] turns at most: in a playtest a man in a hole whose routes
+     * kept being rejected held a reserved slot for 1000 ticks, and a few such men left the rest of
+     * the queue one or two slots.
      */
     fun release(key: Key, unfinished: Boolean) {
-        if (!unfinished) waiting.remove(key)
+        val request = waiting[key] ?: return
+        if (!unfinished || request.heldTurns >= HELD_TURNS) {
+            waiting.remove(key)
+            return
+        }
+        request.heldTurns++
+        // The wait is counted again from this turn, so the trace reports real waits only.
+        request.since = tick
+    }
+
+    private companion object {
+        /** About two full candidate collections of an ordinary post search. */
+        const val HELD_TURNS = 10
     }
 
     fun available(now: Long): Boolean {

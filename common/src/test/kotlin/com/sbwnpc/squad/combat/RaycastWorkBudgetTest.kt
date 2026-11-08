@@ -117,6 +117,20 @@ class RaycastWorkBudgetTest {
         assertTrue(finishedAt.values.min() <= 6, "first search finished at ${finishedAt.values.min()}")
         assertEquals(keys.map { finishedAt.getValue(it) }.sorted(), keys.map { finishedAt.getValue(it) }, "searches finished out of arrival order")
     }
+
+    @Test fun `a search that never ends gives its place up after a bounded number of turns`() {
+        val budget = RaycastWorkBudget()
+        val stuck = (0L..7L).map { RaycastWorkBudget.Key(UUID(5, it), TickBudget.Work.POSITIONS) }
+        val late = RaycastWorkBudget.Key(UUID(6, 0), TickBudget.Work.POSITIONS)
+        var lateTurnAt = -1L
+        for (tick in 0L..40L) {
+            for (key in stuck) {
+                if (budget.acquire(key, tick)) budget.release(key, unfinished = true)
+            }
+            if (tick > 0 && lateTurnAt < 0 && budget.take(late, tick)) lateTurnAt = tick
+        }
+        assertTrue(lateTurnAt in 2L..14L, "a late search waited behind never-ending ones until $lateTurnAt")
+    }
 }
 
 /** A granted turn released at once, as a finished search does. */
