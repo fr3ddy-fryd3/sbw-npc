@@ -20,6 +20,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.*
 import com.sbwnpc.squad.team.Diplomacy
+import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.core.SectionPos
@@ -306,6 +307,38 @@ object NativeTactics {
             world.pendingDeaths[entity.uuid] = PendingDeath(entity, cancelled)
         }
     }
+
+    /** [npc] was hit by an enemy's round: a scout's squad is discovered (#194). */
+    fun scoutHit(npc: NpcEntity) {
+        if (npc.npcClass == NpcClass.SCOUT) npc.currentSquad()?.let { world(npc).recon.discover(it, "hit") }
+    }
+
+    /** [hunter] took [target] as his target: a scout so taken has been seen, and a scout who takes one has seen an enemy (#194). */
+    fun targetTaken(hunter: NpcEntity, target: LivingEntity) {
+        if (target is NpcEntity && target.npcClass == NpcClass.SCOUT && SquadTeams.isHostile(hunter, target)) target.currentSquad()?.let { world(target).recon.discover(it, "targeted") }
+        if (hunter.npcClass == NpcClass.SCOUT) hunter.currentSquad()?.let { world(hunter).recon.saw(it) }
+    }
+
+    /**
+     * Whether [npc]'s recon squad holds its fire now ([ReconRules.holdsFire]). Only a squad of scouts
+     * does; a scout recruited alone or into another squad fights as its squad does.
+     */
+    fun holdsFire(npc: NpcEntity): Boolean {
+        if (npc.npcClass != NpcClass.SCOUT) return false
+        val level = npc.level() as? ServerLevel ?: return false
+        val squad = npc.currentSquad() ?: return false
+        val manager = SquadManager.get(level)
+        if (!manager.isReconSquad(squad)) return false
+        val others = operationOf(level, squad.id)?.members?.keys.orEmpty().filter { it != squad.id }.mapNotNull(manager::get)
+        val company = when {
+            others.isEmpty() -> ReconRules.Company.ALONE
+            others.any { !manager.isReconSquad(it) && !manager.isMortarSquad(it) && !manager.isDroneSquad(it) } -> ReconRules.Company.INFANTRY
+            else -> ReconRules.Company.SUPPORT
+        }
+        val watch = world(npc).recon
+        return ReconRules.holdsFire(company, squad.order == SquadOrder.ATTACK, watch.sawEnemy(squad), watch.discovered(squad))
+    }
+
     fun clearAll() {
         worlds.values.forEach { it.clear() }
         worlds.clear()
@@ -418,6 +451,7 @@ object NativeTactics {
 
         // Who may throw a grenade and at what (#263).
         private val grenades = GrenadeChoice(level)
+        val recon = ReconWatch()
 
         // The mandatory rule each man's plan was last suspended for (#257), for the decision trace.
         private val suspendedBy = HashMap<UUID, MandatoryRule>()
@@ -1222,6 +1256,7 @@ object NativeTactics {
                     closeContacts.remove(id)
                     retreatSmoke.forget(id)
                     grenades.forgetSquad(id)
+                    recon.forget(id)
                     lastAbove.remove(id)
                     alarms.remove(id)
                     regroupEnds.remove(id)
@@ -2696,6 +2731,7 @@ object NativeTactics {
             seatChecks.clear()
             retreatSmoke.clear()
             grenades.clear()
+            recon.clear()
             suspendedBy.clear()
         }
     }

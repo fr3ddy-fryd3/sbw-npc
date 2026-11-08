@@ -2,6 +2,8 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.ai.integration.FiringSpotSearch
+import com.sbwnpc.squad.ai.integration.NativeTactics
+import com.sbwnpc.squad.ai.tactics.ReconRules
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.AntiArmourKit
 import com.sbwnpc.squad.combat.DarkAim
@@ -128,6 +130,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val target = entity.target ?: return false
         if (entity.incomingFire.replying(entity.level().gameTime) && !canTrackTarget(entity, target)) return false
         val gun = currentGun(entity) ?: return false
+        // A recon squad's authority rule, decided in ReconRules: hidden, it fires only at a man at arm's length (#194).
+        if (!ReconRules.mayFire(NativeTactics.holdsFire(entity), entity.distanceTo(target).toDouble())) return false
         return target.isAlive && gun.hasAmmo()
     }
 
