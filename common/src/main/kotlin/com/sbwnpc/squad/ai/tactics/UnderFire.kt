@@ -29,6 +29,7 @@ object UnderFire {
     fun duty(intent: PositionIntent, facts: FactView): Verdict? =
         when {
             facts.digs > 0 -> Verdict.Rejected("in_hole")
+            Shelter.eligible(intent).evaluate(facts) == Verdict.Allowed -> Verdict.Rejected("shelter")
             facts.firing && intent.answers -> Verdict.Rejected("under_fire")
             else -> null
         }
@@ -40,6 +41,7 @@ object UnderFire {
                 facts.digs > 0 -> Verdict.Rejected("in_hole")
                 !facts.firing -> Verdict.Rejected("not_under_fire")
                 !intent.answers -> Verdict.Rejected("keeps_moving")
+                Shelter.eligible(intent).evaluate(facts) == Verdict.Allowed -> Verdict.Rejected("shelter")
                 else -> Verdict.Allowed
             }
         }
