@@ -231,7 +231,9 @@ internal class DroneStation(val operator: NpcEntity) {
     /** Every enemy his side has reported that is alive, in his reach and strikable. */
     private fun known(): Sequence<StrikeTarget> {
         val faction = SquadTeams.factionOf(operator) ?: return emptySequence()
+        val held = NativeTactics.holdsReconSightings(level, operator.squadId)
         return TeamAwareness.sightings(faction, level.gameTime).asSequence()
+            .filter { s -> !held || !s.reconOnly }
             .filter { s ->
                 val e = level.getEntity(s.target) as? LivingEntity
                 e != null && e.isAlive && SquadTeams.isHostile(operator, e) && inLaunchRange(s.pos) && strikable(StrikeTarget(s.target, s.pos))

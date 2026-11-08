@@ -61,4 +61,14 @@ class TeamAwarenessTest {
         TeamAwareness.report(faction, enemy, here, 10_061, "new sighting")
         assertTrue(enemy !in TeamAwareness.relayedContacts(faction, 10_061, TeamAwareness.MEMORY_TICKS), "A new life must restart the relay delay")
     }
+
+    @Test
+    fun `a contact only scouts saw stays recon-only until anyone else sees it`() {
+        val at = 10_000L + TeamAwareness.ALERT_DELAY_TICKS
+        TeamAwareness.reportByScout(faction, enemy, here, 10_000, "scout")
+        TeamAwareness.reportByScout(faction, enemy, here, at, "scout")
+        assertTrue(TeamAwareness.sightings(faction, at).single().reconOnly)
+        TeamAwareness.report(faction, enemy, here, at, "rifleman")
+        assertTrue(!TeamAwareness.sightings(faction, at).single().reconOnly)
+    }
 }

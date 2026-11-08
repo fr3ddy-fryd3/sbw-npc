@@ -28,9 +28,11 @@ internal class CrewSpotter(private val level: ServerLevel, private val preparati
         val eyes = unit.tube?.let(MortarClaims::operator)?.let { id -> men.firstOrNull { it.uuid == id } } ?: men.first()
         scan(eyes, state, now)
         val faction = SquadTeams.factionOf(eyes)
-        val reported = faction?.let { TeamAwareness.sightings(it, now) }?.firstOrNull { (level.getEntity(it.target) as? LivingEntity)?.isAlive == true }
+        val held = NativeTactics.holdsReconSightings(level, squad?.id)
+        val sightings = faction?.let { TeamAwareness.sightings(it, now) }.orEmpty().filter { !held || !it.reconOnly }
+        val reported = sightings.firstOrNull { (level.getEntity(it.target) as? LivingEntity)?.isAlive == true }
         val own = state.ownSighting?.takeIf { now - state.ownSeenAt <= FireSupportTargets.OWN_SIGHTING_HOLD_TICKS }
-        val sighted = faction?.let { TeamAwareness.sightings(it, now) }.orEmpty().mapTo(HashSet()) { it.target.toString() } + listOfNotNull(own?.toString())
+        val sighted = sightings.mapTo(HashSet()) { it.target.toString() } + listOfNotNull(own?.toString())
         val options = (squad?.let(::ordered) ?: FireOptions()).copy(ownSighting = own, factionSighting = reported?.target, sighted = sighted)
         val chosen = FireSupportTargets.choose(options, state.target)
         if (chosen != state.target) DebugFlags.log(LogGroup.FIRE_SUPPORT, "crew={} event=target from={} to={}", unit.crew.agent.id, state.target, chosen)
@@ -39,7 +41,7 @@ internal class CrewSpotter(private val level: ServerLevel, private val preparati
         state.sightingPos = when {
             chosen == null || !chosen.sighting -> null
             chosen.key == own?.toString() -> state.ownSeenPos
-            else -> faction?.let { TeamAwareness.sightings(it, now) }?.firstOrNull { it.target.toString() == chosen.key }?.pos ?: state.ownSeenPos
+            else -> sightings.firstOrNull { it.target.toString() == chosen.key }?.pos ?: state.ownSeenPos
         }
     }
 

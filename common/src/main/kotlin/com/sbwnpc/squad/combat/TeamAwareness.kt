@@ -35,10 +35,13 @@ object TeamAwareness {
         var lastSightedTick = NEVER
         var lastSightedPos: Vec3 = Vec3.ZERO
         var sightedBy = ""
+
+        /** Seen by someone other than a scout: a hiding recon squad's sightings alone do not call fire (#194). */
+        var seenByOthers = false
     }
 
-    /** A contact fire support may act on: where it was last seen, when, and by whom. */
-    class Sighting(val target: UUID, val pos: Vec3, val tick: Long, val by: String)
+    /** A contact fire support may act on: where it was last seen, when, and by whom; [reconOnly] if only scouts saw it. */
+    class Sighting(val target: UUID, val pos: Vec3, val tick: Long, val by: String, val reconOnly: Boolean = false)
 
     private const val NEVER = Long.MIN_VALUE / 2
 
@@ -62,6 +65,12 @@ object TeamAwareness {
     /** Called by any unit of [faction] that currently has direct line of sight to [target];
      *  [by] names the spotter for the fire-support trace. */
     fun report(faction: SquadFaction, target: UUID, pos: Vec3, tick: Long, by: String) {
+        reportByScout(faction, target, pos, tick, by)
+        byFaction[faction]?.get(target)?.seenByOthers = true
+    }
+
+    /** [report] by a recon scout: on its own it leaves the contact [Sighting.reconOnly] (#194). */
+    fun reportByScout(faction: SquadFaction, target: UUID, pos: Vec3, tick: Long, by: String) {
         val contact = touch(faction, target, tick)
         if (contact.firstSightedTick == NEVER) contact.firstSightedTick = tick
         contact.lastSightedTick = tick
@@ -88,7 +97,7 @@ object TeamAwareness {
                 val at = list.indexOfFirst { it.target == id }
                 if (at >= 0 && list[at].tick >= c.lastSightedTick) continue
                 if (at >= 0) list.removeAt(at)
-                list.add(Sighting(id, c.lastSightedPos, c.lastSightedTick, c.sightedBy))
+                list.add(Sighting(id, c.lastSightedPos, c.lastSightedTick, c.sightedBy, !c.seenByOthers))
             }
         }
         return result?.sortedByDescending { it.tick } ?: emptyList()

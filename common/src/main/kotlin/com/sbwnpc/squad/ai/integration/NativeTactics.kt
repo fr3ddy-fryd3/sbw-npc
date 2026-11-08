@@ -337,6 +337,12 @@ object NativeTactics {
      */
     fun intelWait(npc: NpcEntity): IntelWait = npc.squadId?.let { worlds[npc.level()]?.intelWait(it) } ?: IntelWait.NONE
 
+    /** Whether fire support of [squad] holds off sightings only recon scouts made (#194): its operation awaits their report. */
+    fun holdsReconSightings(level: ServerLevel, squad: UUID?): Boolean {
+        val world = squad?.let { worlds[level] } ?: return false
+        return world.operations.operationOf(squad)?.let { world.operationWaits(it, level.gameTime) } == true
+    }
+
     /** See [intelWait]. */
     enum class IntelWait { NONE, WAITING, WITH_RECON }
 
@@ -682,11 +688,23 @@ object NativeTactics {
                 intelWaits.remove(saved.id)
                 return false
             }
-            val waiting = operation.id !in intelReleased &&
-                ReconRules.awaitsIntel(now - operation.issuedAt, recons.all { !recon.discovered(it) }, recons.any { recon.reported(it) })
-            if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end", operation.id)
+            val waiting = operationWaits(operation, now)
             if (waiting && intelAnnounced.add(operation.id)) SquadReports.awaitingIntel(level.server, saved)
             intelWaits[saved.id] = if (waiting) IntelWait.WAITING else IntelWait.WITH_RECON
+            return waiting
+        }
+
+        /**
+         * Whether [operation] still waits for its recon report (ReconRules.awaitsIntel): its infantry
+         * holds short, and its own mortars and drones leave alone what only the scouts have seen.
+         */
+        fun operationWaits(operation: OperationView, now: Long): Boolean {
+            if (operation.id in intelReleased) return false
+            val manager = SquadManager.get(level)
+            val recons = operation.members.keys.mapNotNull(manager::get).filter { manager.isReconSquad(it) && it.order == SquadOrder.ATTACK && it.members.isNotEmpty() }
+            if (recons.isEmpty()) return false
+            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, recons.all { !recon.discovered(it) }, recons.any { recon.reported(it) })
+            if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end", operation.id)
             return waiting
         }
 
