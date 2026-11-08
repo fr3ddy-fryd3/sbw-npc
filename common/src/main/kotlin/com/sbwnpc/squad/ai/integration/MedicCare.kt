@@ -50,7 +50,7 @@ internal class MedicCare(private val level: ServerLevel) {
             hand.unreachable.entries.removeIf { it.value <= now }
             val pick = if (vetoed(npc)) null else MedicalCare.pick(hand.patient, wounded(npc, hand, now), npc.target != null) { taken(it, npc.uuid, now) }
             if (pick != hand.patient) {
-                hand.patient?.let(::release)
+                hand.patient?.let { release(it, npc.uuid) }
                 DebugFlags.log(LogGroup.MEDIC, "[htn] actor={} event=patient_allocated from={} to={}", npc.uuid, hand.patient, pick)
             }
             hand.patient = pick
@@ -73,8 +73,9 @@ internal class MedicCare(private val level: ServerLevel) {
         reservations.clear()
     }
 
-    private fun release(patient: UUID) {
-        reservations.remove(patient)
+    // Only his own: a reservation gone stale may since belong to another medic.
+    private fun release(patient: UUID, medic: UUID) {
+        if (reservations[patient]?.medic == medic) reservations.remove(patient)
     }
 
     private fun taken(patient: UUID, medic: UUID, now: Long): Boolean {
@@ -120,7 +121,6 @@ internal class MedicCare(private val level: ServerLevel) {
 
         override fun start(now: Long): ActionUpdate {
             progressAt = now
-            npc.claim(NpcActivity.HEAL, this)
             DebugFlags.log(LogGroup.MEDIC, "[htn] actor={} event=treatment_started patient={}", npc.uuid, patient)
             return tick(now)
         }
@@ -128,7 +128,7 @@ internal class MedicCare(private val level: ServerLevel) {
         override fun tick(now: Long): ActionUpdate {
             val ally = (level.getEntity(patient) as? LivingEntity)?.takeIf { it.isAlive && npc.distanceToSqr(it) <= SCAN_RADIUS * SCAN_RADIUS }
                 ?: return end(ActionUpdate.Failed("patient_gone"))
-            if (!MedicalCare.needs(ally.health / ally.maxHealth, npc.target != null)) return end(ActionUpdate.Completed(listOf(ActionEvidence("patient_treated", now, "$patient"))))
+            if (!MedicalCare.needs(ally.health / ally.maxHealth, npc.target != null)) return end(ActionUpdate.Completed(listOf(ActionEvidence("patient_needs_no_more", now, "$patient"))))
             if (vetoed(npc)) return end(ActionUpdate.Failed("medic_held"))
             if (!MandatoryRules.may(MandatoryRule.MEDIC_HELP, npc)) return ActionUpdate.Running
             npc.claim(NpcActivity.HEAL, this)

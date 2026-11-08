@@ -409,7 +409,7 @@ object NativeTactics {
         private val engagers = HashMap<UUID, Engager>()
 
         /** Whether [id]'s plan decides his cover: not an engager's, nor a crewman's, whose plans have no cover (#258). */
-        fun coversFor(id: UUID) = id !in engagers && id !in loneOperators && fireSupport.roster.unitOf(id) == null
+        fun coversFor(id: UUID) = id !in engagers && id !in loneOperators && id !in loneMedics && fireSupport.roster.unitOf(id) == null
 
         private fun engageOf(npc: NpcEntity) = engageStates.getOrPut(npc.uuid) { EngageState(npc) }
 
@@ -462,6 +462,9 @@ object NativeTactics {
 
         /** The squadless drone operators, each planned in a root of his own (#259); no plan decides their cover. */
         private val loneOperators = HashSet<UUID>()
+
+        // Squadless medics (#189): their care root has no cover, so the cover behaviour keeps ducking them.
+        private val loneMedics = HashSet<UUID>()
         val operations = OperationRegistry({ a, b -> Diplomacy.allied(SquadFaction.valueOf(a), SquadFaction.valueOf(b)) }, { _, _ -> true })
         private val snapshots = HashMap<UUID, TacticalSnapshot>()
         private val sharedViews = HashMap<UUID, TacticalSnapshot>()
@@ -1534,8 +1537,10 @@ object NativeTactics {
          */
         private fun commandLoneMedics(now: Long, desired: MutableSet<AgentId>) {
             val lone = NpcRegistry.all(level).filter { it.npcClass == NpcClass.MEDIC && it.isAlive && it.currentSquad() == null && AgentId(AgentLevel.NPC, it.uuid) !in desired }
+            loneMedics.retainAll(lone.mapTo(HashSet()) { it.uuid })
             lone.forEach { npc ->
                 val agent = AgentId(AgentLevel.NPC, npc.uuid)
+                loneMedics += npc.uuid
                 desired += agent
                 val fresh = agent !in agents
                 ensure(agent).command(UUID.nameUUIDFromBytes("care:${npc.uuid}".toByteArray()), TacticalDomain.CARE_TASK.call(EngageTask(agent)), facts(agent, now))
@@ -2713,6 +2718,7 @@ object NativeTactics {
             tanks.clear()
             drones.clear()
             loneOperators.clear()
+            loneMedics.clear()
             alarms.clear()
             closeContacts.clear()
             journeys.clear()
