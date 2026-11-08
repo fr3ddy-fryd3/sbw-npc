@@ -34,6 +34,7 @@ internal object GameTestGroups {
             TacticalSearchGameTests::class.java,
             FiringPostSearchGameTests::class.java,
             FiringLineGameTests::class.java,
+            DefensivePostSpacingGameTests::class.java,
             CoverBudgetGameTests::class.java,
             FoliageCombatGameTests::class.java,
             TargetMemoryGameTests::class.java,
