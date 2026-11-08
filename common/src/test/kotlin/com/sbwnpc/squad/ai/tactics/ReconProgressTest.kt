@@ -76,6 +76,6 @@ class ReconProgressTest {
         assertEquals(ReconProgress.MIN_POST_DISTANCE, progress.postDistance, 1e-9)
         assertEquals(2, steps)
         assertEquals(ReconStage.WATCH, progress.stage)
-        assertEquals(0L, progress.watchFrom)
+        assertEquals(0L, progress.postFrom)
     }
 }

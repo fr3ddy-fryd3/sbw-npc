@@ -736,10 +736,21 @@ object NativeTactics {
             val manager = SquadManager.get(level)
             val recons = operation.members.keys.mapNotNull(manager::get).filter { manager.isReconSquad(it) && it.order == SquadOrder.ATTACK && it.members.isNotEmpty() }
             if (recons.isEmpty()) return false
-            val atPost = recons.mapNotNull { reconProgress[it.id]?.takeIf { p -> p.stamp == it.orderStamp }?.watchFrom }.minOrNull()
+            // From the latest post: one that steps nearer seeing nobody starts its watch again there.
+            val atPost = recons.mapNotNull { reconProgress[it.id]?.takeIf { p -> p.stamp == it.orderStamp }?.postFrom }.minOrNull()
             val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { recon.reported(it) })
             if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end", operation.id)
             return waiting
+        }
+
+        // Where each waiting squad holds, fixed once per order: taken from its live centre every pass
+        // (inside the line the centre itself) it moved as the men bunched, and they were sent again.
+        private val intelHolds = HashMap<UUID, Pair<Int, Point3>>()
+
+        private fun intelHoldPoint(saved: Squad, centre: Point3): Point3? {
+            intelHolds[saved.id]?.takeIf { it.first == saved.orderStamp }?.let { return it.second }
+            val objective = saved.objective?.center?.point() ?: return null
+            return ReconProgress.shortOf(objective, centre, ReconProgress.STAGING_DISTANCE).also { intelHolds[saved.id] = saved.orderStamp to it }
         }
 
         private fun attackingInfantry(squad: Squad): Boolean {
@@ -1445,6 +1456,7 @@ object NativeTactics {
                     grenades.forgetSquad(id)
                     recon.forget(id)
                     intelWaits.remove(id)
+                    intelHolds.remove(id)
                     reconProgress.remove(id)
                     reconnoitring -= id
                     stalking -= id
@@ -2316,7 +2328,7 @@ object NativeTactics {
                 // the objective sent the infantry on past the scouts before they reported.
                 val awaiting = awaitingIntel(saved, now)
                 noteAssault(saved, view.incoming.isNotEmpty(), view.center, contacts.map { it.position })
-                val intelHold = if (awaiting && view.incoming.isEmpty() && !wet) saved.objective?.center?.point()?.let { ReconProgress.shortOf(it, view.center.point(), ReconProgress.STAGING_DISTANCE) } else null
+                val intelHold = if (awaiting && view.incoming.isEmpty() && !wet) intelHoldPoint(saved, view.center.point()) else null.also { intelHolds.remove(saved.id) }
                 if (reconnoitre != null && reconnoitre.first != ReconStage.STAGING) {
                     val toward = saved.objective!!.center
                     view.members.forEach { (level.getEntity(it.id) as? NpcEntity)?.becomeWary(toward) }
@@ -2956,6 +2968,7 @@ object NativeTactics {
             intelWaits.clear()
             intelReleased.clear()
             assaulting.clear()
+            intelHolds.clear()
             intelAnnounced.clear()
             reconnoitring.clear()
             stalking.clear()
