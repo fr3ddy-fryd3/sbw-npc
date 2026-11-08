@@ -62,7 +62,12 @@ object TacticalPositions {
                 return deferred("path_checked")
             }
         }
-        return TickBudget.search(entity, TickBudget.Work.POSITIONS, deferred("ray_turn")) { findInTurn(entity, task, view, query) }
+        // An unfinished search keeps its queue place through its path waits too: sent to the tail
+        // after each A* batch, it waited on the whole queue again, and the stalls came back (#301).
+        // One waiting for its own navigation gives the place up. A man who stops asking for six
+        // ticks loses it as before.
+        val unfinished = { result: Result -> task.search != null && result.outcome == Outcome.DEFERRED && result.deferral != "navigation_busy" }
+        return TickBudget.search(entity, TickBudget.Work.POSITIONS, deferred("ray_turn"), unfinished) { findInTurn(entity, task, view, query) }
     }
 
     private fun recordPath(entity: NpcEntity, task: TacticalTask, search: TacticalPositionSearch, batch: List<Vec3>, path: Path?) {
