@@ -147,6 +147,44 @@ class TacticalDomainTest {
         assertEquals(CombatStrategy.GAIN_HEIGHT, strategyOf(squadPlan(squadFacts(CombatSituation(true, true, true, false, 1.0, 0.0, true)))))
     }
 
+    @Test fun `with nothing assessed every strategy and approach scores as it did before considerations`() {
+        val old = mapOf(
+            CombatStrategy.ADVANCE to 0.65,
+            CombatStrategy.HOLD to 0.4,
+            CombatStrategy.GAIN_HEIGHT to 0.93,
+            CombatStrategy.WITHDRAW to 0.95,
+            CombatStrategy.BOUND_OVERWATCH to 0.77,
+            CombatStrategy.REGROUP to 0.9,
+        )
+        val situation = CombatSituation(true, true, true, true, 0.5, 0.5, false)
+        old.forEach { (strategy, score) -> assertEquals(score, strategy.rules.score(situation).value, 1e-9, strategy.name) }
+        val facts = squadFacts(situation)
+        assertEquals(0.5 + 0.5 * 0.3 - 0.2 * 2.0, SquadApproaches.score(SquadApproach.FLANK, facts).value, 1e-9)
+        assertEquals(0.45, SquadApproaches.score(SquadApproach.FRONTAL, facts).value, 1e-9)
+    }
+
+    @Test fun `an attack out of ammunition holds instead of advancing, a retreat runs anyway`() {
+        val calm = CombatSituation(false, true, false, false, 1.0, 0.0, false)
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(calm.copy(assessment = SquadAssessment(ammo = 0.6))))))
+        assertEquals(CombatStrategy.HOLD, strategyOf(squadPlan(squadFacts(calm.copy(assessment = SquadAssessment(ammo = 0.0))))))
+        val retreat = CombatSituation(false, false, false, false, 1.0, 0.0, false, retreating = true, assessment = SquadAssessment(ammo = 0.0))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(retreat))))
+    }
+
+    @Test fun `a beaten squad still much the stronger is worth less withdrawn than one outnumbered`() {
+        val strong = CombatStrategy.WITHDRAW.rules.score(beaten.copy(assessment = SquadAssessment(forceRatio = 3.0))).value
+        val weak = CombatStrategy.WITHDRAW.rules.score(beaten.copy(assessment = SquadAssessment(forceRatio = 0.25))).value
+        assertTrue(strong < weak, "strong=$strong weak=$weak")
+        assertEquals(CombatStrategy.GAIN_HEIGHT, strategyOf(squadPlan(squadFacts(beaten.copy(higherEnemy = true, assessment = SquadAssessment(forceRatio = 3.0, ammo = 1.0))))))
+    }
+
+    @Test fun `a flank is worth more with fire support and less far from the point`() {
+        val fresh = CombatSituation(false, true, false, false, 0.5, 0.0, false)
+        fun flank(a: SquadAssessment) = SquadApproaches.score(SquadApproach.FLANK, squadFacts(fresh.copy(assessment = a))).value
+        assertTrue(flank(SquadAssessment(fireSupport = 1.0)) > flank(SquadAssessment(fireSupport = 0.0)))
+        assertTrue(flank(SquadAssessment(objectiveDistance = 200.0)) < SquadApproaches.score(SquadApproach.FRONTAL, squadFacts(fresh)).value)
+    }
+
     @Test fun `a squad with a barracks does not withdraw on its losses`() {
         assertEquals(CombatStrategy.WITHDRAW, strategyOf(squadPlan(squadFacts(beaten))))
         assertTrue(SquadManners.eligible(CombatStrategy.WITHDRAW).evaluate(squadFacts(beaten.copy(reinforced = true))) is Verdict.Rejected)

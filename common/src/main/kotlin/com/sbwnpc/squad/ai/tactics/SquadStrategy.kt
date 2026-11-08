@@ -1,6 +1,9 @@
 package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
+import com.sbwnpc.squad.ai.planning.Consideration
+import com.sbwnpc.squad.ai.planning.ResponseCurve
+import com.sbwnpc.squad.ai.planning.UtilityScore
 import kotlin.math.hypot
 
 /**
@@ -17,8 +20,11 @@ interface SquadStrategy {
 
     fun allowed(situation: CombatSituation): Boolean
 
-    /** Its utility in [situation], from 0 to 1. */
-    fun score(situation: CombatSituation): Double
+    /**
+     * Its utility in [situation], from 0 to 1: a base from the bare situation times the
+     * considerations of the [CombatSituation.assessment]. With nothing assessed it is the base.
+     */
+    fun score(situation: CombatSituation): UtilityScore
 
     /**
      * A member's [intent] as this strategy has it carried out, with what the squad keeps for it in
@@ -46,7 +52,20 @@ private object Advance : SquadStrategy {
 
     override fun allowed(situation: CombatSituation) = (situation.offensive && situation.continuation) || !situation.contact || situation.retreating
 
-    override fun score(situation: CombatSituation) = BASE + situation.readyFraction * READINESS
+    // Out of ammunition an attack does not advance: it holds while the men fetch more. A retreat
+    // runs whatever it carries.
+    override fun score(situation: CombatSituation): UtilityScore {
+        val a = situation.assessment
+        return UtilityScore.product(
+            BASE + situation.readyFraction * READINESS,
+            listOf(
+                Consideration("ammo", a.ammo.takeIf { situation.offensive && !situation.retreating }, ResponseCurve.linear(0.0, FULL_AMMO)),
+                Consideration("force", a.forceRatio, ResponseCurve.floored(OUTNUMBERED_FLOOR, OUTNUMBERED, EVEN)),
+                Consideration("health", a.health, ResponseCurve.floored(WOUNDED_FLOOR, WOUNDED, HEALTHY)),
+            ),
+            reason,
+        )
+    }
 
     // A retreat with no halves to cover each other runs the whole way: stopping post by post
     // with nobody firing for him, a man of a small squad only gave the enemy more time to shoot.
@@ -56,6 +75,15 @@ private object Advance : SquadStrategy {
 
     /** Worth up to this much more the more of the squad is ready to fire. */
     private const val READINESS = 0.2
+
+    /** Half the men still on their main weapon is ammunition enough to push on. */
+    private const val FULL_AMMO = 0.5
+    private const val OUTNUMBERED_FLOOR = 0.6
+    private const val OUTNUMBERED = 0.5
+    private const val EVEN = 1.5
+    private const val WOUNDED_FLOOR = 0.7
+    private const val WOUNDED = 0.4
+    private const val HEALTHY = 0.8
 }
 
 /**
@@ -67,12 +95,30 @@ private object Hold : SquadStrategy {
 
     override fun allowed(situation: CombatSituation) = !situation.retreating
 
-    override fun score(situation: CombatSituation) = if (!situation.offensive && situation.contact) DEFENDING else OTHERWISE
+    // Outnumbered, a squad holds; much stronger, holding is worth less. Long after the last
+    // sighting, standing still is worth less than going on.
+    override fun score(situation: CombatSituation): UtilityScore {
+        val a = situation.assessment
+        return UtilityScore.product(
+            if (!situation.offensive && situation.contact) DEFENDING else OTHERWISE,
+            listOf(
+                Consideration("force", a.forceRatio, ResponseCurve.floored(STRONG_FLOOR, STRONG, EVEN)),
+                Consideration("since_contact", a.sinceContact, ResponseCurve.floored(STALE_FLOOR, STALE_SECONDS, FRESH_SECONDS)),
+            ),
+            reason,
+        )
+    }
 
     override fun shape(intent: PositionIntent, shaping: SquadShaping) = if (intent.duty == CombatDuty.MOVE) intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, requireCover = false) else intent
 
     private const val DEFENDING = 0.9
     private const val OTHERWISE = 0.4
+    private const val STRONG_FLOOR = 0.7
+    private const val STRONG = 2.5
+    private const val EVEN = 1.0
+    private const val STALE_FLOOR = 0.6
+    private const val STALE_SECONDS = 40.0
+    private const val FRESH_SECONDS = 10.0
 }
 
 /** An attack under an enemy above it takes posts no lower than where the men stand, preferring higher ones. */
@@ -81,11 +127,14 @@ private object GainHeight : SquadStrategy {
 
     override fun allowed(situation: CombatSituation) = situation.contact && situation.higherEnemy && situation.offensive
 
-    override fun score(situation: CombatSituation) = SCORE
+    override fun score(situation: CombatSituation) = UtilityScore.product(SCORE, listOf(Consideration("force", situation.assessment.forceRatio, ResponseCurve.floored(OUTNUMBERED_FLOOR, OUTNUMBERED, EVEN))), reason)
 
     override fun shape(intent: PositionIntent, shaping: SquadShaping) = intent.copy(minimumHeight = intent.origin.y - DROP, elevationWeight = ELEVATION_WEIGHT)
 
     private const val SCORE = 0.93
+    private const val OUTNUMBERED_FLOOR = 0.8
+    private const val OUTNUMBERED = 0.5
+    private const val EVEN = 1.2
 
     /** How far below where he stands a man may still take a post. */
     private const val DROP = 2
@@ -100,7 +149,19 @@ private object Withdraw : SquadStrategy {
     // A retreat already falls back, to the point it was ordered to rather than away from the threat.
     override fun allowed(situation: CombatSituation) = situation.incoming && situation.lossFraction >= LOSSES && !situation.continuation && !situation.reinforced && !situation.retreating
 
-    override fun score(situation: CombatSituation) = SCORE
+    // The 40% losses stay a hard limit (allowed); past it, the weaker the squad against the enemy
+    // and the less it has to fight with, the more falling back is worth.
+    override fun score(situation: CombatSituation): UtilityScore {
+        val a = situation.assessment
+        return UtilityScore.product(
+            SCORE,
+            listOf(
+                Consideration("force", a.forceRatio, ResponseCurve.floored(STRONG_FLOOR, STRONG, OUTNUMBERED)),
+                Consideration("ammo", a.ammo, ResponseCurve.floored(SUPPLIED_FLOOR, SUPPLIED, DRY)),
+            ),
+            reason,
+        )
+    }
 
     override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
         if (intent.duty == CombatDuty.FOLLOW_ORDER) return intent
@@ -122,6 +183,12 @@ private object Withdraw : SquadStrategy {
     }
 
     private const val SCORE = 0.95
+    private const val STRONG_FLOOR = 0.5
+    private const val STRONG = 1.5
+    private const val OUTNUMBERED = 0.5
+    private const val SUPPLIED_FLOOR = 0.8
+    private const val SUPPLIED = 0.8
+    private const val DRY = 0.2
 
     /** Keeps a man standing on the threat's bearing from dividing by zero. */
     private const val MIN_LENGTH = 0.01
@@ -156,7 +223,19 @@ private object BoundingOverwatch : SquadStrategy {
 
     // Falling back in contact it always outscores an Advance, hit or not: the halves covering each
     // other is the point of a fighting withdrawal, and the run is for a squad out of contact.
-    override fun score(situation: CombatSituation) = (if (situation.underFire || situation.retreating) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS
+    // On open ground the halves covering each other are worth the most; against a much weaker
+    // enemy they only slow the advance.
+    override fun score(situation: CombatSituation): UtilityScore {
+        val a = situation.assessment
+        return UtilityScore.product(
+            (if (situation.underFire || situation.retreating) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS,
+            listOf(
+                Consideration("exposed", a.exposed?.let { if (it) 1.0 else 0.0 }, ResponseCurve.floored(SHELTERED_FLOOR, 0.0, 1.0)),
+                Consideration("force", a.forceRatio, ResponseCurve.floored(WEAK_ENEMY_FLOOR, WEAK_ENEMY, EVEN)),
+            ),
+            reason,
+        )
+    }
 
     override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
         val turn = shaping.turn
@@ -176,6 +255,10 @@ private object BoundingOverwatch : SquadStrategy {
     private const val UNDER_FIRE = 0.62
     private const val UNTOUCHED = 0.3
     private const val READINESS = 0.3
+    private const val SHELTERED_FLOOR = 0.85
+    private const val WEAK_ENEMY_FLOOR = 0.8
+    private const val WEAK_ENEMY = 3.0
+    private const val EVEN = 1.5
 }
 
 /**
@@ -192,7 +275,7 @@ private object Regroup : SquadStrategy {
 
     override fun allowed(situation: CombatSituation) = situation.offensive && !situation.flanking && !situation.gathered && !situation.regroupSpent && (situation.scattered || situation.regrouping)
 
-    override fun score(situation: CombatSituation) = SCORE
+    override fun score(situation: CombatSituation) = UtilityScore.product(SCORE, emptyList(), reason)
 
     override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
         val rally = shaping.rally
