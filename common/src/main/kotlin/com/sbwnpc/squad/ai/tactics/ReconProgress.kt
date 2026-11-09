@@ -86,16 +86,20 @@ class ReconProgress(val stamp: Int) {
     /**
      * Advances the stage for a squad whose centre stands [distance] blocks from the objective at [now];
      * returns the stage. In the ring it takes its post only where it [sees] the objective: over broken
-     * ground the ring alone let it settle blind, or walk on almost onto the enemy.
+     * ground the ring alone let it settle blind, or walk on almost onto the enemy. Once [enemySeen], it
+     * posts at once.
      */
-    fun update(distance: Double, now: Long, centre: Point3? = null, sees: Boolean = true): ReconStage {
+    fun update(distance: Double, now: Long, centre: Point3? = null, sees: Boolean = true, enemySeen: Boolean = false): ReconStage {
         stage = when (stage) {
             ReconStage.STAGING -> if (distance <= STAGING_DISTANCE + ARRIVAL) ReconStage.STALK else ReconStage.STAGING
 
             ReconStage.STALK -> {
                 // A spot it cannot get to in time is given up: it posts at the ring as before.
                 if (spot != null && now - spotSince > SPOT_TICKS) spot = null
-                if (distance <= postDistance && (sees || spot == null)) arrive(now, centre) else ReconStage.STALK
+                // Seeing the enemy already, it has its view: it posts where it stands (owner 09.11, a
+                // sentry 63 blocks out kept every spot nearer the ring out of bounds and it stood blind).
+                val inView = distance <= postDistance && (sees || spot == null)
+                if (enemySeen || inView) arrive(now, centre) else ReconStage.STALK
             }
 
             ReconStage.WATCH -> if (now - (postFrom ?: now) >= WATCH_TICKS) ReconStage.REPORTED else ReconStage.WATCH

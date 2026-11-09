@@ -653,7 +653,7 @@ object NativeTactics {
             }
             val progress = reconProgress[saved.id]?.takeIf { it.stamp == saved.orderStamp } ?: ReconProgress(saved.orderStamp).also { reconProgress[saved.id] = it }
             val before = progress.stage
-            val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now, centre, reconSees(saved, progress, objective, centre, now))
+            val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now, centre, reconSees(saved, progress, objective, centre, now), recon.sawEnemy(saved))
             if (stage != before) {
                 DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=stage from={} to={}", saved.id, before, stage)
                 if (stage == ReconStage.REPORTED) {

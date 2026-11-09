@@ -88,6 +88,14 @@ class ReconProgressTest {
         assertEquals(view, p.point(o, Point3(0.0, 64.0, 50.0)))
     }
 
+    @Test fun `seeing the enemy on its way in it posts where it stands`() {
+        val p = ReconProgress(1)
+        p.update(95.0, 0)
+        val here = Point3(0.0, 64.0, 80.0)
+        assertEquals(ReconStage.WATCH, p.update(80.0, 10, here, sees = false, enemySeen = true))
+        assertEquals(here, p.point(Point3(0.0, 64.0, 0.0), here))
+    }
+
     @Test fun `seeing nobody it steps nearer down to the closest post, never onto the objective`() {
         val progress = ReconProgress(1)
         progress.update(95.0, 0)
