@@ -69,6 +69,8 @@ internal class DroneWorld(private val level: ServerLevel) {
         // His own eyes run at their rate whether or not a source above already gave a target: they
         // report to his side for everyone else.
         offer(StrikeSource.SPOTTED, station.spotted())
+        // His operation waits for its recon report: he launches at nothing, so as not to give the scouts away (#194).
+        if (NativeTactics.holdsReconSightings(level, squad?.id)) return StrikeOptions.NONE
         offer(StrikeSource.REPORTED, station.reported())
         return if (found.isEmpty()) StrikeOptions.NONE else StrikeOptions(found)
     }

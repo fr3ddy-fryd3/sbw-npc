@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -51,6 +52,7 @@ class Noticing(
             grassBlocks,
             weatherAt(level, candidate.blockPosition()),
             size,
+            (candidate as? NpcEntity)?.npcClass == NpcClass.SCOUT,
         )
         val eyes = SpottingTime.Observer.of(observer.npcRank, observer.npcClass)
             .let { if (VehicleTargeting.isAircrew(observer)) it.airborne() else it }

@@ -340,6 +340,9 @@ object TacticalFacts {
     /** The squad travels to its objective instead of fighting where it is ([SquadJourney], #255). */
     val TRAVELLING = FactKey("squad.travelling", Boolean::class.javaObjectType)
 
+    /** A hidden recon squad is on its approach to an observation post (#194): no strategy shapes it. */
+    val RECONNOITRING = FactKey("squad.reconnoitring", Boolean::class.javaObjectType)
+
     /** Who of a team in a fight mans which empty armed vehicle's gun ([WeaponStations]). */
     val STATIONS = FactKey("team.stations", StationPlan::class.java)
 
@@ -553,6 +556,11 @@ object TacticalDomain {
                     Method<SquadMission>("support_only", eligible = { mission ->
                         Condition { if (mission.teams.isEmpty() && (mission.support + mission.air + mission.tanks).isNotEmpty()) Verdict.Allowed else Verdict.Rejected("has_ground_teams") }
                     }, decompose = { mission, facts -> TaskNetwork(children(FireSupport.delegations(mission) + AirSupport.delegations(mission) + TankSupport.delegations(mission)).nodes + listOfNotNull(boarding(mission, facts))) }),
+                    // A hidden recon squad stalks to its observation post (#194): its men's stages are
+                    // ordered duties, as a travelling squad's are, and no strategy shapes them.
+                    Method<SquadMission>("reconnoitre", eligible = { mission ->
+                        Condition { facts -> if (mission.teams.isNotEmpty() && facts.value(TacticalFacts.RECONNOITRING) == true) Verdict.Allowed else Verdict.Rejected("not_reconnoitring") }
+                    }, decompose = { mission, _ -> children(mission.teams.map { DelegationTask(it.agent, TEAM.call(it)) }) }),
                     // A squad travelling to its objective (#255) is no squad in a fight: its men make
                     // for the vehicles or the objective as their order says, and no strategy shapes them.
                     Method<SquadMission>("travel", eligible = { mission ->
@@ -567,7 +575,17 @@ object TacticalDomain {
                         eligible = { mission ->
                             when {
                                 mission.teams.isEmpty() -> Condition { Verdict.Rejected("no_ground_teams") }
-                                else -> Condition.all(Condition { facts -> if (facts.value(TacticalFacts.TRAVELLING) == true) Verdict.Rejected("travelling") else Verdict.Allowed }, SquadManners.eligible(strategy))
+
+                                else -> Condition.all(
+                                    Condition { facts ->
+                                        when {
+                                            facts.value(TacticalFacts.TRAVELLING) == true -> Verdict.Rejected("travelling")
+                                            facts.value(TacticalFacts.RECONNOITRING) == true -> Verdict.Rejected("reconnoitring")
+                                            else -> Verdict.Allowed
+                                        }
+                                    },
+                                    SquadManners.eligible(strategy),
+                                )
                             }
                         },
                         score = { _, facts -> SquadManners.score(strategy, facts) },

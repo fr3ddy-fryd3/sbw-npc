@@ -24,7 +24,8 @@ Requires Linux x86_64/aarch64 with glibc. Uses JAVA_HOME/installed Java 21,
 otherwise installs Temurin 21 locally. Gradle 9.5.0 is installed locally.
 Downloads and logs: build/headless/; test reports: neoforge/build/reports/gameTest/.
 Optional: GRADLE_USER_HOME for a persistent cache; HEADLESS_GRADLE_HEAP=4G;
-HEADLESS_GRADLE_BIN=/absolute/path/to/gradle (must be 9.5.0).
+HEADLESS_GRADLE_BIN=/absolute/path/to/gradle (must be 9.5.0);
+HEADLESS_REPLAY=/absolute/path/to/a/saved/world/fixture for SavedBattleGameTests.
 Existing SuperbWarfare sources are retained. A missing directory is restored
 from the pinned upstream 0.8.9.1 commit. No Minecraft client is launched.
 HELP
@@ -204,6 +205,7 @@ case "$mode" in
         elif [[ $mode != all ]]; then
             args+=("-PgameTestFilter=$filter")
         fi
+        [[ -n ${HEADLESS_REPLAY:-} ]] && args+=("-PgameTestReplay=$HEADLESS_REPLAY")
         ;;
 esac
 # PATH must expand when env.sh is sourced, not while generating the file.

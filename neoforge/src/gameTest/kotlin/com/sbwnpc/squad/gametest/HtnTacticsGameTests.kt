@@ -452,6 +452,84 @@ object HtnTacticsGameTests {
     }
 
     /**
+     * Water wider than an advance's step, from one edge of the ground to the other, between the attack
+     * and its objective, with nobody seen across it (playtest 08.11: over a hundred blocks of sea, the
+     * attack stood on the bank; a narrow moat it simply swam). As there, a recon squad goes with the
+     * riflemen: its staging line and their wait for its report fell on the water and the near bank, and
+     * nobody crossed. Both keep their journey across, swimming or by boat, and take up recon there.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 6000, batch = "htn-island")
+    fun attackOntoIslandCrossesTheWater(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-island")
+        val manager = SquadManager.get(helper.level)
+        val centre = BlockPos(164, 1, 112)
+        // From x 14 to 152 and over the whole width: no way round on foot.
+        val moat = (14..152).flatMap { x -> (0 until 224).flatMap { z -> (-3..0).map { y -> BlockPos(x, y, z) } } }
+        val ground = moat.associateWith { helper.getBlockState(it) }
+        moat.forEach { helper.setBlock(it, net.minecraft.world.level.block.Blocks.WATER) }
+        val attackers = (0 until 8).map { index -> scene.spawn(Vec3(4.5 + index / 4 * 4, 1.0, 104.5 + index % 4 * 4)) }
+        val scouts = (0 until 3).map { index -> scene.spawn(Vec3(4.5, 1.0, 96.5 + index * 3), role = com.sbwnpc.squad.npc.NpcClass.SCOUT) }
+        val squad = manager.create(helper.level, UUID(90, 16), requireNotNull(attackers.first().spawnFaction), attackers.map { it.uuid })
+        val recon = manager.create(helper.level, UUID(90, 16), requireNotNull(scouts.first().spawnFaction), scouts.map { it.uuid })
+        scene.onClose = {
+            listOf(squad, recon).forEach { manager.deleteSquad(helper.level, it.id) }
+            ground.forEach { (pos, state) -> helper.setBlock(pos, state) }
+        }
+        val target = helper.absolutePos(centre)
+        GroupOrders.apply(helper.level, manager, listOf(squad.id, recon.id), SquadOrder.ATTACK, target.x, target.z)
+        helper.onEachTick {
+            val alive = attackers.filter { it.isAlive }
+            // Ashore on the far side, past the water, not yet at the point: the recon's post may hold them short of it.
+            val ashore = alive.count { !it.isInWater && helper.relativeVec(it.position()).x > 153 }
+            if (helper.tick % 200L == 0L) {
+                scene.result("RUNNING", "tick=${helper.tick} alive=${alive.size} ashore=$ashore wet=${alive.count { it.isInWater }} actors=${alive.map { helper.relativeVec(it.position()).let { p -> "${p.x.toInt()},${p.z.toInt()}" } }}")
+            }
+            helper.assertTrue((attackers + scouts).none { it.isDeadOrDying && it.lastDamageSource?.`is`(net.minecraft.tags.DamageTypeTags.IS_DROWNING) == true }, "An attacker drowned")
+            if (ashore >= attackers.size / 2) {
+                scene.result("PASS", "tick=${helper.tick} ashore=$ashore alive=${alive.size} scoutsAcross=${scouts.count { helper.relativeVec(it.position()).x > 153 }}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * A recon squad sent with riflemen reaches its post and, seeing nobody there, steps nearer twice
+     * (owner 08.11). In the playtest of 08.11 its men kept their staging-line post through the change
+     * of stage and stood 90 blocks out: no post, no report, mortars silent. It never goes nearer than
+     * its closest post, and the riflemen and drone operators stay back while they wait.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 6000, batch = "htn-recon-post")
+    fun reconReachesItsPostAndStepsNearerSeeingNobody(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-recon-post")
+        val manager = SquadManager.get(helper.level)
+        val centre = BlockPos(170, 1, 112)
+        val riflemen = (0 until 4).map { index -> scene.spawn(Vec3(4.5 + index / 2 * 4, 1.0, 106.5 + index % 2 * 4)) }
+        val scouts = (0 until 3).map { index -> scene.spawn(Vec3(4.5, 1.0, 96.5 + index * 3), role = com.sbwnpc.squad.npc.NpcClass.SCOUT) }
+        val squad = manager.create(helper.level, UUID(90, 17), requireNotNull(riflemen.first().spawnFaction), riflemen.map { it.uuid })
+        val recon = manager.create(helper.level, UUID(90, 17), requireNotNull(scouts.first().spawnFaction), scouts.map { it.uuid })
+        val operators = (0 until 2).map { index -> scene.spawn(Vec3(12.5, 1.0, 96.5 + index * 3), role = com.sbwnpc.squad.npc.NpcClass.DRONE_OPERATOR) }
+        val drones = manager.create(helper.level, UUID(90, 17), requireNotNull(operators.first().spawnFaction), operators.map { it.uuid })
+        scene.onClose = { listOf(squad, recon, drones).forEach { manager.deleteSquad(helper.level, it.id) } }
+        val target = helper.absolutePos(centre)
+        GroupOrders.apply(helper.level, manager, listOf(squad.id, recon.id, drones.id), SquadOrder.ATTACK, target.x, target.z)
+        fun out(men: List<NpcEntity>) = men.filter { it.isAlive }.map { helper.relativeVec(it.position()).let { p -> kotlin.math.hypot(p.x - centre.x, p.z - centre.z) } }
+        helper.onEachTick {
+            val scoutsOut = out(scouts)
+            val riflemenOut = out(riflemen)
+            if (helper.tick % 200L == 0L) scene.result("RUNNING", "tick=${helper.tick} scouts=${scoutsOut.map { it.toInt() }} riflemen=${riflemenOut.map { it.toInt() }} operators=${out(operators).map { it.toInt() }}")
+            helper.assertTrue(scoutsOut.none { it < com.sbwnpc.squad.ai.tactics.ReconProgress.MIN_POST_DISTANCE - 12 }, "A scout went onto the objective: $scoutsOut")
+            if (scoutsOut.isNotEmpty() && scoutsOut.average() <= com.sbwnpc.squad.ai.tactics.ReconProgress.MIN_POST_DISTANCE + 8) {
+                helper.assertTrue(riflemenOut.all { it > com.sbwnpc.squad.ai.tactics.ReconProgress.MIN_POST_DISTANCE + 8 }, "Riflemen went past the scouts while they waited: $riflemenOut")
+                helper.assertTrue(out(operators).all { it > com.sbwnpc.squad.ai.tactics.ReconProgress.MIN_POST_DISTANCE + 8 }, "Drone operators went past the scouts while they waited: ${out(operators)}")
+                scene.result("PASS", "tick=${helper.tick} scouts=${scoutsOut.map { it.toInt() }} riflemen=${riflemenOut.map { it.toInt() }} operators=${out(operators).map { it.toInt() }}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
      * Losses count over the operation: one squad cut to a single man is 40% of the whole and only
      * a review; at 60% of everyone the attack is called off and every squad falls back.
      */

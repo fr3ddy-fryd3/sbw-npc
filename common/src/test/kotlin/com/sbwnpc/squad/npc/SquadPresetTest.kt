@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.npc
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /** The infantry presets keep their support roster: shotgunners were added without taking a sniper, gunner or medic away. */
@@ -17,6 +18,12 @@ class SquadPresetTest {
         listOf(SquadPreset.FIVE, SquadPreset.SEVEN, SquadPreset.SIXTEEN, SquadPreset.THIRTY_TWO).forEach {
             assertEquals(roster(it).sum(), it.composition.size, "$it has a role outside the infantry roster")
         }
+    }
+
+    @Test fun `recon is three scouts, deployed in its grid`() {
+        assertEquals(List(3) { NpcClass.SCOUT }, SquadPreset.RECON.composition)
+        assertTrue(SquadPreset.RECON.grid)
+        assertEquals(SquadPreset.RECON, SquadPreset.THIRTY_TWO.next())
     }
 
     @Test fun `the removed six-man preset loads as the standard seven`() {

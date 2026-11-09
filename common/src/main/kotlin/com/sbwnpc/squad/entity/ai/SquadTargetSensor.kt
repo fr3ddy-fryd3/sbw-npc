@@ -104,6 +104,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             SquadTactics.observe(entity, target)
         }
         if (target != null) TankWeaponSelection.update(entity, target)
+        if (target != null && previous?.uuid != target.uuid) com.sbwnpc.squad.ai.integration.NativeTactics.targetTaken(entity, target)
     }
 
     /**

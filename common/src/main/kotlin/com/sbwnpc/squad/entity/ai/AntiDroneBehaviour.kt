@@ -115,7 +115,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun isShooter(entity: NpcEntity): Boolean =
         when (entity.npcClass) {
-            NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.TANK_CREW, NpcClass.DRONE_OPERATOR, NpcClass.SHOTGUNNER -> true
+            NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.TANK_CREW, NpcClass.DRONE_OPERATOR, NpcClass.SHOTGUNNER, NpcClass.SCOUT -> true
 
             // Helicopter crew carry a sidearm and are strapped into an aircraft; the gunship's own
             // turret is what deals with a drone, through the ordinary targeting path.

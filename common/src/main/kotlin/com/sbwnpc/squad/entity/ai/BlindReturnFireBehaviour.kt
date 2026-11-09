@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.Hearing
@@ -38,7 +39,9 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         return entity.incomingFire.replying(now) || entity.lastSeenFire.point(now) != null
     }
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
+
+    // A hidden recon squad does not fire at a guess (#194); being shot at has already discovered it.
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity) && !NativeTactics.holdsFire(entity)
     override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)
     override fun tick(entity: NpcEntity) {
         val now = entity.level().gameTime

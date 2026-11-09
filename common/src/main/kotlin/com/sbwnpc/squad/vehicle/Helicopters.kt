@@ -51,7 +51,7 @@ object Helicopters {
     fun fightingClose(npc: Mob): Boolean = npc.target?.takeIf { it.isAlive }?.let { npc.distanceTo(it) < BOARD_UNDER_FIRE_RANGE } == true
 
     /** Ordinary infantry: every other class has a post of its own to man, and stays off the benches. */
-    val RIDER_CLASSES = setOf(NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.SHOTGUNNER)
+    val RIDER_CLASSES = setOf(NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.SHOTGUNNER, NpcClass.SCOUT)
 
     fun isHelicopter(vehicle: Entity): Boolean = Ports.vehicles.modelOf(vehicle) is HelicopterModel
 

@@ -39,7 +39,9 @@ class NpcPosture(private val npc: NpcEntity) {
         // blocked target to stand up cannot work when crouching prevents first discovery.
         val overwatch = task?.job == TacticalJob.OVERWATCH && !task.localFireRecovery
         val scanningOverwatch = overwatch && npc.target == null
-        var crouch = stillTicks >= CROUCH_AFTER_TICKS && tick >= standUntilTick && !scanningOverwatch
+        // A stalking scout keeps low on the move too: crouched he is 1.5 times slower to notice (#194).
+        val stalking = com.sbwnpc.squad.ai.integration.NativeTactics.stalks(npc) && npc.target == null
+        var crouch = (stillTicks >= CROUCH_AFTER_TICKS || stalking) && tick >= standUntilTick && !scanningOverwatch
         if (crouch && overwatch && !npc.isCrouching && npc.target != null) {
             val level = npc.level() as? ServerLevel
             if (level != null) {
