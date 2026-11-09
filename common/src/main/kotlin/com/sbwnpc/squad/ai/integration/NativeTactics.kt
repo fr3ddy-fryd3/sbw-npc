@@ -1282,7 +1282,10 @@ object NativeTactics {
             // Under his roof already, he stays while shells still fall anywhere he hears them, not only
             // within 24: the barrage walking off a little sent men out between rounds (owner 09.11).
             val shelling = npc.shelled() || underFire || (npc.shellingHeard() && roofs.sheltering(npc))
-            val unseen = shelling && sector == null && npc.target == null && npc.vehicle == null
+            // A target shared from 80+ blocks that he neither sees nor reaches is no fight (owner 09.11:
+            // gunners and snipers on their posts ignored every shell with no contact at all).
+            val fighting = npc.target?.let { com.sbwnpc.squad.combat.FiringOpportunity.assess(npc, it) == com.sbwnpc.squad.combat.tactics.TacticalTargetSelection.Opportunity.SHOOTABLE } == true
+            val unseen = shelling && sector == null && !fighting && npc.vehicle == null
             return if (unseen && digs == 0) roofs.near(npc, now) else null
         }
 

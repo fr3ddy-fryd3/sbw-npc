@@ -21,8 +21,8 @@ object Hearing {
     /** A gun's own sound radius (SBW's `SoundRadius`, 8–32) is this many times how far it's heard. */
     const val GUNSHOT_SCALE = 4.5
 
-    /** A burst this near a man who hears it puts him under shelling (owner 08.11, [NpcEntity.shell]). */
-    const val SHELL_NEAR = 24.0
+    /** A burst this near a man who hears it puts him under shelling (owner 08.11; 48 since 09.11, [NpcEntity.shell]). */
+    const val SHELL_NEAR = 48.0
 
     /** Allied callouts after gunfire; the threat point is supplied by the firing NPC. */
     const val ALLIED_GUNSHOT_RADIUS = 70.0
