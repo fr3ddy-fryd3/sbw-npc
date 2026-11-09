@@ -8,6 +8,18 @@ Status:
   height, withdraw, bound by halves, regroup) scored and kept stable by `SquadManners`, the squad's
   approach (flank or frontal, `SquadApproaches`) and a team's rush (together or in pairs,
   `TeamRushes`). NPCs choose by preconditions and method order, not by utility.
+- **Scoring (#187):** a squad option's score is a base from the bare situation times its
+  considerations (`Consideration`, `ResponseCurve`, `UtilityScore.product`). Each consideration
+  maps one input of the squad's `SquadAssessment` (force ratio, ammunition, health, distance to the
+  objective, fire support, light, time since contact) onto 0..1 through its own curve. The values
+  multiply, each lifted by Dave Mark's compensation for their number (`v + (1 - v)(1 - 1/n)v`), so a
+  consideration at 0 vetoes the option, and the held option's advantage does not bring it back. An
+  input with no data is unknown and counts as 1: it neither vetoes nor favours. With nothing
+  assessed every option scores its base, the score it had before considerations. The inputs are
+  rounded to steps when collected: the situation is a planner fact, and one that changed on every
+  refresh replanned the squad on every refresh. Hard limits (the 40% losses before a withdrawal,
+  four movers for bounding, an enemy above for gaining height) stay in the strategies' `allowed`.
+  Every factor, its input and value, is written to the ORDER log and the decision trace.
 - **Proposed, not implemented:** utility at the operation and Commander levels, the scoped contexts
   (`CommanderContext`, `OperationContext`, `SquadContext`) and the examples below. They are design
   for later work, not a description of the code.

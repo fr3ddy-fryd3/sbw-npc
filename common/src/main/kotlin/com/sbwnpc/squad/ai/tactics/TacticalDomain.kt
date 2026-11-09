@@ -7,6 +7,7 @@ import com.sbwnpc.squad.ai.planning.*
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.round
 
 /**
  * What a member does, and what that means for how his post is searched and held.
@@ -866,12 +867,44 @@ object TacticalDomain {
  *   strategy weighed by it was taken up and dropped every few seconds.
  * @property retreating it falls back to its rally point on a RETREAT order (#253). Its [contact]
  *   is then only an enemy its men see near, see [com.sbwnpc.squad.combat.tactics.TacticalSnapshot.closeContact].
+ * @property assessment the inputs the strategies' considerations weigh beyond these flags.
  * @property coverStalled within the last 30 s one of its men waited 5 s for covering fire for a
  *   rush that never came: it does not bound by halves, and its teams do not rush in pairs. A rush
  *   that started without the fire anyway crossed open ground uncovered (in-game 03.11). Once the
  *   30 s are up it may bound again, and stall again if its halves still have nothing to fire at.
  */
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val regroupSpent: Boolean = false, val underFire: Boolean = incoming, val retreating: Boolean = false, val coverStalled: Boolean = false)
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val regroupSpent: Boolean = false, val underFire: Boolean = incoming, val retreating: Boolean = false, val coverStalled: Boolean = false, val assessment: SquadAssessment = SquadAssessment())
+
+/**
+ * What a squad's strategies and approaches weigh besides the bare [CombatSituation] flags,
+ * collected once per snapshot. Null is unknown: the consideration then has no effect.
+ *
+ * Every value is rounded to a step ([of]): the situation is a planner fact, and one that changed
+ * on every refresh made the squad replan on every refresh.
+ *
+ * @property forceRatio the squad's fighting men to the enemies it sees, an armoured one counting
+ *   for several; null with no enemy in sight.
+ * @property ammo the share of its men still on their main weapon; null out of contact.
+ * @property health its men's mean health, 0 to 1; null out of contact.
+ * @property objectiveDistance blocks from its centre to its attack's objective; null without one.
+ * @property fireSupport 1 when a mortar crew or a tank fights with its attack, else 0.
+ * @property light the brightness at its centre, 0 to 1, in an attack.
+ * @property sinceContact seconds since it last saw an enemy; null if it never has.
+ */
+data class SquadAssessment(
+    val forceRatio: Double? = null,
+    val ammo: Double? = null,
+    val health: Double? = null,
+    val objectiveDistance: Double? = null,
+    val fireSupport: Double? = null,
+    val light: Double? = null,
+    val sinceContact: Double? = null,
+) {
+    companion object {
+        /** [value] rounded to the nearest multiple of [step]. */
+        fun of(value: Double, step: Double) = round(value / step) * step
+    }
+}
 
 /**
  * How a squad's strategy methods choose between the [CombatStrategy] entries.
@@ -916,9 +949,10 @@ object SquadManners {
     /** [strategy]'s score in the observed situation, with [ADVANTAGE] when the squad holds it. */
     fun score(strategy: CombatStrategy, facts: FactView): UtilityScore {
         val situation = facts.value(TacticalFacts.SITUATION) ?: return UtilityScore.NEUTRAL
-        val base = strategy.rules.score(situation)
+        val score = strategy.rules.score(situation)
         val held = facts.value(TacticalFacts.MANNER) == strategy
-        return UtilityScore(min(1.0, base + if (held) ADVANTAGE else 0.0), reason = strategy.rules.reason)
+        // A vetoed strategy stays vetoed held: the advantage only keeps one still worth something.
+        return if (held && score.value > 0.0) score.copy(value = min(1.0, score.value + ADVANTAGE), factors = score.factors + UtilityFactor("held", ADVANTAGE)) else score
     }
 }
 
@@ -947,12 +981,26 @@ object SquadApproaches {
     /** [approach]'s score in the observed situation, with the advantage when the squad holds it. */
     fun score(approach: SquadApproach, facts: FactView): UtilityScore {
         val situation = facts.value(TacticalFacts.SITUATION)
-        val base = when (approach) {
-            SquadApproach.FLANK -> (FLANK_BASE + (situation?.readyFraction ?: 0.0) * FLANK_READINESS - ((situation?.lossFraction ?: 0.0) - FLANK_LOSS_ALLOWANCE).coerceAtLeast(0.0) * FLANK_LOSSES).coerceIn(0.0, 1.0)
-            SquadApproach.FRONTAL -> FRONTAL
+        val a = situation?.assessment ?: SquadAssessment()
+        val score = when (approach) {
+            SquadApproach.FLANK -> UtilityScore.product(
+                (FLANK_BASE + (situation?.readyFraction ?: 0.0) * FLANK_READINESS - ((situation?.lossFraction ?: 0.0) - FLANK_LOSS_ALLOWANCE).coerceAtLeast(0.0) * FLANK_LOSSES).coerceIn(0.0, 1.0),
+                listOf(
+                    // Someone has to hold the enemy's eyes on the front: alone, a squad gets little from a flank.
+                    Consideration("force", a.forceRatio, ResponseCurve.floored(OUTNUMBERED_FLOOR, OUTNUMBERED, EVEN)),
+                    Consideration("fire_support", a.fireSupport, ResponseCurve.floored(UNSUPPORTED_FLOOR, 0.0, 1.0)),
+                    // The way round costs time that grows with the distance to the point.
+                    Consideration("objective_distance", a.objectiveDistance, ResponseCurve.floored(FAR_FLOOR, FAR, NEAR)),
+                    // In the dark the enemy sees a flank coming later.
+                    Consideration("light", a.light, ResponseCurve.floored(DAYLIGHT_FLOOR, 1.0, DARK)),
+                ),
+                "flank",
+            )
+
+            SquadApproach.FRONTAL -> UtilityScore.product(FRONTAL, emptyList(), "frontal")
         }
         val held = facts.value(TacticalFacts.APPROACH) == approach
-        return UtilityScore(min(1.0, base + if (held) SquadManners.ADVANTAGE else 0.0), reason = approach.name.lowercase())
+        return if (held && score.value > 0.0) score.copy(value = min(1.0, score.value + SquadManners.ADVANTAGE), factors = score.factors + UtilityFactor("held", SquadManners.ADVANTAGE)) else score
     }
 
     private const val FLANK_BASE = 0.5
@@ -963,6 +1011,15 @@ object SquadApproaches {
     private const val FLANK_LOSS_ALLOWANCE = 0.3
     private const val FLANK_LOSSES = 2.0
     private const val FRONTAL = 0.45
+    private const val OUTNUMBERED_FLOOR = 0.6
+    private const val OUTNUMBERED = 0.7
+    private const val EVEN = 1.3
+    private const val UNSUPPORTED_FLOOR = 0.85
+    private const val FAR_FLOOR = 0.4
+    private const val FAR = 160.0
+    private const val NEAR = 48.0
+    private const val DAYLIGHT_FLOOR = 0.9
+    private const val DARK = 0.3
 }
 
 /** How a team's men rush when they advance by legs ([PositionIntent.legs]). */

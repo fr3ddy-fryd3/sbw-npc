@@ -21,6 +21,7 @@ import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.*
 import com.sbwnpc.squad.team.Diplomacy
 import com.sbwnpc.squad.util.Terrain
+import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.phys.Vec3
@@ -28,6 +29,7 @@ import net.minecraft.world.phys.shapes.CollisionContext
 import java.util.UUID
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.min
 import com.sbwnpc.squad.ai.tactics.AirSupport as AirPlan
 import com.sbwnpc.squad.ai.tactics.FireSupport as CrewPlan
 import com.sbwnpc.squad.ai.tactics.TankSupport as TankPlan
@@ -93,6 +95,28 @@ object NativeTactics {
 
     /** Fewer men than this far from the squad never count it as scattered. */
     private const val REGROUP_MIN_SCATTERED = 2
+
+    /** The force ratio counts no higher: beyond it, a squad is simply much the stronger. */
+    private const val MAX_FORCE_RATIO = 4.0
+
+    /** Steps the [SquadAssessment] inputs are rounded to, so the situation fact does not change on every refresh. */
+    private const val FORCE_STEP = 0.5
+    private const val AMMO_STEP = 0.25
+    private const val HEALTH_STEP = 0.2
+    private const val DISTANCE_STEP = 32.0
+    private const val LIGHT_STEP = 0.25
+    private const val SECONDS_STEP = 10.0
+
+    /** An armoured enemy counts as this many men in the force ratio. */
+    private const val ARMOURED_MEN = 3.0
+
+    /** Beyond this the flank's distance curve is flat, so a farther objective is not told apart. */
+    private const val MAX_OBJECTIVE_DISTANCE = 160.0
+    private const val MAX_LIGHT = 15.0
+    private const val TICKS_PER_SECOND = 20.0
+
+    /** Seconds since contact count no higher, so a quiet squad's situation stops changing. */
+    private const val MAX_SINCE_CONTACT = 40.0
 
     /** How long after its incoming fire lapsed a squad still counts as under fire, see [CombatSituation.underFire]. */
     private const val UNDER_FIRE_TICKS = 200L
@@ -850,7 +874,7 @@ object NativeTactics {
             if (old == strategy) return
             if (old == CombatStrategy.REGROUP) regroupEnds[squad] = now
             strategies[squad] = strategy to now
-            val scores = situations[squad]?.let { situation -> CombatStrategy.entries.filter { it.rules.allowed(situation) }.associate { it.name to "%.2f".format(it.rules.score(situation)) } }
+            val scores = situations[squad]?.let { situation -> CombatStrategy.entries.filter { it.rules.allowed(situation) }.associate { it.name to it.rules.score(situation).explain() } }
             DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=strategy from={} to={} scores={} situation={}", squad, old, strategy, scores, situations[squad])
             DecisionTrace.group(squad, now, "squad", "strategy", "$old -> $strategy, allowed and scored: $scores")
         }
@@ -1906,6 +1930,7 @@ object NativeTactics {
                     reinforced = saved.barracks != null,
                     underFire = lastHits[saved.id]?.let { now - it <= UNDER_FIRE_TICKS } == true,
                     retreating = retreating,
+                    assessment = assess(saved, view, contact, now),
                 )
                 val strategy = strategies[saved.id]?.first
                 val strategyKept = strategy == null || seenStrategies.put(saved.id, strategy) == strategy
@@ -2336,11 +2361,37 @@ object NativeTactics {
                 AgentLevel.NPC -> null
             }
 
+        /** What [saved]'s considerations weigh, from its [view]; see [SquadAssessment]. */
+        private fun assess(saved: Squad, view: TacticalSnapshot, contact: Boolean, now: Long): SquadAssessment {
+            val enemies = view.visible.sumOf { if (it.armoured) ARMOURED_MEN else 1.0 }
+            val members = view.members.ifEmpty { null }
+            val objective = saved.objective?.center?.takeIf { saved.objectiveDimension == null || saved.objectiveDimension == level.dimension() }
+            // Only an attack weighs its approach, the one consumer of the distance, the light and the support:
+            // left in, each change of them replanned every other squad for nothing.
+            val approaching = saved.order == SquadOrder.ATTACK
+            val supported = fireSupport.roster.crews(saved.id).isNotEmpty() || tanks.roster.tanks(saved.id).isNotEmpty()
+            return SquadAssessment(
+                forceRatio = if (enemies > 0.0) SquadAssessment.of(min(view.fighting.size / enemies, MAX_FORCE_RATIO), FORCE_STEP) else null,
+                ammo = members?.takeIf { contact }?.let { all -> SquadAssessment.of(all.count { it.primaryAmmo }.toDouble() / all.size, AMMO_STEP) },
+                health = members?.takeIf { contact }?.let { all -> SquadAssessment.of(all.sumOf { it.health } / all.size, HEALTH_STEP) },
+                objectiveDistance = objective?.takeIf { approaching }?.let { SquadAssessment.of(min(hypot(it.x - view.center.x, it.z - view.center.z), MAX_OBJECTIVE_DISTANCE), DISTANCE_STEP) },
+                fireSupport = if (!approaching) {
+                    null
+                } else if (supported) {
+                    1.0
+                } else {
+                    0.0
+                },
+                light = if (approaching) SquadAssessment.of(level.getMaxLocalRawBrightness(BlockPos.containing(view.center)) / MAX_LIGHT, LIGHT_STEP) else null,
+                sinceContact = view.contacts.maxOfOrNull { it.seenAt }?.let { SquadAssessment.of(min((now - it) / TICKS_PER_SECOND, MAX_SINCE_CONTACT), SECONDS_STEP) },
+            )
+        }
+
         /** Gathers what the planner weighed; the decision is recorded once its result is in ([flushPlanning]). */
         private fun tracePlanning(id: AgentId, event: PlanningEvent) {
             val method = event.method ?: return
             val option = when (val verdict = event.verdict) {
-                Verdict.Allowed -> "$method ${event.score?.value?.let { "%.2f".format(it) } ?: "-"}"
+                Verdict.Allowed -> "$method ${event.score?.explain() ?: "-"}"
                 is Verdict.Rejected -> "$method rejected: ${verdict.reason}"
                 is Verdict.Unknown -> "$method unknown: ${verdict.facts}"
             }
