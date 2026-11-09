@@ -455,6 +455,9 @@ object NativeTactics {
         /** What each man's cover actions found and did, read back as his facts (#251). */
         private val cover = HashMap<UUID, CoverState>()
 
+        // Roofs near men shelled from where they cannot see (owner 08.11).
+        private val roofs = RoofSearch()
+
         /** Each man's last squadmate-spacing check: when, and whether he was crowded (#299). */
         private val crowding = HashMap<UUID, Pair<Long, Boolean>>()
 
@@ -1303,6 +1306,17 @@ object NativeTactics {
             return contacts.none { it.knownArmourTo(npc, level, level.gameTime) && !armourShelter(npc, it.eye, it.id, feet) }
         }
 
+        private fun roofFor(npc: NpcEntity, underFire: Boolean, sector: FireSector?, digs: Int, now: Long): Point3? {
+            // Under his roof already, he stays while shells still fall anywhere he hears them, not only
+            // within 24: the barrage walking off a little sent men out between rounds (owner 09.11).
+            val shelling = npc.shelled() || underFire || (npc.shellingHeard() && roofs.sheltering(npc))
+            // A target shared from 80+ blocks that he neither sees nor reaches is no fight (owner 09.11:
+            // gunners and snipers on their posts ignored every shell with no contact at all).
+            val fighting = shelling && npc.target?.let { com.sbwnpc.squad.combat.FiringOpportunity.assess(npc, it) == com.sbwnpc.squad.combat.tactics.TacticalTargetSelection.Opportunity.SHOOTABLE } == true
+            val unseen = shelling && sector == null && !fighting && npc.vehicle == null
+            return if (unseen && digs == 0) roofs.near(npc, now) else null
+        }
+
         private fun coverOf(npc: NpcEntity) = cover.getOrPut(npc.uuid, ::CoverState)
 
         /**
@@ -1326,6 +1340,8 @@ object NativeTactics {
                 .observe(TacticalFacts.SHELTERED, state?.sheltered(npc, sector) == true)
                 .observe(TacticalFacts.CROWDED, crowded(npc, now))
             sector?.let { result = result.observe(TacticalFacts.FIRE_SECTOR, it) }
+            // Shelled or suppressed with no sector and nothing in sight: a roof near him, if any.
+            roofFor(npc, underFire, sector, digs, now)?.let { result = result.observe(TacticalFacts.ROOF, it) }
             state?.failure?.let { result = result.observe(TacticalFacts.COVER_FAILURE, it, observedAt = it.failedAt, expiresAt = it.failedAt + FAILURE_MEMORY_TICKS) }
             // Only the answers to no cover and the hole read these, and a man peeking from cover
             // sees his target and loses it again: observed always, they would replan him each time.
@@ -1680,6 +1696,7 @@ object NativeTactics {
                 engageStates.entries.removeIf { (id, state) -> (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) state.dispose() } }
                 engageBands.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 crowding.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                roofs.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 grenades.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 suspendedBy.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -2971,6 +2988,7 @@ object NativeTactics {
             legs.clear()
             armour.clear()
             cover.clear()
+            roofs.clear()
             crowding.clear()
             supportWaits.clear()
             coverStalls.clear()

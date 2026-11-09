@@ -60,6 +60,7 @@ internal class NativePositionAction(
         override fun clearance(role: NpcClass) = CombatPositionSafety.clearance(role, intent.assault).let { own -> intent.sightClearance?.let { minOf(it, own) } ?: own }
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
             if (intent.armour != null && !NativeTactics.armourSheltered(npc, point)) return false
+            if (intent.roofed && !RoofSearch.roofed(npc.level(), net.minecraft.core.BlockPos.containing(point))) return false
             if (intent.minimumHeight?.let { point.y < it } == true) return false
             if (intent.inspection != null && point.distanceTo(intent.inspection.native()) <= 24 && !DetectionSightline.visible(npc.level() as ServerLevel, point.add(0.0, npc.eyeHeight.toDouble(), 0.0), intent.inspection.native().add(0.0, 1.5, 0.0), npc)) return false
             return !intent.duty.advancing || advances(npc.position(), task.anchor, localAnchor, point)
@@ -318,7 +319,7 @@ internal class NativePositionAction(
 
             next.armour != intent.armour -> "armour_source_changed"
 
-            next.inspection != intent.inspection || next.hold != intent.hold || next.holdFeet != intent.holdFeet || next.spread != intent.spread || next.legs != intent.legs -> "post_kind_changed"
+            next.inspection != intent.inspection || next.hold != intent.hold || next.holdFeet != intent.holdFeet || next.spread != intent.spread || next.legs != intent.legs || next.roofed != intent.roofed -> "post_kind_changed"
 
             // GAIN_HEIGHT sets the floor from where the man stands now, so it moved with every
             // step up or down a slope and threw away a post that was still high enough.

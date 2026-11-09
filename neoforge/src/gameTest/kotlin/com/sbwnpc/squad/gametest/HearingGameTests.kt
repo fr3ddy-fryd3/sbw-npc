@@ -118,6 +118,33 @@ object HearingGameTests {
         }
     }
 
+    /**
+     * Shells land near a defending man from a gun nobody sees (owner 08.11): he makes for the roofed
+     * shed 12 blocks off and stands under it, rather than staying in the open.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "shelter")
+    fun shelledManTakesTheShedWithoutSeeingTheMortar(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        // A 3x3 roof on four posts at x 32..34, z 19..21, three blocks up.
+        for (x in 31..35) for (z in 18..22) helper.setBlock(BlockPos(x, 4, z), Blocks.OAK_PLANKS)
+        for ((x, z) in listOf(31 to 18, 35 to 18, 31 to 22, 35 to 22)) for (y in 1..3) helper.setBlock(BlockPos(x, y, z), Blocks.OAK_LOG)
+        val man = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 20.5), SquadFaction.PIG)
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, helper.absolutePos(BlockPos(20, 1, 20)))
+        cleanup(helper) {
+            manager.deleteSquad(helper.level, squad.id)
+            man.discard()
+        }
+        helper.onEachTick {
+            if (helper.tick in 40L..400L && helper.tick % 40L == 0L) Hearing.explosion(helper.level, helper.absoluteVec(Vec3(14.5, 1.0, 14.5)), 4.0f, null)
+            val at = helper.relativeVec(man.position())
+            if (helper.tick > 40 && at.x in 31.0..36.0 && at.z in 18.0..23.0) helper.succeed()
+            if (helper.tick == 590L) helper.fail("He stayed in the open at $at")
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 110, batch = "hearing")
     fun hostileLandingBehindNpcTurnsHeadBeforeAcquiringTarget(helper: GameTestHelper) {
