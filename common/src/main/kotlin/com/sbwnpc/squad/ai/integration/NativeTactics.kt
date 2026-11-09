@@ -653,7 +653,7 @@ object NativeTactics {
             }
             val progress = reconProgress[saved.id]?.takeIf { it.stamp == saved.orderStamp } ?: ReconProgress(saved.orderStamp).also { reconProgress[saved.id] = it }
             val before = progress.stage
-            val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now, centre, reconSees(saved, progress, objective, centre))
+            val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now, centre, reconSees(saved, progress, objective, centre, now))
             if (stage != before) {
                 DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=stage from={} to={}", saved.id, before, stage)
                 if (stage == ReconStage.REPORTED) {
@@ -686,15 +686,17 @@ object NativeTactics {
          * objective. Stalking into a new ring it first searches that ring for a spot with a view; none
          * there, it posts at the ring as before rather than walk on blind.
          */
-        private fun reconSees(saved: Squad, progress: ReconProgress, objective: Point3, centre: Point3): Boolean {
+        private fun reconSees(saved: Squad, progress: ReconProgress, objective: Point3, centre: Point3, now: Long): Boolean {
             if (progress.stage != ReconStage.STALK) return true
+            val men = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }
             if (progress.spotRing != progress.postDistance) {
-                val found = ReconPostSearch.find(level, objective, centre, progress.postDistance)
-                progress.searched(found)
-                DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_search ring={} spot={}", saved.id, progress.postDistance, found)
+                val found = ReconPostSearch.find(level, objective, centre, progress.postDistance, men.firstOrNull())
+                progress.searched(found, now)
+                DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_search ring={} from={} objective={} spot={}", saved.id, progress.postDistance, centre, objective, found)
             }
-            if (progress.spot == null) return true
-            return saved.members.any { id -> (level.getEntity(id) as? NpcEntity)?.let { ReconPostSearch.sees(level, it.eyePosition, objective) } == true }
+            // The men look only once in the ring: a line per man per tick on the way there is waste.
+            if (progress.spot == null || hypot(centre.x - objective.x, centre.z - objective.z) > progress.postDistance) return false
+            return men.any { ReconPostSearch.sees(level, it.eyePosition, objective) }
         }
 
         /** The report from the post (owner 26.10): the enemies its side knows round the objective, or nobody. */
@@ -758,7 +760,7 @@ object NativeTactics {
             if (recons.isEmpty()) return false
             // From the latest post: one that steps nearer seeing nobody starts its watch again there.
             val atPost = recons.mapNotNull { reconProgress[it.id]?.takeIf { p -> p.stamp == it.orderStamp }?.postFrom }.minOrNull()
-            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { r -> reconProgress[r.id]?.takeIf { it.stamp == r.orderStamp }?.reportsDone ?: recon.reported(r) })
+            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { r -> reconProgress[r.id]?.takeIf { it.stamp == r.orderStamp }?.reportsDone ?: false })
             if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end", operation.id)
             return waiting
         }

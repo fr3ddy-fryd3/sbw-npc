@@ -81,7 +81,7 @@ class ReconProgressTest {
         val p = ReconProgress(1)
         p.update(95.0, 0)
         val view = Point3(10.0, 80.0, 60.0)
-        p.searched(view)
+        p.searched(view, 0)
         assertEquals(view, p.point(o, Point3(0.0, 64.0, 70.0)))
         assertEquals(ReconStage.STALK, p.update(70.0, 10, Point3(0.0, 64.0, 70.0), sees = false))
         assertEquals(ReconStage.WATCH, p.update(61.0, 20, view, sees = true))

@@ -25,7 +25,10 @@ internal object ReconPostSearch {
     private const val ARC_STEPS = 12
     private const val RING_STEP = 4.0
     private const val STEP = 6
-    private const val EYE = 1.62
+
+    // A stalking scout's eyes, crouched: the spot must show him the objective as he will stand there.
+    private const val EYE = 1.27
+    private const val ROUTE_CHECKS = 3
 
     /** The objective is looked at this high above its centre: a man standing there, not its floor. */
     private const val TARGET_HEIGHT = 1.5
@@ -34,22 +37,24 @@ internal object ReconPostSearch {
      * The best post between [ReconProgress.MIN_POST_DISTANCE] and [ring] blocks from [objective] on the
      * side of [from]: the highest spot that sees it, the nearer of two at one height. Null when none does.
      */
-    fun find(level: Level, objective: Point3, from: Point3, ring: Double): Point3? {
+    fun find(level: Level, objective: Point3, from: Point3, ring: Double, walker: com.sbwnpc.squad.entity.NpcEntity?): Point3? {
         val bearing = atan2(from.z - objective.z, from.x - objective.x)
         val target = Vec3(objective.x, objective.y + TARGET_HEIGHT, objective.z)
-        var best: BlockPos? = null
+        val seeing = ArrayList<BlockPos>()
         var radius = ring
         while (radius >= ReconProgress.MIN_POST_DISTANCE) {
             for (i in -ARC_STEPS..ARC_STEPS) {
                 val angle = bearing + ARC * i / ARC_STEPS
                 val column = BlockPos.containing(objective.x + cos(angle) * radius, objective.y, objective.z + sin(angle) * radius)
                 val feet = standing(level, column) ?: continue
-                if (best != null && feet.y < best.y) continue
-                if (best != null && feet.y == best.y && feet.distSqr(BlockPos.containing(from.x, from.y, from.z)) >= best.distSqr(BlockPos.containing(from.x, from.y, from.z))) continue
-                if (sees(level, Vec3(feet.x + HALF, feet.y + EYE, feet.z + HALF), target)) best = feet
+                if (sees(level, Vec3(feet.x + HALF, feet.y + EYE, feet.z + HALF), target)) seeing += feet
             }
             radius -= RING_STEP
         }
+        val origin = BlockPos.containing(from.x, from.y, from.z)
+        // Higher ground first, the nearer of two at one height; only a spot he can walk to.
+        val best = seeing.sortedWith(compareByDescending<BlockPos> { it.y }.thenBy { it.distSqr(origin) }).take(ROUTE_CHECKS)
+            .firstOrNull { walker == null || walker.navigation.createPath(it, 0)?.canReach() == true }
         return best?.let { Point3(it.x + HALF, it.y.toDouble(), it.z + HALF) }
     }
 
@@ -66,6 +71,7 @@ internal object ReconPostSearch {
         return (0..STEP).map { BlockPos(column.x, top - it, column.z) }.firstOrNull { feet ->
             level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), Direction.UP) &&
                 level.getBlockState(feet).getCollisionShape(level, feet).isEmpty &&
+                level.getFluidState(feet).isEmpty &&
                 level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty
         }
     }

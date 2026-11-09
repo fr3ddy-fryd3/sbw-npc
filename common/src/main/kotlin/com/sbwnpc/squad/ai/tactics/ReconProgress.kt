@@ -75,10 +75,13 @@ class ReconProgress(val stamp: Int) {
         private set
 
     /** The search for a post with a view, made for the current ring, found [found]. */
-    fun searched(found: Point3?) {
+    fun searched(found: Point3?, now: Long) {
         spot = found
         spotRing = postDistance
+        spotSince = now
     }
+
+    private var spotSince = 0L
 
     /**
      * Advances the stage for a squad whose centre stands [distance] blocks from the objective at [now];
@@ -88,8 +91,15 @@ class ReconProgress(val stamp: Int) {
     fun update(distance: Double, now: Long, centre: Point3? = null, sees: Boolean = true): ReconStage {
         stage = when (stage) {
             ReconStage.STAGING -> if (distance <= STAGING_DISTANCE + ARRIVAL) ReconStage.STALK else ReconStage.STAGING
-            ReconStage.STALK -> if (distance <= postDistance && sees) arrive(now, centre) else ReconStage.STALK
+
+            ReconStage.STALK -> {
+                // A spot it cannot get to in time is given up: it posts at the ring as before.
+                if (spot != null && now - spotSince > SPOT_TICKS) spot = null
+                if (distance <= postDistance && (sees || spot == null)) arrive(now, centre) else ReconStage.STALK
+            }
+
             ReconStage.WATCH -> if (now - (postFrom ?: now) >= WATCH_TICKS) ReconStage.REPORTED else ReconStage.WATCH
+
             ReconStage.REPORTED -> ReconStage.REPORTED
         }
         return stage
@@ -174,6 +184,9 @@ class ReconProgress(val stamp: Int) {
 
         /** Seeing nobody, those waiting for the recon move after this many of its reports (owner 09.11). */
         const val REPORTS_AWAITED = 3
+
+        /** How long it makes for a spot with a view before it gives it up (60 s). */
+        const val SPOT_TICKS = 1200L
 
         /** Watching before the report: 20 s (owner 26.10). */
         const val WATCH_TICKS = 400L
