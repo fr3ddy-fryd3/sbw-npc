@@ -24,4 +24,10 @@ class ObjectiveApproachTest {
         assertFalse(cautious(onFoot = false))
         assertFalse(cautious(spent = true))
     }
+
+    @Test fun `shelled he runs the approach instead of walking it`() {
+        assertTrue(ObjectiveApproach.walks(SquadOrder.ATTACK, shelled = false))
+        assertFalse(ObjectiveApproach.walks(SquadOrder.ATTACK, shelled = true))
+        assertFalse(ObjectiveApproach.walks(SquadOrder.MOVE, shelled = false))
+    }
 }
