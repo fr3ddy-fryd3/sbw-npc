@@ -65,11 +65,30 @@ class ReconProgress(val stamp: Int) {
     var postFrom: Long? = null
         private set
 
-    /** Advances the stage for a squad whose centre stands [distance] blocks from the objective at [now]; returns the stage. */
-    fun update(distance: Double, now: Long, centre: Point3? = null): ReconStage {
+    /**
+     * The spot with a view of the objective it makes for within the current ring (owner 09.11), and the
+     * ring it was searched for; null spot with [spotRing] set means no spot in that ring sees it.
+     */
+    var spot: Point3? = null
+        private set
+    var spotRing: Double? = null
+        private set
+
+    /** The search for a post with a view, made for the current ring, found [found]. */
+    fun searched(found: Point3?) {
+        spot = found
+        spotRing = postDistance
+    }
+
+    /**
+     * Advances the stage for a squad whose centre stands [distance] blocks from the objective at [now];
+     * returns the stage. In the ring it takes its post only where it [sees] the objective: over broken
+     * ground the ring alone let it settle blind, or walk on almost onto the enemy.
+     */
+    fun update(distance: Double, now: Long, centre: Point3? = null, sees: Boolean = true): ReconStage {
         stage = when (stage) {
             ReconStage.STAGING -> if (distance <= STAGING_DISTANCE + ARRIVAL) ReconStage.STALK else ReconStage.STAGING
-            ReconStage.STALK -> if (distance <= postDistance) arrive(now, centre) else ReconStage.STALK
+            ReconStage.STALK -> if (distance <= postDistance && sees) arrive(now, centre) else ReconStage.STALK
             ReconStage.WATCH -> if (now - (postFrom ?: now) >= WATCH_TICKS) ReconStage.REPORTED else ReconStage.WATCH
             ReconStage.REPORTED -> ReconStage.REPORTED
         }
@@ -128,7 +147,7 @@ class ReconProgress(val stamp: Int) {
         when (stage) {
             ReconStage.STAGING -> shortOf(objective, centre, STAGING_DISTANCE)
 
-            ReconStage.STALK -> shortOf(objective, centre, postDistance - ARRIVAL)
+            ReconStage.STALK -> spot?.takeIf { spotRing == postDistance } ?: shortOf(objective, centre, postDistance - ARRIVAL)
 
             ReconStage.WATCH -> post ?: centre
 

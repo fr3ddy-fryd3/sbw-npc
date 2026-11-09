@@ -50,6 +50,7 @@ class NoticingRuleTest {
             "com/sbwnpc/squad/ai/integration/NativeTactics.kt" to Counted(6, "witnesses of an area and posts: who could have seen a point, not who noticed an enemy; a man under fire still sees his own target; drone launch columns stay hidden from known armour"),
             "com/sbwnpc/squad/ai/integration/GrenadeChoice.kt" to Counted(2, "a grenadier's line of the throw, and the line to his own target, which he has noticed"),
             "com/sbwnpc/squad/combat/FiringOpportunity.kt" to Counted(1, "line of fire"),
+            "com/sbwnpc/squad/ai/integration/ReconPostSearch.kt" to Counted(1, "a recon post's view of its objective: a point, never an enemy noticed"),
             "com/sbwnpc/squad/combat/VehicleTargeting.kt" to Counted(3, "a gunner's or aircrew's own sight is instant by design, and weaponPermits is an aim line"),
             "com/sbwnpc/squad/combat/tactics/SquadTactics.kt" to Counted(1, "line to an enemy a squadmate already has"),
             "com/sbwnpc/squad/combat/tactics/TacticalSnapshotCollector.kt" to Counted(2, "who of the squad sees the contact, for the picture"),

@@ -653,7 +653,7 @@ object NativeTactics {
             }
             val progress = reconProgress[saved.id]?.takeIf { it.stamp == saved.orderStamp } ?: ReconProgress(saved.orderStamp).also { reconProgress[saved.id] = it }
             val before = progress.stage
-            val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now, centre)
+            val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now, centre, reconSees(saved, progress, objective, centre))
             if (stage != before) {
                 DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=stage from={} to={}", saved.id, before, stage)
                 if (stage == ReconStage.REPORTED) {
@@ -679,6 +679,22 @@ object NativeTactics {
             reconnoitring += saved.id
             if (stage == ReconStage.STAGING) stalking -= saved.id else stalking += saved.id
             return stage to progress.point(objective, centre)
+        }
+
+        /**
+         * Whether [saved] may take its post where it stands (owner 09.11): one of its men sees the
+         * objective. Stalking into a new ring it first searches that ring for a spot with a view; none
+         * there, it posts at the ring as before rather than walk on blind.
+         */
+        private fun reconSees(saved: Squad, progress: ReconProgress, objective: Point3, centre: Point3): Boolean {
+            if (progress.stage != ReconStage.STALK) return true
+            if (progress.spotRing != progress.postDistance) {
+                val found = ReconPostSearch.find(level, objective, centre, progress.postDistance)
+                progress.searched(found)
+                DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_search ring={} spot={}", saved.id, progress.postDistance, found)
+            }
+            if (progress.spot == null) return true
+            return saved.members.any { id -> (level.getEntity(id) as? NpcEntity)?.let { ReconPostSearch.sees(level, it.eyePosition, objective) } == true }
         }
 
         /** The report from the post (owner 26.10): the enemies its side knows round the objective, or nobody. */

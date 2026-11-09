@@ -76,6 +76,18 @@ class ReconProgressTest {
         assertEquals(true, empty.reportsDone)
     }
 
+    @Test fun `in the ring it posts only where it sees the objective, making for the spot with a view`() {
+        val o = Point3(0.0, 64.0, 0.0)
+        val p = ReconProgress(1)
+        p.update(95.0, 0)
+        val view = Point3(10.0, 80.0, 60.0)
+        p.searched(view)
+        assertEquals(view, p.point(o, Point3(0.0, 64.0, 70.0)))
+        assertEquals(ReconStage.STALK, p.update(70.0, 10, Point3(0.0, 64.0, 70.0), sees = false))
+        assertEquals(ReconStage.WATCH, p.update(61.0, 20, view, sees = true))
+        assertEquals(view, p.point(o, Point3(0.0, 64.0, 50.0)))
+    }
+
     @Test fun `seeing nobody it steps nearer down to the closest post, never onto the objective`() {
         val progress = ReconProgress(1)
         progress.update(95.0, 0)
