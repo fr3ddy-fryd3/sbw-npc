@@ -22,14 +22,22 @@ import com.sbwnpc.squad.squad.*
 import com.sbwnpc.squad.team.Diplomacy
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
+import net.minecraft.core.SectionPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.CollisionContext
 import java.util.UUID
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import com.sbwnpc.squad.ai.tactics.AirSupport as AirPlan
 import com.sbwnpc.squad.ai.tactics.FireSupport as CrewPlan
 import com.sbwnpc.squad.ai.tactics.TankSupport as TankPlan
@@ -346,6 +354,9 @@ object NativeTactics {
      */
     private const val ENGAGER_TICKS = 40L
 
+    /** Bearings this close (radians) are the same sector: the pinning group's is head-on exactly. */
+    private const val SAME_BEARING = 1e-6
+
     /** One group of an attack that takes an approach sector: a squad, or a lone squad's manoeuvre group. */
     private data class SectorGroup(val squad: UUID, val manoeuvre: Boolean)
 
@@ -469,6 +480,12 @@ object NativeTactics {
         private val areaOccupied = HashMap<UUID, Boolean>()
         private val attacks = HashMap<UUID, AttackProgress>()
         private val sectors = HashMap<UUID, ApproachSectors<SectorGroup>>()
+
+        // Per operation of two attacking groups (#173): what its manoeuvre is scored on, measured once at
+        // first contact, the group the manoeuvre moves, and the manoeuvre its plan chose.
+        private val manoeuvreInputs = HashMap<UUID, ManoeuvreAssessment>()
+        private val manoeuvreGroups = HashMap<UUID, SectorGroup>()
+        private val operationManoeuvres = HashMap<UUID, OperationManoeuvre>()
         private val sectorTraces = HashMap<UUID, Map<SectorGroup, Double>>()
         private val flankTraces = HashMap<UUID, Int>()
 
@@ -824,7 +841,7 @@ object NativeTactics {
                 ) { feedback ->
                     if (DecisionTrace.on) flushPlanning(id, feedback.result)
                     planResultObserver?.invoke(id.level)
-                    if (id.level == AgentLevel.SQUAD) (feedback.result as? PlanningResult.Ready)?.let { recordManner(id.id, it.plan, level.gameTime) }
+                    (feedback.result as? PlanningResult.Ready)?.let { recordChoice(id, it.plan) }
                     DebugFlags.log(LogGroup.ORDER, "[htn] level={} actor={} event=plan_result result={}", id.level, id.id, feedback.result.javaClass.simpleName)
                 }
             }
@@ -919,7 +936,87 @@ object NativeTactics {
             val observed = areaObservedAt[id]
             if (observed != null) result = result.observe(TacticalFacts.AREA_SECURED, areaClocks[id]?.completed == true, observedAt = observed, expiresAt = observed + 11)
             attacks[id]?.let { result = result.observe(TacticalFacts.ATTACK_PHASE, it.phase) }
+            manoeuvreInputs[id]?.let { result = result.observe(TacticalFacts.MANOEUVRE_INPUT, it) }
+            operationManoeuvres[id]?.let { result = result.observe(TacticalFacts.MANOEUVRE, it) }
             return result
+        }
+
+        // The squad's manner and the operation's manoeuvre are read back from the method its new plan took.
+        private fun recordChoice(id: AgentId, plan: HtnPlan) {
+            when (id.level) {
+                AgentLevel.SQUAD -> recordManner(id.id, plan, level.gameTime)
+                AgentLevel.OPERATION -> recordManoeuvre(id.id, plan, level.gameTime)
+                else -> Unit
+            }
+        }
+
+        private fun forgetManoeuvre(operation: UUID) {
+            manoeuvreInputs.remove(operation)
+            manoeuvreGroups.remove(operation)
+            operationManoeuvres.remove(operation)
+        }
+
+        /**
+         * Records the manoeuvre the operation's new [plan] took (`root/<phase>/0/<manoeuvre>/...`) and,
+         * on a change, steers the second group to its sector (#173).
+         */
+        private fun recordManoeuvre(operation: UUID, plan: HtnPlan, now: Long) {
+            val option = plan.tasks.firstOrNull()?.node?.split('/')?.getOrNull(3)?.let(OperationManoeuvres::of) ?: return
+            val old = operationManoeuvres.put(operation, option)
+            if (old == option) return
+            val input = manoeuvreInputs[operation]
+            val group = manoeuvreGroups[operation]
+            val offset = OperationManoeuvres.offset(option, input)
+            if (group != null) sectors[operation]?.let { if (offset != null) it.steer(group, offset) else it.restore(group) }
+            val scores = OperationManoeuvre.entries.filter { OperationManoeuvres.eligible(it, input).evaluate(FactSnapshot(AgentId(AgentLevel.OPERATION, operation), now)) == Verdict.Allowed }
+                .associate { it.name to OperationManoeuvres.score(it, input).explain() }
+            DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=manoeuvre from={} to={} scores={} input={}", operation, old, option, scores, input)
+            DecisionTrace.group(operation, now, "operation", "manoeuvre", "$old -> $option, allowed and scored: $scores")
+        }
+
+        /**
+         * What an attack of exactly two groups scores its manoeuvre on, measured once [bearings] are
+         * fixed (#173): the walk round the point to each flank sector and the ground height there, and
+         * whether the second group stands high off to a side near the defence. Loaded chunks only; an
+         * unknown side is left out and the envelop stands.
+         */
+        private fun measureManoeuvre(operation: UUID, objective: Point3, centres: Map<SectorGroup, Point3>, bearings: Map<SectorGroup, Double>, squads: List<Squad>) {
+            if (operation in manoeuvreInputs || centres.size != 2) return
+            val head = sectors[operation]?.headOnBearing ?: return
+            val second = centres.keys.firstOrNull { group -> bearings[group]?.let { abs(Math.IEEEremainder(it - head, 2 * PI)) > SAME_BEARING } == true } ?: return
+            val pinning = centres.keys.first { it != second }
+            val at = centres.getValue(second)
+            val radius = hypot(at.x - objective.x, at.z - objective.z)
+            val stands = atan2(at.z - objective.z, at.x - objective.x)
+            fun side(offset: Double): ManoeuvreAssessment.Side {
+                val bearing = head + offset
+                val walk = abs(Math.IEEEremainder(bearing - stands, 2 * PI)) * (radius + ApproachSectors.ARC_MARGIN)
+                val x = objective.x + cos(bearing) * radius
+                val z = objective.z + sin(bearing) * radius
+                return ManoeuvreAssessment.Side(walk, surface(x, z)?.let { it - objective.y })
+            }
+            val offset = Math.IEEEremainder(stands - head, 2 * PI)
+            val defence = squads.flatMap { combatView(it.id)?.contacts.orEmpty() }.minOfOrNull { hypot(it.position.x - at.x, it.position.z - at.z) }
+            val rise = at.y - objective.y
+            val overAllies = at.y - centres.getValue(pinning).y
+            val high = rise >= OperationManoeuvres.MIN_RISE && overAllies >= OperationManoeuvres.MIN_RISE
+            val near = defence?.takeIf { it <= OperationManoeuvres.MAX_DEFENCE }
+            val height = if (near != null && high && OperationManoeuvres.flankStand(offset)) {
+                ManoeuvreAssessment.HeightStand(offset, rise, overAllies, near)
+            } else {
+                null
+            }
+            manoeuvreInputs[operation] = ManoeuvreAssessment(side(ApproachSectors.FLANK_ANGLE), side(-ApproachSectors.FLANK_ANGLE), height)
+            manoeuvreGroups[operation] = second
+            DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=manoeuvre_input input={}", operation, manoeuvreInputs[operation])
+        }
+
+        // The ground's surface at a column, without loading its chunk.
+        private fun surface(x: Double, z: Double): Double? {
+            val bx = floor(x).toInt()
+            val bz = floor(z).toInt()
+            if (!level.chunkSource.hasChunk(SectionPos.blockToSectionCoord(bx), SectionPos.blockToSectionCoord(bz))) return null
+            return level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, bx, bz).toDouble()
         }
         private fun squadFacts(empty: FactSnapshot): FactSnapshot {
             val id = empty.owner.id
@@ -1275,6 +1372,7 @@ object NativeTactics {
                     areaOccupied.remove(id.id)
                     attacks.remove(id.id)
                     sectors.remove(id.id)
+                    forgetManoeuvre(id.id)
                     sectorTraces.remove(id.id)
                     flankTraces.remove(id.id)
                     boundTraces.remove(id.id)
@@ -1532,6 +1630,7 @@ object NativeTactics {
                 occupied = areaOccupied[operation] == true,
                 threatsNearby = threats.size,
                 sectorsHeld = sectorsHeld[operation] != false,
+                preparing = operations.operation(operation)?.support?.keys.orEmpty().any(fireSupport.preparing),
             )
             if (progress.phase != before) {
                 DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
@@ -1640,6 +1739,7 @@ object NativeTactics {
                 operations.finish(operation, OperationStatus.CANCELLED)
                 attacks.remove(operation)
                 sectors.remove(operation)
+                forgetManoeuvre(operation)
                 sectorTraces.remove(operation)
                 flankTraces.remove(operation)
                 boundTraces.remove(operation)
@@ -1710,6 +1810,7 @@ object NativeTactics {
             val members = squads.flatMap { saved -> snapshots.getValue(saved.id).members.map { SectorGroup(saved.id, it.id in manoeuvre) to it } }
             val centres = members.groupBy({ it.first }, { it.second.position }).mapValues { (_, at) -> Point3(at.map { it.x }.average(), at.map { it.y }.average(), at.map { it.z }.average()) }
             val bearings = sectors.getOrPut(operation, ::ApproachSectors).bearings(objective, centres, contact, single?.let { SectorGroup(it.id, false) })
+            if (bearings.isNotEmpty()) measureManoeuvre(operation, objective, centres, bearings, squads)
             if (bearings.isNotEmpty() && sectorTraces.put(operation, bearings) != bearings) {
                 DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=approach_sectors objective={} bearings={}", operation, objective, bearings.entries.associate { (group, bearing) -> group.toString() to Math.toDegrees(bearing).toInt() })
             }

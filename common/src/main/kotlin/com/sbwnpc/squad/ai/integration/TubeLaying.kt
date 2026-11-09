@@ -26,7 +26,7 @@ internal class TubeLaying(private val npc: NpcEntity, private val hand: CrewHand
 
     /** Lays [m] on [target] every [AIM_INTERVAL_TICKS] and fires when it may. */
     fun fire(m: Entity, target: FireTarget, now: Long) {
-        val aim = resolve(target) ?: return
+        val aim = resolve(target, m) ?: return
         val tooClose = aim.distSqr(BlockPos.containing(m.position())) < MIN_RANGE_SQR
         if (now >= hand.nextAimTick) {
             hand.nextAimTick = now + AIM_INTERVAL_TICKS
@@ -41,7 +41,7 @@ internal class TubeLaying(private val npc: NpcEntity, private val hand: CrewHand
             DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar {} holds fire: friendlies within {} of {}", npc.uuid, dangerRadius(aim), aim.toShortString())
             return
         }
-        MortarCycle.fireIfReady(m, npc)
+        if (MortarCycle.fireIfReady(m, npc) && target.source == FireSource.ATTACK_PREPARATION) npc.currentSquad()?.let { world.preparation.fired(it.id, target.key) }
     }
 
     /**
@@ -56,10 +56,10 @@ internal class TubeLaying(private val npc: NpcEntity, private val hand: CrewHand
     }
 
     /** Where [target] stands now: the barrage point, the commanded focus or objective, or where the side last saw it. */
-    fun resolve(target: FireTarget): BlockPos? {
+    fun resolve(target: FireTarget, tube: Entity? = null): BlockPos? {
         val squad = npc.currentSquad()
         return when (target.source) {
-            FireSource.ORDER_BARRAGE, FireSource.ATTACK_PREPARATION -> squad?.objective?.let { barragePoint(it, target.key) }
+            FireSource.ORDER_BARRAGE, FireSource.ATTACK_PREPARATION -> squad?.objective?.let { barragePoint(it, target.key, tube) }
             FireSource.COMMANDED -> squad?.focusEntity?.takeIf { it.toString() == target.key }?.let(level::getEntity)?.takeIf { it.isAlive }?.let { BlockPos.containing(it.position()) } ?: squad?.objective
             FireSource.OWN_SIGHTING, FireSource.FACTION_SIGHTING -> world.stateOf(npc.uuid)?.sightingPos?.let(BlockPos::containing)
         }
@@ -70,14 +70,18 @@ internal class TubeLaying(private val npc: NpcEntity, private val hand: CrewHand
      * fire walks on: re-rolled every tick the aim solver would never settle, and walking it is what
      * reads as shelling an area rather than bad aim. The per-shell scatter still applies on top.
      */
-    private fun barragePoint(objective: BlockPos, order: String): BlockPos {
+    private fun barragePoint(objective: BlockPos, order: String, tube: Entity?): BlockPos {
         val now = level.gameTime
         if (now >= hand.nextBarrageShift || hand.barrageAim == null || hand.barrageFor != order) {
             hand.nextBarrageShift = now + BARRAGE_SHIFT_TICKS
             hand.barrageFor = order
             // Infantry walking into the area takes part of it; shell the rest instead of holding
             // fire on a point next to it until the next shift.
-            val picks = (1..BARRAGE_PICKS).map { pick(objective) }
+            // Points the tube cannot reach are left out while it reaches the objective: at the edge of
+            // its range the far side of the area read as out of reach and the crew carried the tube
+            // off mid-barrage (in-game 08.11).
+            val all = (1..BARRAGE_PICKS).map { pick(objective) }
+            val picks = if (tube == null || outOfReach(tube, objective)) all else all.filter { !outOfReach(tube, it) }.ifEmpty { listOf(objective) }
             hand.barrageAim = picks.firstOrNull { npc.currentSquad() == null || !friendlyNear(it) } ?: picks.first()
             DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar {} barrage point {} around {}", npc.uuid, hand.barrageAim?.toShortString(), objective.toShortString())
         }
@@ -142,7 +146,10 @@ internal class TubeLaying(private val npc: NpcEntity, private val hand: CrewHand
         private const val MIN_SCATTER = 5.0
         private const val MAX_SCATTER = 10.0
 
-        /** Past this a fire mission is out of reach whatever the ballistics say: a crew shelling from the far end of the map supports nobody. */
-        private const val MAX_ENGAGE_RANGE = 300.0
+        /**
+         * Past this a fire mission is out of reach whatever the ballistics say, and the crew carries
+         * the tube nearer: 200 blocks (owner, 08.11).
+         */
+        private const val MAX_ENGAGE_RANGE = 200.0
     }
 }

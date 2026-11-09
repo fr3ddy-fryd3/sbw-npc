@@ -325,6 +325,12 @@ object TacticalFacts {
     /** The squad's current turn while it advances by [CombatStrategy.BOUND_OVERWATCH]. */
     val BOUND_TURN = FactKey("squad.bound_turn", BoundTurn::class.java)
 
+    /** What an attack of two groups scores its manoeuvre on (#173), measured once at first contact; absent otherwise. */
+    val MANOEUVRE_INPUT = FactKey("operation.manoeuvre_input", ManoeuvreAssessment::class.java)
+
+    /** The manoeuvre of the operation's installed plan, absent before its first. */
+    val MANOEUVRE = FactKey("operation.manoeuvre", OperationManoeuvre::class.java)
+
     /** The fire team a squad attacking alone sends round its flank (#184), absent while it does not split. */
     val MANOEUVRE_TEAM = FactKey("squad.manoeuvre_team", AgentId::class.java)
 
@@ -477,6 +483,8 @@ object TacticalDomain {
         return TaskNetwork(nodes + listOfNotNull(mission.secure?.let { NetworkNode("secure", SECURE_TASK.call(it)) }))
     }
 
+    private val MANOEUVRE_TASK = TaskKey("operation.manoeuvre", OperationMission::class.java)
+
     /** The call-off is done in its first tick; this only bounds a refused one. */
     private const val CALL_OFF_TICKS = 20L
 
@@ -503,7 +511,23 @@ object TacticalDomain {
                 ) + AttackPhase.entries.map { phase ->
                     Method<OperationMission>(phase.name.lowercase(), eligible = { mission ->
                         Condition.all(steady(mission), Condition.test(TacticalFacts.ATTACK_PHASE, "other_attack_phase") { it == phase })
-                    }, decompose = { mission, _ -> coordinate(mission, mission.attack) })
+                    }, decompose = { mission, _ -> TaskNetwork.sequence(MANOEUVRE_TASK.call(mission)) })
+                },
+            ),
+            // How the attack comes at its objective (#173): the manoeuvre shows in the next layout's
+            // sectors; every method hands the squads the same tasks. A held one keeps an advantage.
+            CompoundTask(
+                MANOEUVRE_TASK,
+                OperationManoeuvre.entries.map { option ->
+                    Method<OperationMission>(
+                        OperationManoeuvres.methodId(option),
+                        eligible = { Condition { facts -> OperationManoeuvres.eligible(option, facts.value(TacticalFacts.MANOEUVRE_INPUT)).evaluate(facts) } },
+                        score = { _, facts ->
+                            val score = OperationManoeuvres.score(option, facts.value(TacticalFacts.MANOEUVRE_INPUT))
+                            if (facts.value(TacticalFacts.MANOEUVRE) == option && score.value > 0) score.copy(value = score.value + SquadManners.ADVANTAGE) else score
+                        },
+                        decompose = { mission, _ -> coordinate(mission, mission.attack) },
+                    )
                 },
             ),
             delegate(),

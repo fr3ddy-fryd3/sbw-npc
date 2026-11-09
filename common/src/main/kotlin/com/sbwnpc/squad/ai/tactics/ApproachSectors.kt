@@ -28,6 +28,9 @@ class ApproachSectors<K : Any> {
     private var headOn: Double? = null
     private val offsets = LinkedHashMap<K, Double>()
 
+    // The flank sector each steered group was first given, so the envelop can send it back.
+    private val home = HashMap<K, Double>()
+
     /**
      * Each of [groups] (keyed to its centre) mapped to its bearing in radians, measured from the
      * [objective] towards the group's line. Empty until [contact]: before the defence is met
@@ -37,6 +40,7 @@ class ApproachSectors<K : Any> {
     fun bearings(objective: Point3, groups: Map<K, Point3>, contact: Boolean, pinning: K? = null): Map<K, Double> {
         if (groups.isEmpty()) return emptyMap()
         offsets.keys.retainAll(groups.keys)
+        home.keys.retainAll(groups.keys)
         if (headOn == null) {
             if (!contact) return emptyMap()
             val first = pinning ?: groups.minBy { distance(it.value, objective) }.key
@@ -53,6 +57,26 @@ class ApproachSectors<K : Any> {
         val stands = joining.associateWith { normalize(bearing(objective, groups.getValue(it)) - head) }
         offsets.putAll(assign(joining, stands))
         return offsets.mapValues { normalize(head + it.value) }
+    }
+
+    /** The head-on bearing from the objective, fixed at first contact; null before it. */
+    val headOnBearing get() = headOn
+
+    /**
+     * Sends [group], already given a flank sector, to [offset] from head-on instead (the operation's
+     * manoeuvre, #173). The pinning group keeps the head-on line; an offset past 90° is refused, so
+     * no group fires across the point at another.
+     */
+    fun steer(group: K, offset: Double) {
+        val current = offsets[group] ?: return
+        if (current == 0.0 || abs(offset) > PI / 2) return
+        home.putIfAbsent(group, current)
+        offsets[group] = offset
+    }
+
+    /** Sends a [steer]ed [group] back to the flank sector it was first given. */
+    fun restore(group: K) {
+        home.remove(group)?.let { offsets[group] = it }
     }
 
     /**

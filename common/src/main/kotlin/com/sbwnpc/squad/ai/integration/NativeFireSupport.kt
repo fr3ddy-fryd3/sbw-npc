@@ -6,6 +6,7 @@ import com.sbwnpc.squad.ai.planning.AgentLevel
 import com.sbwnpc.squad.ai.planning.FactSnapshot
 import com.sbwnpc.squad.ai.tactics.CrewDuty
 import com.sbwnpc.squad.ai.tactics.CrewFacts
+import com.sbwnpc.squad.ai.tactics.FireSource
 import com.sbwnpc.squad.ai.tactics.FireSupport
 import com.sbwnpc.squad.ai.tactics.FireSupportTargets
 import com.sbwnpc.squad.ai.tactics.FireTarget
@@ -24,11 +25,14 @@ import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.core.SectionPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
+import kotlin.math.floor
 
 /**
  * One crew as [CrewRoster] found it this update: its [crew] for the plan, the [squad] it fires for
@@ -46,7 +50,7 @@ private fun crewUnit(men: List<NpcEntity>, squad: UUID?, tube: UUID?): CrewUnit 
  * What a crew's facts keep between updates (#258): the scan's progress at noticing each enemy, its
  * last own sighting, the target it chose, and how long that target has been out of the tube's reach.
  */
-internal class CrewState(val noticing: Noticing) {
+internal class CrewState(val noticing: Noticing, private val ground: (Int, Int) -> Int?) {
     var nextScan = Long.MIN_VALUE
     var ownSighting: UUID? = null
     var ownSeenAt = Long.MIN_VALUE
@@ -59,6 +63,9 @@ internal class CrewState(val noticing: Noticing) {
     /** Where to carry the tube for a target out of reach, set once it has been out of reach long enough. */
     var reachPoint: Point3? = null
     var lastTube: TubeState? = null
+
+    /** Whether the crew's last facts found it out of shells, read by [FireSupportWorld.preparing]. */
+    var shellsOut = false
     private var reachKey: String? = null
     private var unreachableSince: Long? = null
 
@@ -82,7 +89,10 @@ internal class CrewState(val noticing: Noticing) {
         val away = tube.subtract(aim).multiply(1.0, 0.0, 1.0)
         val distance = away.length()
         val keep = minOf(FireSupportWorld.REDEPLOY_RANGE, distance * NEARER_FRACTION)
-        reachPoint = (if (distance < MIN_DISTANCE) tube else aim.add(away.normalize().scale(keep))).point()
+        val carry = if (distance < MIN_DISTANCE) tube else aim.add(away.normalize().scale(keep))
+        // On the ground there, not at the target's height: a point inside a hill left the crew
+        // standing on the slope above it for good, never arriving (in-game 08.11).
+        reachPoint = Vec3(carry.x, ground(floor(carry.x).toInt(), floor(carry.z).toInt())?.toDouble() ?: carry.y, carry.z).point()
         DebugFlags.log(LogGroup.FIRE_SUPPORT, "event=out_of_reach target={} carry_to={}", target.key, reachPoint)
     }
 
@@ -181,13 +191,43 @@ internal class CrewRoster(private val level: ServerLevel) {
 }
 
 /**
+ * What an attack's preparation fire has used (owner, 08.11): per squad and order, whether other
+ * squads attack with it, decided once per order so a partner finishing early does not hand the
+ * mortar back unlimited shelling, and the salvos fired at the attack point.
+ */
+internal class PreparationLedger {
+    private class Entry(val key: String, val partnered: Boolean, var shots: Int = 0)
+    private val entries = HashMap<UUID, Entry>()
+
+    /** Whether [squad]'s order [key] attacks with partners, asking [partners] only on the order's first scan. */
+    fun partnered(squad: UUID, key: String, partners: () -> Boolean): Boolean = entry(squad, key, partners).partnered
+
+    /** Salvos [squad] fired at the attack point for [key]. */
+    fun shots(squad: UUID, key: String) = entries[squad]?.takeIf { it.key == key }?.shots ?: 0
+
+    /** Counts one salvo at the attack point for [squad]'s order [key]. */
+    fun fired(squad: UUID, key: String) {
+        entries[squad]?.takeIf { it.key == key }?.let { it.shots++ }
+    }
+
+    private fun entry(squad: UUID, key: String, partners: () -> Boolean): Entry {
+        val current = entries[squad]
+        if (current != null && current.key == key) return current
+        return Entry(key, partners()).also { entries[squad] = it }
+    }
+}
+
+/**
  * The mortar crews of one level (#258): the facts their team and NPC agents plan on, and their
  * men's duties. Ground squads stay [NativeTactics]'; crews join a squad's plan only as its
  * [com.sbwnpc.squad.ai.tactics.SquadMission.support].
  */
 internal class FireSupportWorld(private val level: ServerLevel) {
     val roster = CrewRoster(level)
-    private val spotter = CrewSpotter(level)
+
+    /** Each squad's preparation salvos, kept by squad so a crew rebuilt mid-order does not start again. */
+    val preparation = PreparationLedger()
+    private val spotter = CrewSpotter(level, preparation)
     private val states = HashMap<AgentId, CrewState>()
 
     /** Each man's execution state, kept across his duties. */
@@ -199,7 +239,12 @@ internal class FireSupportWorld(private val level: ServerLevel) {
         val now = empty.now
         val men = unit.crew.members.mapNotNull { level.getEntity(it.id) as? NpcEntity }
         if (men.isEmpty()) return empty
-        val state = states.getOrPut(empty.owner) { CrewState(Noticing("mortar", LogGroup.FIRE_SUPPORT)) }
+        val state = states.getOrPut(empty.owner) {
+            CrewState(Noticing("mortar", LogGroup.FIRE_SUPPORT)) { x, z ->
+                // Never loads a chunk: unloaded, the target's own height stands.
+                if (level.chunkSource.hasChunk(SectionPos.blockToSectionCoord(x), SectionPos.blockToSectionCoord(z))) level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) else null
+            }
+        }
         val carrier = men.firstOrNull { it.holds(NpcActivity.CARRYING_MORTAR) }
         val deployed = unit.tube?.let(level::getEntity)?.takeIf { carrier == null && roster.usable(men.first(), it) }
         val tube = tubeState(carrier, deployed, state)
@@ -210,7 +255,8 @@ internal class FireSupportWorld(private val level: ServerLevel) {
             state.nextScan = now + FireSupportTargets.SCAN_INTERVAL_TICKS
             spotter.update(unit, squad, men, state, now)
         }
-        result = result.observe(CrewFacts.OUT_OF_REACH, state.reachPoint != null).observe(CrewFacts.SHELLS_OUT, shellsOut(unit, men))
+        state.shellsOut = shellsOut(unit, men)
+        result = result.observe(CrewFacts.OUT_OF_REACH, state.reachPoint != null).observe(CrewFacts.SHELLS_OUT, state.shellsOut)
         state.reachPoint?.let { result = result.observe(CrewFacts.REACH_POINT, it) }
         state.target?.let { result = result.observe(CrewFacts.FIRE, it) }
         // A packed tube has no posts: its carrier is the operator, or the duties fall back to the
@@ -246,6 +292,15 @@ internal class FireSupportWorld(private val level: ServerLevel) {
 
     /** [npc]'s own crew facts: whether he is free to serve, and whether an enemy is at arm's length. */
     fun manFacts(facts: FactSnapshot, npc: NpcEntity): FactSnapshot = facts.observe(CrewFacts.FREE, MortarClaims.free(npc)).observe(CrewFacts.THREATENED, MortarClaims.threatened(npc))
+
+    /**
+     * Whether a crew of [squad] is still firing an attack's preparation (#173): laid on the attack
+     * point and in reach, so the assault waits for it. Out of salvos, out of reach, out of shells
+     * or with its tube not set up, it is not, and the assault goes.
+     */
+    val preparing: (UUID) -> Boolean = { squad ->
+        roster.crews(squad).any { crew -> states[crew.agent]?.let { it.target?.source == FireSource.ATTACK_PREPARATION && it.reachPoint == null && it.lastTube == TubeState.DEPLOYED && !it.shellsOut } == true }
+    }
 
     /** The state of [man]'s crew, read by his duty for where the target stands and to report reach. */
     fun stateOf(man: UUID): CrewState? = roster.unitOf(man)?.let { states[it.crew.agent] }
@@ -307,8 +362,11 @@ internal class FireSupportWorld(private val level: ServerLevel) {
         /** Within this of where it was sent, the carrier sets the tube up, well inside [RELOCATE_RANGE]. */
         const val DEPLOY_RANGE = RELOCATE_RANGE - 2.0
 
-        /** A tube carried for a target out of reach is set up again this far short of it. */
-        const val REDEPLOY_RANGE = 200.0
+        /**
+         * A tube carried for a target out of reach is set up again this far short of it: well inside
+         * the 200 blocks a crew fires at, so the carry is not stopped at the edge of reach again.
+         */
+        const val REDEPLOY_RANGE = 160.0
         private const val HALF = 0.5
     }
 }

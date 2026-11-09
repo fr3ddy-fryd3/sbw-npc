@@ -82,4 +82,14 @@ class AttackPhaseTest {
         // A defence gone quiet is assaulted whatever the flanks are doing.
         assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(inputs(ready = 2, enemies = 0, quiet = 200, engaged = 0).copy(sectorsHeld = false)))
     }
+
+    @Test fun `the assault waits for the mortars' preparation, but not past its limit or under fire`() {
+        val ready = inputs(ready = 8, enemies = 4, peak = 8, silent = AttackPhase.PREPARATION_FIRE_TICKS)
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(ready))
+        assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(ready.copy(preparing = true)))
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(ready.copy(preparing = true, ticksEngaged = AttackPhase.PREPARATION_LIMIT_TICKS)))
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(ready.copy(preparing = true, ticksSinceIncoming = 0)))
+        // A quiet objective is taken whatever the preparation.
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(ready.copy(preparing = true, ticksSinceContact = AttackPhase.QUIET_TICKS)))
+    }
 }
