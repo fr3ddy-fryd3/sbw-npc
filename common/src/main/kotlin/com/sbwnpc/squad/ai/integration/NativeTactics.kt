@@ -658,8 +658,9 @@ object NativeTactics {
                 DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=stage from={} to={}", saved.id, before, stage)
                 if (stage == ReconStage.REPORTED) {
                     recon.report(saved)
-                    // Beside infantry it keeps its post until the assault (owner 08.11); else it falls back.
-                    progress.holdsPost = company(saved) == ReconRules.Company.INFANTRY
+                    // It keeps its post and reports until contact (owner 09.11), whoever is beside it.
+                    progress.holdsPost = true
+                    progress.reported(now)
                     progress.fallBack = ReconProgress.along(objective, centre, ReconProgress.FALL_BACK_DISTANCE)
                     reportIntel(saved, objective, now)
                 }
@@ -738,7 +739,7 @@ object NativeTactics {
             if (recons.isEmpty()) return false
             // From the latest post: one that steps nearer seeing nobody starts its watch again there.
             val atPost = recons.mapNotNull { reconProgress[it.id]?.takeIf { p -> p.stamp == it.orderStamp }?.postFrom }.minOrNull()
-            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { recon.reported(it) })
+            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { r -> recon.reported(r) && reconProgress[r.id]?.takeIf { it.stamp == r.orderStamp }?.reportsDone != false })
             if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end", operation.id)
             return waiting
         }

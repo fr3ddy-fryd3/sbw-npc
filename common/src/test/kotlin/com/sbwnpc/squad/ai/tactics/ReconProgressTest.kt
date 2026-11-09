@@ -63,6 +63,23 @@ class ReconProgressTest {
         assertEquals(null, held.tally(setOf(a), ReconProgress.WATCH_TICKS + ReconProgress.UPDATE_TICKS))
     }
 
+    @Test fun `the wait ends with the third report from the post, the report itself first`() {
+        val p = ReconProgress(1)
+        val a = java.util.UUID.randomUUID()
+        p.update(95.0, 0)
+        p.update(70.0, 0, Point3(0.0, 64.0, 70.0))
+        val at = ReconProgress.WATCH_TICKS
+        p.update(70.0, at)
+        p.holdsPost = true
+        p.reported(at)
+        assertEquals(null, p.tally(setOf(a), at))
+        assertEquals(false, p.reportsDone)
+        p.tally(setOf(a), at + ReconProgress.UPDATE_TICKS)
+        assertEquals(false, p.reportsDone)
+        p.tally(setOf(a), at + 2 * ReconProgress.UPDATE_TICKS)
+        assertEquals(true, p.reportsDone)
+    }
+
     @Test fun `seeing nobody it steps nearer down to the closest post, never onto the objective`() {
         val progress = ReconProgress(1)
         progress.update(95.0, 0)

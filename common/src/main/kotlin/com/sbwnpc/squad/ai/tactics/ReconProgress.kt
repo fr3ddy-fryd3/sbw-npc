@@ -31,8 +31,15 @@ class ReconProgress(val stamp: Int) {
     /** Where it falls back to and holds once reported with no infantry beside it. */
     var fallBack: Point3? = null
 
-    /** Reported beside infantry, it keeps its post until the assault (owner 08.11) instead of falling back. */
+    /**
+     * Reported, it keeps its post and goes on reporting until contact (owner 09.11): the assault, or
+     * it is discovered, ends it. Only a squad that cannot hold it falls back.
+     */
     var holdsPost = false
+
+    /** Reports sent from its final post: the report itself and each running update after it. */
+    var reports = 0
+        private set
 
     /** How far short of the objective its post lies; nearer each time it sees nobody ([closer]). */
     var postDistance = POST_DISTANCE
@@ -59,6 +66,15 @@ class ReconProgress(val stamp: Int) {
         }
         return stage
     }
+
+    /** Marks the report itself, the first of [REPORTS_AWAITED]. */
+    fun reported(now: Long) {
+        reports = 1
+        nextUpdate = now + UPDATE_TICKS
+    }
+
+    /** Whether the operation has had the [REPORTS_AWAITED] reports it waits for (owner 09.11). */
+    val reportsDone get() = reports >= REPORTS_AWAITED
 
     private fun arrive(now: Long, centre: Point3?): ReconStage {
         postFrom = now
@@ -91,6 +107,7 @@ class ReconProgress(val stamp: Int) {
         val onPost = stage == ReconStage.WATCH || (stage == ReconStage.REPORTED && holdsPost)
         if (!onPost || now < nextUpdate) return null
         nextUpdate = now + UPDATE_TICKS
+        if (stage == ReconStage.REPORTED) reports++
         val fresh = present.count { it !in seen }
         seen += present
         return fresh to present.size
@@ -125,6 +142,9 @@ class ReconProgress(val stamp: Int) {
 
         /** It never goes nearer than this: never onto the enemy. */
         const val MIN_POST_DISTANCE = 40.0
+
+        /** Those waiting for the recon move only after this many reports from its post (owner 09.11). */
+        const val REPORTS_AWAITED = 3
 
         /** Watching before the report: 20 s (owner 26.10). */
         const val WATCH_TICKS = 400L
