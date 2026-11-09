@@ -293,6 +293,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MOVEMENT, "{} shelled at {} pace=run", uuid.toString().take(8), BlockPos.containing(at))
     }
 
+    // Any shell he heard, near or far: one under a roof stays there while the barrage goes on.
+    private var shellingHeardUntilTick = 0
+
+    /** Whether he heard a shell burst anywhere in the last 15 s (owner 09.11: they left the roof between rounds). */
+    fun shellingHeard(): Boolean = tickCount < shellingHeardUntilTick
+
+    /** He heard a shell burst, however far. */
+    fun hearShelling() {
+        shellingHeardUntilTick = tickCount + SHELLED_TICKS
+    }
+
     /** Whether the NPC is wary: a squadmate fell, a round hit or missed it narrowly, so it watches where the threat came from. */
     fun wary(): Boolean = approach.toward != null || (waryAt != null && tickCount < waryUntilTick)
 

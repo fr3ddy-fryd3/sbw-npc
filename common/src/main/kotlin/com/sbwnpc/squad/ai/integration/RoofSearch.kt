@@ -48,6 +48,12 @@ internal class RoofSearch {
         return point
     }
 
+    /** Whether [npc] stands at the roof spot last found for him. */
+    fun sheltering(npc: NpcEntity): Boolean {
+        val spot = found[npc.uuid]?.second ?: return false
+        return npc.position().distanceToSqr(spot.x, spot.y, spot.z) <= AT_SPOT * AT_SPOT
+    }
+
     fun keep(wanted: (UUID) -> Boolean) {
         found.keys.retainAll(wanted)
     }
@@ -56,6 +62,7 @@ internal class RoofSearch {
 
     companion object {
         private const val MAX_COLUMNS = 400
+        private const val AT_SPOT = 2.0
         private const val REFRESH_TICKS = 40L
         private const val ROUTE_CHECKS = 3
         private const val STEP = 3

@@ -1279,7 +1279,10 @@ object NativeTactics {
         }
 
         private fun roofFor(npc: NpcEntity, underFire: Boolean, sector: FireSector?, digs: Int, now: Long): Point3? {
-            val unseen = (npc.shelled() || underFire) && sector == null && npc.target == null && npc.vehicle == null
+            // Under his roof already, he stays while shells still fall anywhere he hears them, not only
+            // within 24: the barrage walking off a little sent men out between rounds (owner 09.11).
+            val shelling = npc.shelled() || underFire || (npc.shellingHeard() && roofs.sheltering(npc))
+            val unseen = shelling && sector == null && npc.target == null && npc.vehicle == null
             return if (unseen && digs == 0) roofs.near(npc, now) else null
         }
 

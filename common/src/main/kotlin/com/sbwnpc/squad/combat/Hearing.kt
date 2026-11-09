@@ -123,6 +123,7 @@ object Hearing {
         val heard = listeners(level, at, radius, source, allSides = false)
         val lookers = checkTeams(heard.listeners, at)
         heard.listeners.forEach {
+            it.hearShelling()
             if (it.distanceToSqr(at) <= SHELL_NEAR * SHELL_NEAR) it.shell(at)
             it.hear(at, goLook = it.squadId == null || it in lookers)
         }
