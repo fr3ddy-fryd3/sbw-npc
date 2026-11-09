@@ -37,9 +37,18 @@ class ReconProgress(val stamp: Int) {
      */
     var holdsPost = false
 
-    /** Reports sent from its final post: the report itself and each running update after it. */
+    /** Reports it has sent: each running update, each "nobody seen, moving closer" and the report itself. */
     var reports = 0
         private set
+
+    // Whether any of its reports named an enemy.
+    private var foundEnemy = false
+
+    /** One report sent, naming [enemies] enemies. */
+    fun noteReport(enemies: Int) {
+        reports++
+        if (enemies > 0) foundEnemy = true
+    }
 
     /** How far short of the objective its post lies; nearer each time it sees nobody ([closer]). */
     var postDistance = POST_DISTANCE
@@ -67,14 +76,16 @@ class ReconProgress(val stamp: Int) {
         return stage
     }
 
-    /** Marks the report itself, the first of [REPORTS_AWAITED]. */
+    /** The report itself was sent at [now]: the next running update is a full interval later. */
     fun reported(now: Long) {
-        reports = 1
         nextUpdate = now + UPDATE_TICKS
     }
 
-    /** Whether the operation has had the [REPORTS_AWAITED] reports it waits for (owner 09.11). */
-    val reportsDone get() = reports >= REPORTS_AWAITED
+    /**
+     * Whether the operation may go in (owner 09.11): the first report that names an enemy releases
+     * it; seeing nobody, it waits for [REPORTS_AWAITED] reports.
+     */
+    val reportsDone get() = foundEnemy || reports >= REPORTS_AWAITED
 
     private fun arrive(now: Long, centre: Point3?): ReconStage {
         postFrom = now
@@ -107,7 +118,6 @@ class ReconProgress(val stamp: Int) {
         val onPost = stage == ReconStage.WATCH || (stage == ReconStage.REPORTED && holdsPost)
         if (!onPost || now < nextUpdate) return null
         nextUpdate = now + UPDATE_TICKS
-        if (stage == ReconStage.REPORTED) reports++
         val fresh = present.count { it !in seen }
         seen += present
         return fresh to present.size
@@ -143,7 +153,7 @@ class ReconProgress(val stamp: Int) {
         /** It never goes nearer than this: never onto the enemy. */
         const val MIN_POST_DISTANCE = 40.0
 
-        /** Those waiting for the recon move only after this many reports from its post (owner 09.11). */
+        /** Seeing nobody, those waiting for the recon move after this many of its reports (owner 09.11). */
         const val REPORTS_AWAITED = 3
 
         /** Watching before the report: 20 s (owner 26.10). */

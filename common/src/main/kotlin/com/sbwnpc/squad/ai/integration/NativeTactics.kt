@@ -662,16 +662,18 @@ object NativeTactics {
                     progress.holdsPost = true
                     progress.reported(now)
                     progress.fallBack = ReconProgress.along(objective, centre, ReconProgress.FALL_BACK_DISTANCE)
-                    reportIntel(saved, objective, now)
+                    progress.noteReport(reportIntel(saved, objective, now))
                 }
             }
             progress.tally(enemiesAt(saved, objective, now), now)?.let { (fresh, total) ->
                 if (total == 0 && progress.closer()) {
                     DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=closer post={}", saved.id, progress.postDistance)
                     SquadReports.movingCloser(level.server, saved, progress.postDistance.toInt())
+                    progress.noteReport(0)
                 } else {
                     DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_update new={} total={}", saved.id, fresh, total)
                     SquadReports.postUpdate(level.server, saved, fresh, total)
+                    progress.noteReport(total)
                 }
             }
             reconnoitring += saved.id
@@ -680,10 +682,11 @@ object NativeTactics {
         }
 
         /** The report from the post (owner 26.10): the enemies its side knows round the objective, or nobody. */
-        private fun reportIntel(saved: Squad, objective: Point3, now: Long) {
+        private fun reportIntel(saved: Squad, objective: Point3, now: Long): Int {
             val seen = enemiesAt(saved, objective, now).size
             DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=report enemies={}", saved.id, seen)
             level.server.let { com.sbwnpc.squad.squad.SquadReports.intel(it, saved, seen) }
+            return seen
         }
 
         private val intelWaits = HashMap<UUID, IntelWait>()
@@ -739,7 +742,7 @@ object NativeTactics {
             if (recons.isEmpty()) return false
             // From the latest post: one that steps nearer seeing nobody starts its watch again there.
             val atPost = recons.mapNotNull { reconProgress[it.id]?.takeIf { p -> p.stamp == it.orderStamp }?.postFrom }.minOrNull()
-            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { r -> recon.reported(r) && reconProgress[r.id]?.takeIf { it.stamp == r.orderStamp }?.reportsDone != false })
+            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { r -> reconProgress[r.id]?.takeIf { it.stamp == r.orderStamp }?.reportsDone ?: recon.reported(r) })
             if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end", operation.id)
             return waiting
         }
