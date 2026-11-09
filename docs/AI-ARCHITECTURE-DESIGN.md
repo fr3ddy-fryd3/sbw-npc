@@ -21,7 +21,7 @@ entity, economy, army spawning and territorial policy are not implemented here.
 | [Updates, saving and diagnostics](#updates-saving-and-diagnostics) | **Partly**: dated snapshots and per-decision logs exist; a full per-NPC explanation chain and saving plan state across loads do not. |
 | [Creating an operation and joining late](#creating-an-operation-and-joining-late) | **Implemented** (`OperationRegistry`: one operation per shared order, atomic selection check, pending reinforcement, physical entry). The "same point" tolerance is still open. |
 | [Commander AI](#commander-ai-army-resources-and-territory) | **Not implemented** (#12). |
-| [Teams for subtasks](#teams-for-subtasks) | **Implemented** (`TaskTeamAllocator`, up to six by default, keeping teams through changes of strength). A team chooses by utility whether its movers rush together or in pairs (`TeamRushes`). |
+| [Teams for subtasks](#teams-for-subtasks) | **Implemented as lasting fire teams** (`FireTeams`, #184: two teams up to twelve men, a team per six above, kept through changes of strength). The squad gives each a role (`TeamRole`: support, manoeuvre, guard, all); the team's methods carry it out, and a team covering its own rushes chooses by utility whether they go together or in pairs (`TeamRushes`). |
 | [Completing an area ATTACK](#proposal-completing-an-area-attack) | **Implemented** (`AreaControlClock`: occupation, inspection and 600 safe ticks, i.e. 30 s), plus attack phases deploy/assault/clear (`AttackPhase`). |
 | [Risk and withdrawal](#proposal-risk-and-withdrawal) | **Implemented with other thresholds**: the operation reviews its plan at 30% of its strength lost and withdraws at 60%, counting the dry with the dead and measured from the strength the attack started with; a remnant sent in fights on (`CombatStrength`, #238); a squad's own strategy withdraws at 40% under fire without a way to carry on (`SquadStrategy`). Squads with a barracks fighting on instead of withdrawing: not implemented yet (#57). |
 | [Choosing strategies and plans](#proposal-choosing-strategies-and-plans) | **Partly**: the HTN core and utility scoring exist; utility is used for the squad's strategy only, not for the operation or the Commander ([UTILITY-DESIGN.md](UTILITY-DESIGN.md)). |
@@ -106,7 +106,8 @@ methods it needs. Levels work at different scales and rates; an NPC's immediate 
 execution regardless of how often the plan above is reviewed.
 
 In the target system a group of squads is the members of a particular joint operation; no permanent
-player group is needed. A team of NPCs is a temporary set for a subtask, not a new saved `Squad`.
+player group is needed. A team of NPCs is a lasting part of its squad for the
+fight (owner, 08.11, #184), not a new saved `Squad`.
 Real squads' members and owners are kept.
 
 ## Separate concepts within a level
@@ -324,9 +325,14 @@ controller with a full one later.
 
 ## Teams for subtasks
 
-A team is formed from suitable members for the function needed: fire support, advance, a side
-approach, guarding a sector or helping a medic. Its size follows the task and the real capacity of
-the terrain. The number six from an earlier experiment is a default, not an architectural rule.
+A squad's fire teams are lasting (owner, 08.11, #184): a squad of four to twelve men forms two, a
+larger one a team per six, with the machine gunners and assault men spread over them and the snipers
+in the first. The function is a role the squad gives a team, not who is in it: fire support
+(`SUPPORT`), advance or a side approach (`MANOEUVRE`), guarding (`GUARD`), or the squad's duties as
+they are (`ALL`). Bounding by halves swaps the roles of two teams; a flank sends one team round while
+the others support. Which team flanks or moves first is picked in the integration, as the layout
+needs it before planning; the role itself is the squad method's, and how it is carried out the
+team's.
 
 During one subtask the team's identity and members' assignments are kept. When someone drops out,
 the needed vacancies are filled first; a mass reshuffle is allowed only after a significant change in

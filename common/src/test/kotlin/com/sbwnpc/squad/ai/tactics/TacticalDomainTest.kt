@@ -132,10 +132,14 @@ class TacticalDomainTest {
         return facts
     }
 
-    private fun squadPlan(facts: FactSnapshot, vararg members: PositionIntent = arrayOf(intent)): HtnPlan {
-        val mission = SquadMission(squadId, listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), members.toList())))
+    private fun squadPlan(facts: FactSnapshot, vararg members: PositionIntent = arrayOf(intent)): HtnPlan = teamsPlan(facts, members.toList())
+
+    private fun teamsPlan(facts: FactSnapshot, vararg teams: List<PositionIntent>): HtnPlan {
+        val mission = SquadMission(squadId, teams.mapIndexed { index, men -> TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8L + index)), men) })
         return (HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(mission), facts).advance(20) as PlanningResult.Ready).plan
     }
+
+    private fun teamPlan(mission: TeamMission): HtnPlan = (HtnPlanningSession(TacticalDomain.team, PlanOwner(mission.agent, UUID(1, 1)), TacticalDomain.TEAM.call(mission), FactSnapshot(mission.agent, 0)).advance(20) as PlanningResult.Ready).plan
 
     private fun strategyOf(plan: HtnPlan) = SquadManners.of(plan.tasks.single().node.split('/')[1])
 
@@ -205,7 +209,7 @@ class TacticalDomainTest {
     }
 
     @Test fun `an attack under fire bounds by halves once enough of it is ready, and never without fire or under an enemy above`() {
-        val underFire = CombatSituation(true, true, false, true, 0.75, 0.0, true, movers = 4)
+        val underFire = CombatSituation(true, true, false, true, 0.75, 0.0, true, movers = 4, movingTeams = 2)
         assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(underFire, CombatStrategy.ADVANCE))))
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(underFire.copy(readyFraction = 0.25), CombatStrategy.ADVANCE))))
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(underFire.copy(incoming = false, underFire = false), CombatStrategy.BOUND_OVERWATCH))))
@@ -217,13 +221,13 @@ class TacticalDomainTest {
     }
 
     @Test fun `a squad whose covering fire did not come for a rush advances instead of bounding`() {
-        val stalled = CombatSituation(true, true, false, true, 0.75, 0.0, true, movers = 4, coverStalled = true)
+        val stalled = CombatSituation(true, true, false, true, 0.75, 0.0, true, movers = 4, movingTeams = 2, coverStalled = true)
         assertTrue(SquadManners.eligible(CombatStrategy.BOUND_OVERWATCH).evaluate(squadFacts(stalled)) is Verdict.Rejected)
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(stalled, CombatStrategy.BOUND_OVERWATCH))))
     }
 
     @Test fun `a retreat in contact falls back by halves, otherwise in one run, and never holds, withdraws or regroups`() {
-        val retreat = CombatSituation(true, false, false, false, 0.25, 0.6, false, movers = 4, underFire = false, retreating = true)
+        val retreat = CombatSituation(true, false, false, false, 0.25, 0.6, false, movers = 4, movingTeams = 2, underFire = false, retreating = true)
         assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(retreat))))
         // Under an enemy above too: falling back is no time to climb.
         assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(retreat.copy(higherEnemy = true)))))
@@ -243,19 +247,46 @@ class TacticalDomainTest {
         }
     }
 
-    @Test fun `in a bounding turn one half rushes when covered and the other fires from its post`() {
+    @Test fun `in a bounding turn one team rushes covered by the other, which fires from its posts`() {
         val runner = intent.copy(legs = true)
         val gunner = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, 2)), legs = true)
         val sentry = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, 3)), duty = CombatDuty.OBSERVE)
         val post = Point3(3.0, 1.0, 4.0)
         val turn = BoundTurn(0, setOf(runner.actor.id), mapOf(gunner.actor.id to post, sentry.actor.id to post))
-        val facts = squadFacts(CombatSituation(true, true, false, true, 1.0, 0.0, true, movers = 4), CombatStrategy.BOUND_OVERWATCH).observe(TacticalFacts.BOUND_TURN, turn)
-        val shaped = ((squadPlan(facts, runner, gunner, sentry).tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters as TeamMission).members
-        assertEquals(runner.copy(requireCover = false, coveredBy = turn.posts.keys), shaped[0])
-        assertEquals(CombatDuty.FIRE, shaped[1].duty)
-        assertEquals(post, shaped[1].anchor)
-        assertFalse(shaped[1].legs)
-        assertEquals(sentry, shaped[2])
+        val facts = squadFacts(CombatSituation(true, true, false, true, 1.0, 0.0, true, movers = 4, movingTeams = 2), CombatStrategy.BOUND_OVERWATCH).observe(TacticalFacts.BOUND_TURN, turn)
+        val missions = teamsPlan(facts, listOf(runner), listOf(gunner, sentry)).tasks.map { (it.spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters as TeamMission }
+        val (moving, supporting) = missions
+        assertEquals(TeamRole.MANOEUVRE, moving.role)
+        assertEquals(setOf(gunner.actor.id, sentry.actor.id), moving.covering)
+        assertEquals(TeamRole.SUPPORT, supporting.role)
+        val rushed = teamPlan(moving)
+        assertEquals("manoeuvre_covered", rushed.tasks.first().node.split('/')[1])
+        assertEquals(runner.copy(requireCover = false, coveredBy = turn.posts.keys), (rushed.tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters)
+        val fired = teamPlan(supporting).tasks.map { (it.spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters as PositionIntent }
+        assertEquals(CombatDuty.FIRE, fired[0].duty)
+        assertEquals(post, fired[0].anchor)
+        assertFalse(fired[0].legs)
+        assertEquals(sentry, fired[1])
+    }
+
+    @Test fun `a flanking squad sends its manoeuvre team round and the others support, a watching team guards`() {
+        val runner = intent.copy(legs = true)
+        val gunner = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, 2)))
+        val guard = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, 3)), duty = CombatDuty.REAR_GUARD)
+        val teams = listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), listOf(runner)), TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 9)), listOf(gunner)), TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 10)), listOf(guard)))
+        val roles = TeamRoles.assign(teams, SquadShaping(manoeuvre = teams[0].agent)).map { it.role }
+        assertEquals(listOf(TeamRole.MANOEUVRE, TeamRole.SUPPORT, TeamRole.GUARD), roles)
+        // Without a split every team is one with the squad, as before.
+        assertEquals(listOf(TeamRole.ALL, TeamRole.ALL, TeamRole.GUARD), TeamRoles.assign(teams, SquadShaping()).map { it.role })
+        // A watching team the squad sends round still manoeuvres.
+        assertEquals(listOf(TeamRole.MANOEUVRE, TeamRole.SUPPORT), TeamRoles.assign(listOf(teams[2], teams[1]), SquadShaping(manoeuvre = teams[2].agent)).map { it.role })
+        // A flank team covers its own rushes: it may still pair off.
+        assertTrue(teamPlan(TeamRoles.assign(teams, SquadShaping(manoeuvre = teams[0].agent))[0]).tasks.first().node.split('/')[1] in setOf("together", "pairs"))
+    }
+
+    @Test fun `bounding needs two fire teams with movers`() {
+        val underFire = CombatSituation(true, true, false, true, 0.75, 0.0, true, movers = 4, movingTeams = 1)
+        assertTrue(SquadManners.eligible(CombatStrategy.BOUND_OVERWATCH).evaluate(squadFacts(underFire)) is Verdict.Rejected)
     }
 
     @Test fun `a rush awaiting support is planned at once and starts only once covered`() {
