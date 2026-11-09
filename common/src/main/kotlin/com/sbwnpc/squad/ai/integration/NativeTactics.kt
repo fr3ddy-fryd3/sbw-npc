@@ -349,6 +349,9 @@ object NativeTactics {
     /** See [intelWait]. */
     enum class IntelWait { NONE, WAITING, WITH_RECON }
 
+    /** [squad]'s recon stage under its current order, or null when it is on none (scenes read it). */
+    fun reconStage(level: ServerLevel, squad: UUID): ReconStage? = worlds[level]?.reconStageOf(squad)
+
     /** Whether [npc] stalks with his recon squad: crouched and wary on its approach (#194). */
     fun stalks(npc: NpcEntity): Boolean = npc.npcClass == NpcClass.SCOUT && npc.squadId?.let { worlds[npc.level()]?.stalks(it) } == true
 
@@ -633,6 +636,9 @@ object NativeTactics {
         private val reconProgress = HashMap<UUID, ReconProgress>()
         private val reconnoitring = HashSet<UUID>()
         private val stalking = HashSet<UUID>()
+
+        /** [squad]'s recon stage, see [NativeTactics.reconStage]. */
+        fun reconStageOf(squad: UUID): ReconStage? = reconProgress[squad]?.stage
 
         /** Whether [squad]'s men stalk: crouched, wary, on a hidden recon approach. */
         fun stalks(squad: UUID) = squad in stalking

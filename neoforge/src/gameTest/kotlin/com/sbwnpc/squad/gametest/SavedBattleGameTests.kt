@@ -255,4 +255,36 @@ object SavedBattleGameTests {
             }
         }
     }
+
+    /**
+     * Playtest 09.11, broken ground (fixture `recon-terrain-0911`): on its way in the recon squad saw
+     * a sentry 63 blocks out, short of its ring; every spot nearer the ring was then too close to an
+     * enemy, and it stood blind, never posting, never reporting, its infantry waiting on. Seeing the
+     * enemy, it must take its post.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 1200, batch = "saved-recon-terrain", skyAccess = true)
+    fun savedReconSeeingASentryTakesItsPost(helper: GameTestHelper) {
+        val replay = SavedBattleReplay(helper.level, Path.of(System.getProperty("sbwnpc.gameTestReplay")))
+        replay.restore()
+        val recon = UUID.fromString("6776c410-c878-4dcb-8dcb-cac8303db472")
+        val previousGroups = DebugFlags.enabledGroups
+        DebugFlags.enabledGroups = previousGroups + LogGroup.ORDER
+        helper.assertTrue(replay.manager.get(recon)?.order == SquadOrder.ATTACK, "The fixture's recon squad is not on its ATTACK order")
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() {
+                DebugFlags.enabledGroups = previousGroups
+                replay.close()
+            }
+        })
+        helper.onEachTick {
+            val stage = com.sbwnpc.squad.ai.integration.NativeTactics.reconStage(helper.level, recon)
+            if (stage == com.sbwnpc.squad.ai.tactics.ReconStage.WATCH || stage == com.sbwnpc.squad.ai.tactics.ReconStage.REPORTED) helper.succeed()
+            if (helper.tick >= 1150L) helper.fail("The recon squad never took its post: stage $stage")
+        }
+    }
 }

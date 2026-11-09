@@ -105,9 +105,16 @@ internal class SavedBattleReplay(private val level: ServerLevel, private val roo
             if (!section.contains("block_states")) continue
             val states = section.getCompound("block_states")
             // Vanilla's codec can substitute air for missing mod blocks; that would invalidate rays.
+            // A missing mod block becomes its nearest vanilla kind (Dynamic Trees' leaves and branches in
+            // the 09.11 world); anything else unknown still stops the replay.
             states.getList("palette", Tag.TAG_COMPOUND.toInt()).forEach {
-                val name = ResourceLocation.parse((it as CompoundTag).getString("Name"))
-                require(BuiltInRegistries.BLOCK.containsKey(name)) { "Missing replay block $name; load its mod before testing" }
+                val entry = it as CompoundTag
+                val name = ResourceLocation.parse(entry.getString("Name"))
+                if (BuiltInRegistries.BLOCK.containsKey(name)) return@forEach
+                val stand = standIn(name)
+                require(stand != null) { "Missing replay block $name; load its mod before testing" }
+                entry.putString("Name", stand)
+                entry.remove("Properties")
             }
             val blocks = BLOCK_STATE_CODEC.parse(NbtOps.INSTANCE, states).getOrThrow()
             val index = chunk.getSectionIndexFromSectionY(section.getByte("Y").toInt())
@@ -162,5 +169,16 @@ internal class SavedBattleReplay(private val level: ServerLevel, private val roo
 
     companion object {
         private val BLOCK_STATE_CODEC = PalettedContainer.codecRW(Block.BLOCK_STATE_REGISTRY, BlockState.CODEC, PalettedContainer.Strategy.SECTION_STATES, Blocks.AIR.defaultBlockState())
+    }
+
+    private fun standIn(name: ResourceLocation): String? {
+        val path = name.path
+        val wood = listOf("spruce", "oak", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry").firstOrNull { path.contains(it) } ?: "oak"
+        return when {
+            path.contains("leaves") -> "minecraft:${wood}_leaves"
+            path.contains("branch") || path.contains("root") || path.contains("trunk") || path.contains("log") -> "minecraft:${wood}_log"
+            path.contains("sapling") || path.contains("bush") || path.contains("grass") || path.contains("flower") -> "minecraft:air"
+            else -> null
+        }
     }
 }
