@@ -44,10 +44,23 @@ class ReconProgress(val stamp: Int) {
     // Whether any of its reports named an enemy.
     private var foundEnemy = false
 
-    /** One report sent, naming [enemies] enemies. */
-    fun noteReport(enemies: Int) {
+    // Whether a report found nobody new after an earlier one named an enemy.
+    private var settled = false
+
+    /**
+     * One report sent from the post, naming [total] enemies, [fresh] of them not reported before
+     * ([record]). It settles the picture when an earlier report named an enemy and this one finds
+     * nobody new: a total that drops is an enemy gone out of view, not news.
+     */
+    fun noteReport(total: Int, fresh: Int) {
+        if (foundEnemy && fresh == 0) settled = true
         reports++
-        if (enemies > 0) foundEnemy = true
+        if (total > 0) foundEnemy = true
+    }
+
+    /** It saw nobody and moves nearer: a report towards [REPORTS_AWAITED], never one that settles the picture. */
+    fun noteCloser() {
+        reports++
     }
 
     /** How far short of the objective its post lies; nearer each time it sees nobody ([closer]). */
@@ -115,10 +128,11 @@ class ReconProgress(val stamp: Int) {
     }
 
     /**
-     * Whether the operation may go in (owner 09.11): the first report that names an enemy releases
-     * it; seeing nobody, it waits for [REPORTS_AWAITED] reports.
+     * Whether the operation may go in (owner 10.11): once a report finds no enemy the earlier ones had
+     * not named, or after [REPORTS_AWAITED] reports. The first sighting alone sent the infantry in
+     * before the recon had a picture of the enemy.
      */
-    val reportsDone get() = foundEnemy || reports >= REPORTS_AWAITED
+    val reportsDone get() = settled || reports >= REPORTS_AWAITED
 
     private fun arrive(now: Long, centre: Point3?): ReconStage {
         postFrom = now
@@ -151,9 +165,14 @@ class ReconProgress(val stamp: Int) {
         val onPost = stage == ReconStage.WATCH || (stage == ReconStage.REPORTED && holdsPost)
         if (!onPost || now < nextUpdate) return null
         nextUpdate = now + UPDATE_TICKS
+        return record(present) to present.size
+    }
+
+    /** Adds [present] to the enemies it has reported; returns how many of them it had not. */
+    fun record(present: Set<java.util.UUID>): Int {
         val fresh = present.count { it !in seen }
         seen += present
-        return fresh to present.size
+        return fresh
     }
 
     /** Where the squad whose centre is at [centre] makes for in the current stage. */

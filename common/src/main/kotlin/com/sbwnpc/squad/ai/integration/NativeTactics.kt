@@ -673,18 +673,19 @@ object NativeTactics {
                     progress.holdsPost = true
                     progress.reported(now)
                     progress.fallBack = ReconProgress.along(objective, centre, ReconProgress.FALL_BACK_DISTANCE)
-                    progress.noteReport(reportIntel(saved, objective, now))
+                    val present = reportIntel(saved, objective, now)
+                    progress.noteReport(present.size, progress.record(present))
                 }
             }
             progress.tally(enemiesAt(saved, objective, now), now)?.let { (fresh, total) ->
                 if (total == 0 && progress.closer()) {
                     DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=closer post={}", saved.id, progress.postDistance)
                     SquadReports.movingCloser(level.server, saved, progress.postDistance.toInt())
-                    progress.noteReport(0)
+                    progress.noteCloser()
                 } else {
                     DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_update new={} total={}", saved.id, fresh, total)
                     SquadReports.postUpdate(level.server, saved, fresh, total)
-                    progress.noteReport(total)
+                    progress.noteReport(total, fresh)
                 }
             }
             reconnoitring += saved.id
@@ -711,10 +712,10 @@ object NativeTactics {
         }
 
         /** The report from the post (owner 26.10): the enemies its side knows round the objective, or nobody. */
-        private fun reportIntel(saved: Squad, objective: Point3, now: Long): Int {
-            val seen = enemiesAt(saved, objective, now).size
-            DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=report enemies={}", saved.id, seen)
-            level.server.let { com.sbwnpc.squad.squad.SquadReports.intel(it, saved, seen) }
+        private fun reportIntel(saved: Squad, objective: Point3, now: Long): Set<UUID> {
+            val seen = enemiesAt(saved, objective, now)
+            DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=report enemies={}", saved.id, seen.size)
+            level.server.let { com.sbwnpc.squad.squad.SquadReports.intel(it, saved, seen.size) }
             return seen
         }
 

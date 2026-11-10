@@ -56,8 +56,8 @@ object ReconRules {
 
     /**
      * Whether an operation with a recon squad still waits for intelligence: its infantry walks and
-     * stays short of its firing line, its mortars and drones hold their fire. A report, the recon
-     * squad found or gone, [INTEL_WAIT_TICKS] at the post ([sincePost], null before it gets there) or
+     * stays short of its firing line, its mortars and drones hold their fire. Its reports done
+     * ([ReconProgress.reportsDone]), the recon squad found or gone, [INTEL_WAIT_TICKS] at the post ([sincePost], null before it gets there) or
      * [INTEL_CAP_TICKS] since the order ends it.
      */
     fun awaitsIntel(sinceOrder: Long, sincePost: Long?, reconHidden: Boolean, reported: Boolean): Boolean = reconHidden && !reported && sinceOrder < INTEL_CAP_TICKS && (sincePost ?: 0L) < INTEL_WAIT_TICKS
