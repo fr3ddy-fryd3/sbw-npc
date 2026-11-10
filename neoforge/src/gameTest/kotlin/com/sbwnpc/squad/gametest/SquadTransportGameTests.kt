@@ -195,7 +195,7 @@ object SquadTransportGameTests {
                 helper.assertTrue(men.all(NativeTactics::walks), "The recon squad's men were not told to walk")
             }
             if (helper.tick >= WALK_TOLD_TICKS + 60) {
-                helper.assertTrue(men.all { it.x > 30.5 }, "The scouts did not set off on foot")
+                helper.assertTrue(men.all { it.x > helper.absoluteVec(Vec3(30.5, 1.0, 20.5)).x }, "The scouts did not set off on foot")
                 scene.result("PASS", "tick=${helper.tick} x=${men.map { it.x.toInt() }}")
                 helper.succeed()
             }

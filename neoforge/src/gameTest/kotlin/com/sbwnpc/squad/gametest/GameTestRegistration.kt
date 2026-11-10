@@ -15,7 +15,7 @@ object GameTestRegistration {
     fun register(event: RegisterGameTestsEvent) {
         val classes = sceneClasses()
         // Saved-world replays require an explicit local fixture; ordinary suites stay portable.
-        val replayClasses = if (System.getProperty("sbwnpc.gameTestReplay", "").isNotBlank()) listOf(SavedBattleGameTests::class.java) else emptyList()
+        val replayClasses = if (System.getProperty("sbwnpc.gameTestReplay", "").isNotBlank()) listOf(SavedBattleGameTests::class.java, SavedForestAttackGameTests::class.java) else emptyList()
         val battleClasses = if (System.getProperty("sbwnpc.gameTestBattleSaves", "").isNotBlank()) listOf(RealTerrainBattleGameTests::class.java) else emptyList()
         val selectedClasses = GameTestGroups.select(classes, System.getProperty("sbwnpc.gameTestGroup", "").split(',').filter { it.isNotBlank() })
         val methods = (selectedClasses + replayClasses + battleClasses).flatMap { it.declaredMethods.toList() }.filter { it.isAnnotationPresent(GameTest::class.java) || it.isAnnotationPresent(GameTestGenerator::class.java) }
