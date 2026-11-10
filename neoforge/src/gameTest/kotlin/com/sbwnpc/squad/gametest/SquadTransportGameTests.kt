@@ -4,9 +4,11 @@ import com.sbwnpc.squad.ai.coordination.Point3
 import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.Squad
@@ -26,6 +28,9 @@ import java.util.UUID
 object SquadTransportGameTests {
     /** How near the DEFEND point the replaced order's men count as there: a five-man squad's spread round it. */
     private const val DEFEND_REACHED = 12.0
+
+    /** By when a travelling squad's men all know whether they ride or walk: its plan's first pass and a margin. */
+    private const val WALK_TOLD_TICKS = 20L
 
     /** Observes physical march while far; after transit the reinforcement makes for its march point ([entry]). */
     internal fun reinforcementMarch(helper: GameTestHelper, group: List<NpcEntity>, squad: Squad, entry: Point3, elapsed: Long): Boolean {
@@ -156,6 +161,42 @@ object SquadTransportGameTests {
                 helper.assertTrue(near.all { it.vehicle === lav }, "The nearby squad members did not all board")
                 helper.assertTrue(straggler.x > start.x + 8.0, "The straggler did not continue towards the objective on foot")
                 scene.result("PASS", "tick=${helper.tick} aboard=${near.size} walked=${straggler.x - start.x}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * A hidden recon squad goes on foot (owner 10.11) and is told so at once: its plan gave out no
+     * seats, so its men looked for a vehicle for 10 s before they set off (#312). A free LAV beside
+     * them stays empty.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 200, batch = "transport-recon")
+    fun reconSquadWalksAtOnceAndLeavesTheVehicleBesideIt(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "transport-recon")
+        val manager = SquadManager.get(helper.level)
+        val men = (0 until 3).map { scene.spawn(Vec3(20.5 + it * 2, 1.0, 20.5), role = NpcClass.SCOUT) }
+        val lav = park(helper, Vec3(28.5, 1.0, 24.5))
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid }, List(3) { NpcClass.SCOUT })
+        // As with the owner beside them: at a quarter rate the men may miss the window the test is about.
+        NpcEntity.fullRateBrains = true
+        scene.onClose = {
+            NpcEntity.fullRateBrains = false
+            manager.deleteSquad(helper.level, squad.id)
+            lav.discard()
+        }
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(200, 1, 20)))
+        helper.onEachTick {
+            helper.assertTrue(men.none { it.vehicle != null }, "A scout got into the vehicle")
+            if (helper.tick >= WALK_TOLD_TICKS) {
+                val seeking = men.filter { it.holds(NpcActivity.VEHICLE) }
+                helper.assertTrue(seeking.isEmpty(), "${seeking.size} scouts still look for a vehicle at tick ${helper.tick}")
+                helper.assertTrue(men.all(NativeTactics::walks), "The recon squad's men were not told to walk")
+            }
+            if (helper.tick >= WALK_TOLD_TICKS + 60) {
+                helper.assertTrue(men.all { it.x > 30.5 }, "The scouts did not set off on foot")
+                scene.result("PASS", "tick=${helper.tick} x=${men.map { it.x.toInt() }}")
                 helper.succeed()
             }
         }

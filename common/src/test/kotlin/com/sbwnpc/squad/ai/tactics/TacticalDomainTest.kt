@@ -400,4 +400,13 @@ class TacticalDomainTest {
         val plan = (HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(SquadMission(squadId, emptyList(), listOf(crew))), facts).advance(20) as PlanningResult.Ready).plan
         assertTrue(plan.tasks.any { it.spec.action.key == TacticalDomain.BOARD })
     }
+
+    @Test fun `a travelling recon squad on its hidden approach gives out its seats too`() {
+        // Playtest 10.11: with no seats given its scouts looked for a vehicle for 10 s (#312).
+        val seats = SeatPlan(walks = setOf(UUID(0, 1)))
+        val facts = squadFacts(blocked).observe(TacticalFacts.TRAVELLING, true).observe(TacticalFacts.RECONNOITRING, true).observe(TacticalFacts.SEATS, seats)
+        val plan = squadPlan(facts)
+        assertEquals("reconnoitre", plan.tasks.first().node.split('/')[1])
+        assertEquals(seats, (plan.tasks.single { it.spec.action.key == TacticalDomain.BOARD }.spec.action.parameters as Boarding).seats)
+    }
 }

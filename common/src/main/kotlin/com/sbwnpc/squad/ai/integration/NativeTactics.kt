@@ -640,6 +640,9 @@ object NativeTactics {
         private val reconnoitring = HashSet<UUID>()
         private val stalking = HashSet<UUID>()
 
+        /** Whether [saved] is a recon squad on a hidden approach to the objective of its ATTACK (#194). */
+        private fun hiddenRecon(saved: Squad) = saved.order == SquadOrder.ATTACK && SquadManager.get(level).isReconSquad(saved) && squadHoldsFire(saved)
+
         /** [squad]'s recon stage, see [NativeTactics.reconStage]. */
         fun reconStageOf(squad: UUID): ReconStage? = reconProgress[squad]?.stage
 
@@ -653,8 +656,7 @@ object NativeTactics {
          */
         private fun reconStage(saved: Squad, centre: Point3, now: Long): Pair<ReconStage, Point3>? {
             val objective = saved.objective?.center?.point()
-            val hidden = SquadManager.get(level).isReconSquad(saved) && squadHoldsFire(saved)
-            if (objective == null || saved.order != SquadOrder.ATTACK || !hidden) {
+            if (objective == null || !hiddenRecon(saved)) {
                 reconProgress.remove(saved.id)
                 reconnoitring -= saved.id
                 stalking -= saved.id
@@ -2592,7 +2594,9 @@ object NativeTactics {
             val riders = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }
                 .filter { it.isAlive && it.vehicle == null && it.squadId == saved.id && it.assignedVehicleId == null }
             if (saved.id in seatsDue && riders.none { given.undecided(it.uuid) }) return
-            val plan = SeatAllocation.allocate(given, riders.map { SeatRider(it.uuid, it.position().point()) }, SquadTransit.seatVehicles(saved, riders, level), ride?.refused.orEmpty())
+            // A hidden recon squad goes on foot (owner 10.11): offered no vehicle, all its men walk.
+            val vehicles = if (hiddenRecon(saved)) emptyList() else SquadTransit.seatVehicles(saved, riders, level)
+            val plan = SeatAllocation.allocate(given, riders.map { SeatRider(it.uuid, it.position().point()) }, vehicles, ride?.refused.orEmpty())
             if (seatsDue.put(saved.id, plan) != plan) {
                 DebugFlags.log(LogGroup.VEHICLE, "[htn] squad={} event=seats seats={} walks={}", saved.id, plan.seats, plan.walks)
                 DecisionTrace.group(saved.id, now, "squad", "seats", "${plan.seats.size} ride in ${plan.seats.values.map { it.vehicle }.distinct().size} vehicles, ${plan.walks.size} walk")
