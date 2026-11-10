@@ -35,8 +35,9 @@ enum class NpcActivity(val holds: Set<Cap>) {
     TACTIC(setOf(Cap.FEET)),
 
     /**
-     * Walking to a Supply: [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] and the out-of-ammo
-     * fallback. Feet only: the fallback walks while the NPC keeps firing its last rounds.
+     * Walking to a Supply or out of a fight with an empty gun: the plan's trip and withdrawal
+     * (#189, SupplyCare). Feet only: the fire task's fallback walks a man all but out while he keeps
+     * firing his last rounds.
      */
     RESUPPLY(setOf(Cap.FEET)),
 

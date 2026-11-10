@@ -75,7 +75,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.target != null && !SquadTransit.marching(entity)) return false
-        // Anything else that holds the feet comes first: a walk to a Supply (ResupplyBehaviour hands
+        // Anything else that holds the feet comes first: a walk to a Supply (the plan's trip hands
         // it back once topped up), cover, treatment, a grenade, a foxhole, a role, the mortar crew's
         // errand. A dug-in mob in particular would otherwise be marched off toward its DEFEND/PATROL
         // slot, right out of its own hole, as soon as its target died or broke LOS for a moment.

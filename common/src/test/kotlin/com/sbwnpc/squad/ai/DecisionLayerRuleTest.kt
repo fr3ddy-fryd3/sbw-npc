@@ -81,8 +81,6 @@ class DecisionLayerRuleTest {
             "GunAttackBehaviour" to UNAUDITED,
             "HelicopterGunnerBehaviour" to UNAUDITED,
             "HelicopterRideBehaviour" to UNAUDITED,
-            "OutOfAmmoBehaviour" to "mandatory rule out_of_ammo, ranked in MandatoryRule (#257)",
-            "ResupplyBehaviour" to "mandatory rule resupply, ranked in MandatoryRule (#257)",
             "SeekCoverBehaviour" to "D, kept only for the roles the planner does not cover until #256; planned men take cover in their plan (#251)",
             "SelfTreatBehaviour" to "mandatory rule self_treat, ranked in MandatoryRule (#257)",
             "SquadOrderBehaviour" to UNAUDITED,

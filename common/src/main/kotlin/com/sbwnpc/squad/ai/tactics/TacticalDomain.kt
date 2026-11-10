@@ -724,6 +724,10 @@ object TacticalDomain {
                     // A patient the allocation gave him comes before cover, his hole and his duty, as
                     // medical help did before (#189): a critical man pulls a medic under fire out of his fight.
                     Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { intent, facts -> MedicalCare.treat(intent.actor, facts) }),
+                    // His squad's trip to a Supply, or an empty gun with no trip (#189): after a patient,
+                    // before his duty; under fire, in his hole or under a roof he answers that first.
+                    Method("resupply", eligible = { intent -> Resupply.goes(intent) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { intent, facts -> Resupply.trip(intent.actor, facts) }),
+                    Method("ammo_withdraw", eligible = { intent -> Resupply.withdraws(intent) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { intent, _ -> Resupply.withdraw(intent.actor) }),
                     // Under fire, or in the hole he dug, the man answers that first; every method
                     // below stands aside meanwhile (UnderFire.duty), so exactly one family applies.
                     // A drone in the air keeps him at its monitor through all of it (DroneStrike.flying).
@@ -883,21 +887,28 @@ object TacticalDomain {
                     // An engage-only man has no cover or hole of his own in his plan to answer first.
                     Method("grenade", eligible = { _ -> Condition { facts -> Grenades.throws(facts, Verdict.Rejected("no_under_fire_plan")) } }, decompose = { task, facts -> TaskNetwork.sequence(Grenades.next(task.actor, facts)) }),
                     Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { task, facts -> MedicalCare.treat(task.actor, facts) }),
+                    Method("resupply", eligible = { _ -> Resupply.goes(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, facts -> Resupply.trip(task.actor, facts) }),
+                    Method("ammo_withdraw", eligible = { _ -> Resupply.withdraws(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, _ -> Resupply.withdraw(task.actor) }),
                     Method("engage", eligible = { _ -> Condition.ALWAYS }, decompose = { task, _ -> TaskNetwork.sequence(ENGAGE_TASK.call(task)) }),
                 ),
             ),
-            // A squadless medic's root (#189): his patient, his fight, else nothing. Held whether or
+            // A squadless medic's root (#189), and a squadless man's who needs a Supply or has an
+            // empty gun: his patient, his trip or withdrawal, his fight, else nothing. Held whether or
             // not he fights, it stands in for his engage-only agent, as a lone operator's does (#259).
             CompoundTask(
                 CARE_TASK,
                 listOf(
                     Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { task, facts -> MedicalCare.treat(task.actor, facts) }),
+                    Method("resupply", eligible = { _ -> Resupply.goes(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, facts -> Resupply.trip(task.actor, facts) }),
+                    Method("ammo_withdraw", eligible = { _ -> Resupply.withdraws(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, _ -> Resupply.withdraw(task.actor) }),
                     Method("fight", eligible = { _ -> Condition.test(TacticalFacts.IN_CONTACT, "no_contact") { it } }, decompose = { task, _ -> TaskNetwork.sequence(FIGHT_TASK.call(task)) }),
                     Method("stand_by", eligible = { _ -> Condition.ALWAYS }, decompose = { _, _ -> TaskNetwork.EMPTY }),
                 ),
             ),
             Grenades.task(),
             MedicalCare.task(),
+            Resupply.tripTask(),
+            Resupply.withdrawTask(),
             CompoundTask(
                 ENGAGE_TASK,
                 Engage.ORDER.map { move ->

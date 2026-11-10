@@ -64,6 +64,21 @@ class NpcUnderFireDomainTest {
         assertNotEquals(MedicalCare.ACTION, root(TacticalDomain.CARE_TASK, facts(underFire = false).observe(TacticalFacts.IN_CONTACT, true)))
     }
 
+    @Test fun `a trip to a Supply comes after a patient and before his duty, and stands aside under fire (#189)`() {
+        val supply = com.sbwnpc.squad.ai.coordination.Point3(5.0, 64.0, 5.0)
+        assertEquals(Resupply.TRIP_ACTION, first(facts(underFire = false).observe(SupplyFacts.TRIP, supply)).key)
+        assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true).observe(SupplyFacts.TRIP, supply)).key)
+        assertEquals(MedicalCare.ACTION, first(facts(underFire = false).observe(SupplyFacts.TRIP, supply).observe(MedicalFacts.PATIENT, java.util.UUID(7, 7))).key)
+        // In a fight with rounds left he fights on; with an empty gun he goes, or withdraws without a trip.
+        assertNotEquals(Resupply.TRIP_ACTION, first(facts(underFire = false).observe(SupplyFacts.TRIP, supply).observe(TacticalFacts.IN_CONTACT, true)).key)
+        assertEquals(Resupply.TRIP_ACTION, first(facts(underFire = false).observe(SupplyFacts.TRIP, supply).observe(TacticalFacts.IN_CONTACT, true).observe(SupplyFacts.EMPTY, true)).key)
+        assertEquals(Resupply.WITHDRAW_ACTION, first(facts(underFire = false).observe(TacticalFacts.IN_CONTACT, true).observe(SupplyFacts.EMPTY, true)).key)
+        assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true).observe(SupplyFacts.EMPTY, true)).key)
+        val root = { key: TaskKey<EngageTask>, input: FactSnapshot -> (HtnPlanningSession(TacticalDomain.npc, owner, key.call(EngageTask(actor)), input).advance(40) as? PlanningResult.Ready)?.plan?.tasks?.firstOrNull()?.spec?.action?.key }
+        assertEquals(Resupply.TRIP_ACTION, root(TacticalDomain.CARE_TASK, facts(underFire = false).observe(SupplyFacts.TRIP, supply)))
+        assertEquals(Resupply.WITHDRAW_ACTION, root(TacticalDomain.FIGHT_TASK, facts(underFire = false).observe(SupplyFacts.EMPTY, true)))
+    }
+
     @Test fun `under fire with cover left he moves to cover and then dwells and peeks`() {
         val plan = plan(facts(underFire = true))
         assertEquals(listOf(TacticalDomain.COVER_MOVE, TacticalDomain.COVER_CYCLE), plan.tasks.map { it.spec.action.key })

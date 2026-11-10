@@ -238,6 +238,9 @@ object NativeTactics {
      */
     fun travelling(npc: NpcEntity): Boolean = worlds[npc.level()]?.travelling(npc) == true
 
+    /** Whether [npc]'s squad sent him to resupply (#189): only then does the fire task walk a man all but out. */
+    fun onSupplyTrip(npc: NpcEntity): Boolean = (npc.level() as? ServerLevel)?.let { worlds[it]?.supplies?.onTrip(npc) } == true
+
     /** The vehicle whose gun [npc]'s team plan sent him to man ([WeaponStations], #255), if any. */
     fun stationOf(npc: NpcEntity): UUID? = worlds[npc.level()]?.stationOf(npc)
 
@@ -478,6 +481,7 @@ object NativeTactics {
         // Who may throw a grenade and at what (#263).
         private val grenades = GrenadeChoice(level)
         private val medics = MedicCare(level)
+        val supplies = SupplyCare(level)
         val recon = ReconWatch()
 
         // The mandatory rule each man's plan was last suspended for (#257), for the decision trace.
@@ -942,6 +946,18 @@ object NativeTactics {
             )
 
         /** A medic's treatment (#189), of the patient [MedicCare] allocated him. */
+        private fun supplyBindings() =
+            listOf(
+                ActionBinding(Resupply.TRIP_ACTION) { ticket, trip ->
+                    require(ticket.owner.agent == trip.actor)
+                    supplies.action(requireNotNull(level.getEntity(trip.actor.id) as? NpcEntity), trip.supply)
+                },
+                ActionBinding(Resupply.WITHDRAW_ACTION) { ticket, call ->
+                    require(ticket.owner.agent == call.actor)
+                    supplies.withdrawal(requireNotNull(level.getEntity(call.actor.id) as? NpcEntity))
+                },
+            )
+
         private fun medicBinding() =
             listOf(
                 ActionBinding(MedicalCare.ACTION) { ticket, treatment ->
@@ -1076,7 +1092,7 @@ object NativeTactics {
                             require(ticket.owner.agent == pause.actor)
                             firePause(pause, requireNotNull(level.getEntity(pause.actor.id) as? NpcEntity))
                         },
-                    ) + allotmentBindings() + coverBindings() + engageBinding() + grenadeBinding() + medicBinding() + crewBinding() + airBindings() + tankBinding() + droneBinding() + listOf(
+                    ) + allotmentBindings() + coverBindings() + engageBinding() + grenadeBinding() + medicBinding() + supplyBindings() + crewBinding() + airBindings() + tankBinding() + droneBinding() + listOf(
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
@@ -1431,6 +1447,7 @@ object NativeTactics {
             var result = EngageFacts.observe(facts, npc, engageOf(npc), engageBands.getOrPut(npc.uuid, ::EngageBands), now)
             result = grenades.observe(result, npc, now)
             result = medics.observe(result, npc, now)
+            result = supplies.observe(result, npc, now)
             if (fireSupport.roster.unitOf(npc.uuid) != null) result = fireSupport.manFacts(result, npc)
             if (air.roster.unitOf(npc.uuid) != null) result = air.manFacts(result, npc)
             if (tanks.roster.unitOf(npc.uuid) != null) result = tanks.manFacts(result, npc)
@@ -1714,6 +1731,7 @@ object NativeTactics {
                 roofs.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 grenades.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 medics.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
+                supplies.keep({ SquadManager.get(level).get(it) != null }, { AgentId(AgentLevel.NPC, it) in desiredAgents })
                 suspendedBy.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -1822,7 +1840,8 @@ object NativeTactics {
          * engage-only agent, as a lone operator's does, so he has one NPC agent, not two.
          */
         private fun commandLoneMedics(now: Long, desired: MutableSet<AgentId>) {
-            val lone = NpcRegistry.all(level).filter { it.npcClass == NpcClass.MEDIC && it.isAlive && it.currentSquad() == null && AgentId(AgentLevel.NPC, it.uuid) !in desired }
+            // A squadless man who needs a Supply, or has an empty gun, takes the same root (#189).
+            val lone = NpcRegistry.all(level).filter { it.isAlive && it.currentSquad() == null && (it.npcClass == NpcClass.MEDIC || supplies.needsLoneRoot(it)) && AgentId(AgentLevel.NPC, it.uuid) !in desired }
             loneMedics.retainAll(lone.mapTo(HashSet()) { it.uuid })
             lone.forEach { npc ->
                 val agent = AgentId(AgentLevel.NPC, npc.uuid)
@@ -1830,7 +1849,7 @@ object NativeTactics {
                 desired += agent
                 val fresh = agent !in agents
                 ensure(agent).command(UUID.nameUUIDFromBytes("care:${npc.uuid}".toByteArray()), TacticalDomain.CARE_TASK.call(EngageTask(agent)), facts(agent, now))
-                if (fresh) DecisionTrace.man(npc.uuid, now, "agent", "squadless_medic")
+                if (fresh) DecisionTrace.man(npc.uuid, now, "agent", if (npc.npcClass == NpcClass.MEDIC) "squadless_medic" else "squadless_supply")
             }
         }
 
@@ -3046,6 +3065,7 @@ object NativeTactics {
             crossings.clear()
             grenades.clear()
             medics.clear()
+            supplies.clear()
             recon.clear()
             reconProgress.clear()
             intelWaits.clear()
