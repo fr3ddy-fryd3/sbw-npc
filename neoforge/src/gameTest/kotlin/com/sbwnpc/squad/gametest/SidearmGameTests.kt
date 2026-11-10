@@ -12,6 +12,7 @@ import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.TriggerMode
 import com.sbwnpc.squad.entity.NpcActivity
+import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.AmmoRetreat
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.init.ModEntities
@@ -421,7 +422,14 @@ object SidearmGameTests {
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "sidearm-empty")
-    fun emptyKitHoldsWithoutSupplyOrEndlessWithdrawal(helper: GameTestHelper) {
+    fun emptyKitHoldsWithoutSupplyOrEndlessWithdrawal(helper: GameTestHelper) = emptyKit(helper, squadless = false)
+
+    /** The same man with no squad (#189): his own plan root withdraws him, bounded, as the squad's does. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "sidearm-empty-lone")
+    fun squadlessEmptyKitHoldsWithoutSupplyOrEndlessWithdrawal(helper: GameTestHelper) = emptyKit(helper, squadless = true)
+
+    private fun emptyKit(helper: GameTestHelper, squadless: Boolean) {
         floor(helper, 160, 128)
         val npc = AttackDeploymentGameTests.spawn(helper, Vec3(65.5, 1.0, 64.5), SquadFaction.PIG)
         // Facing the enemy: the empty-ammo withdrawal starts only on a target, and a man looking
@@ -435,33 +443,47 @@ object SidearmGameTests {
         }
         val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(110.5, 1.0, 64.5), SquadFaction.COW).apply { isNoAi = true }
         val manager = SquadManager.get(helper.level)
-        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(npc.uuid))
-        manager.setObjective(helper.level, squad.id, npc.blockPosition())
+        val squad = if (squadless) null else manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(npc.uuid))
+        squad?.let { manager.setObjective(helper.level, it.id, npc.blockPosition()) }
         DebugFlags.enabledGroups = setOf(LogGroup.ORDER, LogGroup.AMMO)
+        var withdrew = false
         val trace = StringBuilder("tick,distance,target,done,speed,cover,hasAmmo\n")
         var stoppedSince: Long? = null
         cleanup(helper) {
-            manager.deleteSquad(helper.level, squad.id)
+            squad?.let { manager.deleteSquad(helper.level, it.id) }
             npc.discard()
             enemy.discard()
-            val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "empty-kit.csv")
+            val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), if (squadless) "empty-kit-lone.csv" else "empty-kit.csv")
             Files.createDirectories(report.parent)
             Files.writeString(report, trace)
         }
         helper.onEachTick {
             trace.append("${helper.tick},${npc.position().distanceTo(origin)},${npc.target != null},${npc.navigation.isDone},${npc.deltaMovement.horizontalDistance()},${npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK)},${Ports.guns.inHand(npc)?.hasAmmo()}\n")
-            helper.assertTrue(npc.nearestSupply() == null, "Empty-kit control unexpectedly has Supply")
-            helper.assertTrue(Ports.guns.inHand(npc)?.hasAmmo() == false, "Empty-kit control can still fire")
-            helper.assertTrue(!SidearmKit.hasSmallArmsAmmo(npc), "Empty kit regenerated ammunition: primary=${Ports.guns.roundsLeft(npc.primaryGun())} pistol=${Ports.guns.roundsLeft(npc.sidearmWeapon)} supply=${npc.nearestSupply()}")
+            stillEmpty(helper, npc)
             helper.assertTrue(npc.position().subtract(origin).horizontalDistance() <= AmmoRetreat.RADIUS + 0.75, "Empty NPC withdrew without a distance limit")
-            if (helper.tick >= 300 && npc.target != null && npc.onGround() && npc.navigation.isDone && npc.deltaMovement.horizontalDistance() < 0.01) {
+            if (npc.position().subtract(origin).horizontalDistance() >= 2.0) withdrew = true
+            if (helper.tick >= 300 && watching(npc, squadless) && standing(npc)) {
                 if (stoppedSince == null) stoppedSince = helper.tick
-                if (helper.tick - stoppedSince!! >= 100) helper.succeed()
+                if (helper.tick - stoppedSince!! >= 100) {
+                    if (squadless) helper.assertTrue(withdrew, "The squadless empty man never got out of his enemy's way")
+                    helper.succeed()
+                }
             } else {
                 stoppedSince = null
             }
         }
     }
+
+    private fun stillEmpty(helper: GameTestHelper, npc: NpcEntity) {
+        helper.assertTrue(npc.nearestSupply() == null, "Empty-kit control unexpectedly has Supply")
+        helper.assertTrue(Ports.guns.inHand(npc)?.hasAmmo() == false, "Empty-kit control can still fire")
+        helper.assertTrue(!SidearmKit.hasSmallArmsAmmo(npc), "Empty kit regenerated ammunition: primary=${Ports.guns.roundsLeft(npc.primaryGun())} pistol=${Ports.guns.roundsLeft(npc.sidearmWeapon)} supply=${npc.nearestSupply()}")
+    }
+
+    // Alone he loses sight of his enemy once he has stepped back: no squad shares what it sees.
+    private fun watching(npc: NpcEntity, squadless: Boolean) = squadless || npc.target != null
+
+    private fun standing(npc: NpcEntity) = npc.onGround() && npc.navigation.isDone && npc.deltaMovement.horizontalDistance() < 0.01
 
     private fun cleanup(helper: GameTestHelper, action: () -> Unit) {
         helper.testInfo.addListener(object : GameTestListener {

@@ -203,8 +203,9 @@ object AttackStrengthGameTests {
             val away = scene.members.count { it.holds(NpcActivity.RESUPPLY) || (it.ammoFraction() < 0.8 && it.position().distanceTo(supply) < NEAR_SUPPLY) }
             most = maxOf(most, away)
             if (away > 3) {
-                helper.fail("$away of 6 men were away resupplying at tick ${helper.tick}: " +
-                    scene.members.joinToString { "${it.uuid.toString().take(8)} trip=${it.holds(NpcActivity.RESUPPLY)} ammo=${"%.2f".format(it.ammoFraction())} supply=${"%.1f".format(it.position().distanceTo(supply))}" },
+                helper.fail(
+                    "$away of 6 men were away resupplying at tick ${helper.tick}: " +
+                        scene.members.joinToString { "${it.uuid.toString().take(8)} trip=${it.holds(NpcActivity.RESUPPLY)} ammo=${"%.2f".format(it.ammoFraction())} supply=${"%.1f".format(it.position().distanceTo(supply))}" },
                 )
             }
             if (scene.members.all { it.ammoFraction() >= 0.8 }) {
