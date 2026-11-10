@@ -514,7 +514,10 @@ object NativeTactics {
             val known = engagers[npc.uuid]
             val stamp = npc.currentSquad()?.orderStamp ?: 0
             engagers[npc.uuid] = Engager(level.gameTime + ENGAGER_TICKS, known?.takeIf { it.stamp == stamp }?.command ?: UUID.nameUUIDFromBytes("engage:${npc.uuid}:$stamp".toByteArray()), stamp)
-            if (known == null) refresh(npc)
+            // Every report, not just the first: refresh throttles itself, and a first report inside
+            // its window (the lone roots of #189 had just ticked it) was the engager's only chance,
+            // so a squadless man whom nothing else refreshes was left with no plan at all.
+            refresh(npc)
         }
 
         // Each sentry's last height post, offered back when an OVERWATCH duty returns to him.
