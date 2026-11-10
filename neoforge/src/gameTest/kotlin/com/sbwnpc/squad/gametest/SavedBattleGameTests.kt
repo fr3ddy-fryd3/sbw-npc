@@ -13,6 +13,7 @@ import com.sbwnpc.squad.combat.tactics.TacticalPositions
 import com.sbwnpc.squad.combat.tactics.TacticalSnapshot
 import com.sbwnpc.squad.combat.tactics.TacticalTask
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
@@ -287,4 +288,91 @@ object SavedBattleGameTests {
             if (helper.tick >= 1150L) helper.fail("The recon squad never took its post: stage $stage")
         }
     }
+
+    /**
+     * Playtest 10.11, snowy conifer forest (fixture `forest-attack-1011`, the world saved before it):
+     * the owner's ATTACK of Charlie (recon), Delta (mortar) and Echo up the slope at 38,-18. Every
+     * attacker stood about 10 s after the order (#312), and when the attack was called off the mortar
+     * crew retreated onto its objective (#313). Brains at full rate, as with the owner looking on.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 4200, batch = "saved-forest-attack", skyAccess = true)
+    fun savedForestAttackStartsAtOnceAndItsSupportFallsBack(helper: GameTestHelper) = forestAttack(helper, watched = true)
+
+    /**
+     * The same attack ordered from the map with no player near: the men's brains tick once in four
+     * (the AI level of detail), and their post searches waited 28-48 ticks for the ray queue (#312).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 4200, batch = "saved-forest-attack-far", skyAccess = true)
+    fun savedForestAttackOrderedFromAfarStartsAtOnce(helper: GameTestHelper) = forestAttack(helper, watched = false)
+
+    private fun forestAttack(helper: GameTestHelper, watched: Boolean) {
+        val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
+        Files.createDirectories(report)
+        val replay = SavedBattleReplay(helper.level, Path.of(System.getProperty("sbwnpc.gameTestReplay")))
+        val previousGroups = DebugFlags.enabledGroups
+        DebugFlags.enabledGroups = previousGroups + setOf(LogGroup.ORDER, LogGroup.FIRE_SUPPORT, LogGroup.PATH, LogGroup.VEHICLE)
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() {
+                DebugFlags.enabledGroups = previousGroups
+                NpcEntity.fullRateBrains = false
+                replay.close()
+            }
+        })
+        replay.restore()
+        val recon = UUID.fromString("3da81287-a7eb-4679-9c60-0107acfd58a7")
+        val mortar = UUID.fromString("fea9177c-5496-498f-84b9-64a222f9d3ff")
+        val infantry = UUID.fromString("fa4340dd-3352-43bb-87da-073f84c61414")
+        val attackers = listOf(recon, mortar, infantry)
+        helper.assertTrue(attackers.all { replay.manager.get(it) != null }, "The fixture lacks Charlie, Delta or Echo")
+        val objective = net.minecraft.world.phys.Vec3(38.5, 121.0, -17.5)
+        val walkers = replay.npcs.filter { it.squadId == recon || it.squadId == infantry }
+        val start = walkers.associateWith { it.position() }
+        NpcEntity.fullRateBrains = watched
+        val firstMove = HashMap<UUID, Long>()
+        var retreatFrom: Map<UUID, Double>? = null
+        val trace = report.resolve("attackers.csv")
+        Files.writeString(trace, "tick,squad,npc,order,x,y,z,job\n")
+        helper.onEachTick {
+            if (helper.tick == ORDER_TICK) com.sbwnpc.squad.squad.GroupOrders.apply(helper.level, replay.manager, attackers, SquadOrder.ATTACK, 38, -18)
+            for (npc in walkers) {
+                if (npc.uuid !in firstMove && npc.position().distanceTo(start.getValue(npc)) >= SET_OFF_DISTANCE) firstMove[npc.uuid] = helper.tick
+            }
+            if (helper.tick == ORDER_TICK + SET_OFF_TICKS) {
+                val idle = walkers.filter { it.isAlive && it.uuid !in firstMove }.map { it.uuid.toString().take(8) }
+                helper.assertTrue(idle.isEmpty(), "Attackers still on their start ${SET_OFF_TICKS} ticks after the order: $idle")
+            }
+            val crew = replay.npcs.filter { it.isAlive && it.squadId == mortar }
+            if (retreatFrom == null && replay.manager.get(mortar)?.order == SquadOrder.RETREAT) retreatFrom = crew.associate { it.uuid to it.position().distanceTo(objective) }
+            retreatFrom?.let { from ->
+                crew.forEach { man ->
+                    val was = from[man.uuid] ?: return@forEach
+                    helper.assertTrue(man.position().distanceTo(objective) >= was - CREW_DRIFT, "Mortarman ${man.uuid.toString().take(8)} retreated towards the attack's objective: ${"%.0f".format(was)} -> ${"%.0f".format(man.position().distanceTo(objective))} blocks")
+                }
+            }
+            if (helper.tick % 20L == 0L) {
+                val rows = replay.npcs.filter { it.isAlive && it.squadId in attackers }.joinToString("") { npc ->
+                    "${helper.tick},${replay.manager.get(npc.squadId!!)?.name},${npc.uuid.toString().take(8)},${replay.manager.get(npc.squadId!!)?.order},${"%.1f".format(npc.x)},${"%.1f".format(npc.y)},${"%.1f".format(npc.z)},${com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)?.job}\n"
+                }
+                Files.writeString(trace, rows, APPEND)
+            }
+            if (helper.tick >= END_TICK) {
+                helper.assertTrue(retreatFrom != null, "The attack was never called off in this run, so the support's retreat went unchecked")
+                helper.succeed()
+            }
+        }
+    }
+
+    private const val ORDER_TICK = 20L
+
+    /** 5 s: the order to the first step, every attacker; in the playtest they stood 9-17 s. */
+    private const val SET_OFF_TICKS = 100L
+    private const val SET_OFF_DISTANCE = 3.0
+    private const val CREW_DRIFT = 4.0
+    private const val END_TICK = 4000L
 }
