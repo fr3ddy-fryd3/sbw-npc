@@ -2023,7 +2023,11 @@ object NativeTactics {
                 squads.forEach { operations.detach(it.id) }
             } else if (operations.operation(operation)?.status == OperationStatus.ACTIVE) {
                 // Its support falls back with it, packing its tubes for the rally point (#258).
-                operations.operation(operation)?.support?.keys?.forEach { manager.withdraw(it, "operation_losses") }
+                val objective = operations.operation(operation)?.entry?.center
+                operations.operation(operation)?.support?.keys?.forEach { id ->
+                    manager.withdraw(id, "operation_losses")
+                    manager.setObjective(level, id, supportFallBack(id, callOff, objective))
+                }
                 operations.finish(operation, OperationStatus.CANCELLED)
                 attacks.remove(operation)
                 sectors.remove(operation)
@@ -2037,6 +2041,22 @@ object NativeTactics {
             }
             DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_called_off squads={} partial={} able={} base={}", operation, squads.size, callOff.partial, callOff.able, callOff.base)
             return ActionUpdate.Completed(listOf(ActionEvidence("attack_called_off", now)))
+        }
+
+        /**
+         * Where support squad [id] of a called-off attack falls back to: the nearest fall-back point
+         * of the squads it supported, or where it stands when that point lies nearer the attack's
+         * [objective] than it does. Without an objective of its own its retreat would make for the
+         * attack's, where a mortar crew's own shells land (#313). Null with none of its men loaded.
+         */
+        private fun supportFallBack(id: UUID, callOff: CallOff, objective: Point3?): net.minecraft.core.BlockPos? {
+            val men = SquadManager.get(level).get(id)?.members?.mapNotNull { level.getEntity(it) as? NpcEntity }.orEmpty()
+            if (men.isEmpty()) return null
+            val here = Point3(men.sumOf { it.x } / men.size, men.sumOf { it.y } / men.size, men.sumOf { it.z } / men.size)
+            val flat = { a: Point3, b: Point3 -> hypot(a.x - b.x, a.z - b.z) }
+            val point = callOff.fallBacks.values.map { it.point }.minByOrNull { flat(it, here) }
+                ?.takeIf { objective == null || flat(it, objective) >= flat(here, objective) } ?: here
+            return net.minecraft.core.BlockPos.containing(point.x, point.y, point.z)
         }
 
         private fun nearest(points: List<Point3>, from: Point3) = points.minOfOrNull { hypot(it.x - from.x, it.z - from.z) } ?: 0.0
