@@ -15,6 +15,7 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.AmmoRetreat
 import com.sbwnpc.squad.entity.ai.MandatoryRule
 import com.sbwnpc.squad.entity.ai.MandatoryRuleOwner
 import com.sbwnpc.squad.entity.ai.MandatoryRules
@@ -43,6 +44,10 @@ internal class SupplyCare(private val level: ServerLevel) {
     // or the next man set off while he was still counted away.
     private val running = HashSet<UUID>()
 
+    // A man's empty-gun episode outlives each withdrawal: a target lost and found again starts a new
+    // executor, and a fresh allowance each time let him walk off without a limit.
+    private val retreats = HashMap<UUID, AmmoRetreat>()
+
     /** [npc]'s ammunition facts at [now]: his trip, if the allocation gave him one, and an empty gun. */
     fun observe(facts: FactSnapshot, npc: NpcEntity, now: Long): FactSnapshot {
         var result = facts
@@ -66,13 +71,15 @@ internal class SupplyCare(private val level: ServerLevel) {
 
     fun action(npc: NpcEntity, supply: Point3): ActionExecution = Trip(npc, supply)
 
-    fun withdrawal(npc: NpcEntity): ActionExecution = AmmoWithdraw(level, npc)
+    fun withdrawal(npc: NpcEntity): ActionExecution = AmmoWithdraw(level, npc, retreats.getOrPut(npc.uuid, ::AmmoRetreat))
 
     /** Keeps only squads and men still about. */
     fun keep(squad: (UUID) -> Boolean, man: (UUID) -> Boolean) {
         squads.keys.removeIf { !squad(it) }
         lone.keys.removeIf { !man(it) }
         running.removeIf { !man(it) }
+        // Not by his agent: between two targets he has none, and the episode must survive that.
+        retreats.keys.removeIf { (level.getEntity(it) as? NpcEntity)?.isAlive != true }
     }
 
     fun clear() {
@@ -80,6 +87,7 @@ internal class SupplyCare(private val level: ServerLevel) {
         lone.clear()
         unreachable.clear()
         running.clear()
+        retreats.clear()
     }
 
     private fun allocate(trips: SquadTrips, squad: Squad?, npc: NpcEntity, now: Long) {

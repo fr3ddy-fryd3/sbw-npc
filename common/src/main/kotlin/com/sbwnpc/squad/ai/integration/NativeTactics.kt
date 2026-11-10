@@ -178,8 +178,15 @@ object NativeTactics {
     internal var planResultObserver: ((AgentLevel) -> Unit)? = null
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
-        if (planned(npc) || supports(npc)) world(npc).refresh(npc)
+        if (planned(npc) || supports(npc) || needsSupplyRoot(npc)) world(npc).refresh(npc)
     }
+
+    /**
+     * Whether [npc] is squadless on foot and needs his own root for a Supply trip or a withdrawal
+     * (#189). He starts the planner himself: alone in a world, no squad's man would, and he stood
+     * empty in front of his enemy where OutOfAmmoBehaviour used to move him.
+     */
+    fun needsSupplyRoot(npc: NpcEntity) = npc.vehicle == null && npc.npcClass in GROUND && world(npc).supplies.needsLoneRoot(npc)
 
     /** A mortarman, aircrew or drone operator: a support role his own plan runs, in a squad or not. */
     private fun supports(npc: NpcEntity) = crewed(npc) || aircrew(npc) || operatesDrone(npc)

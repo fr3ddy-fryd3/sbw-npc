@@ -31,13 +31,13 @@ import net.minecraft.world.phys.Vec3
  * from him ([AmmoRetreat]), then he holds. A cover action of his own (COVER, PEEK) has him first, and
  * a higher mandatory rule pauses him. He keeps [NpcActivity.RESUPPLY] while he runs, as before.
  */
-internal class AmmoWithdraw(private val level: ServerLevel, private val npc: NpcEntity) :
+internal class AmmoWithdraw(private val level: ServerLevel, private val npc: NpcEntity, retreat: AmmoRetreat) :
     ActionExecution,
     PlanExecutor,
     MandatoryRuleOwner {
     override val rule = MandatoryRule.OUT_OF_AMMO
 
-    private val feet = Footing()
+    private val feet = Footing(retreat)
     private var nextStep = 0L
     private var lastMode: String? = null
 
@@ -108,6 +108,7 @@ internal class AmmoWithdraw(private val level: ServerLevel, private val npc: Npc
     private fun stop() {
         feet.stopOwnedPath(npc)
         npc.release(NpcActivity.RESUPPLY, this)
+        if (Ports.guns.inHand(npc)?.hasAmmo() != false) feet.retreat.reset()
     }
 
     override fun suspend(now: Long, reason: String) = stop()
@@ -117,8 +118,7 @@ internal class AmmoWithdraw(private val level: ServerLevel, private val npc: Npc
     override fun cancel(now: Long, reason: String) = stop()
 
     /** Where his withdrawal is going and the path it set, so only that path is ever stopped. */
-    private class Footing {
-        val retreat = AmmoRetreat()
+    private class Footing(val retreat: AmmoRetreat) {
         private val failedCover = HashSet<BlockPos>()
         private var destination: Vec3? = null
         private var hiding = false
