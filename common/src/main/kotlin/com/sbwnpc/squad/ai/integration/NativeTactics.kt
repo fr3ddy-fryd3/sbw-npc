@@ -14,6 +14,7 @@ import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.entity.ai.CoverMechanics
 import com.sbwnpc.squad.entity.ai.MandatoryRule
 import com.sbwnpc.squad.entity.ai.MandatoryRules
+import com.sbwnpc.squad.entity.ai.MortarDeployment
 import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.entity.ai.WeaponStationScan
 import com.sbwnpc.squad.npc.NpcClass
@@ -178,15 +179,19 @@ object NativeTactics {
     internal var planResultObserver: ((AgentLevel) -> Unit)? = null
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
-        if (planned(npc) || supports(npc) || needsSupplyRoot(npc)) world(npc).refresh(npc)
+        if (planned(npc) || supports(npc) || needsOwnRoot(npc)) world(npc).refresh(npc)
     }
 
     /**
-     * Whether [npc] is squadless on foot and needs his own root for a Supply trip or a withdrawal
-     * (#189). He starts the planner himself: alone in a world, no squad's man would, and he stood
-     * empty in front of his enemy where OutOfAmmoBehaviour used to move him.
+     * Whether [npc] is on foot and needs a root of his own (#189): squadless and off to a Supply or
+     * out of rounds, or under fire or in his hole with no other plan. He starts the planner himself:
+     * alone in a world, no squad's man would, and he stood where OutOfAmmoBehaviour and
+     * SeekCoverBehaviour used to move him.
      */
-    fun needsSupplyRoot(npc: NpcEntity) = npc.vehicle == null && npc.npcClass in GROUND && world(npc).supplies.needsLoneRoot(npc)
+    fun needsOwnRoot(npc: NpcEntity) = npc.vehicle == null && npc.isAlive && ((npc.npcClass in GROUND && world(npc).supplies.needsLoneRoot(npc)) || answersFireAlone(npc))
+
+    /** Under fire or in his hole: his root, whatever plan or none he had, answers it (#189). */
+    private fun answersFireAlone(npc: NpcEntity) = npc.isSuppressed() || npc.holds(NpcActivity.DUG_IN)
 
     /** A mortarman, aircrew or drone operator: a support role his own plan runs, in a squad or not. */
     private fun supports(npc: NpcEntity) = crewed(npc) || aircrew(npc) || operatesDrone(npc)
@@ -391,14 +396,13 @@ object NativeTactics {
     /**
      * Whether his plan may move him. His own plan's cover actions hold his feet as his plan
      * ([PlanExecutor]), so they do not suspend it; any other claim ranked above [NpcActivity.TACTIC] does.
+     * A tube on his back ([MortarDeployment]) is carried wherever his plan walks him: under fire he
+     * takes it into cover, as he did before (#189), rather than stand frozen in the open.
      */
-    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) { it is PlanExecutor }
+    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) { it is PlanExecutor || it === MortarDeployment }
 
-    /**
-     * Whether the planner plans for [npc]: he has a full NPC agent, a ground role in a loaded squad,
-     * whose plan decides his cover too. An engage-only agent plans only his moves in a fight, a crewman's only his tube (#258).
-     */
-    fun plans(npc: NpcEntity): Boolean = hasAgent(npc) && worlds[npc.level()]?.coversFor(npc.uuid) == true
+    /** Whether the planner plans for [npc]: any agent of his decides his cover too (#189). */
+    fun plans(npc: NpcEntity): Boolean = hasAgent(npc)
     private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR, NpcClass.SCOUT)
 
     private class PendingDeath(val entity: LivingEntity, val cancelled: () -> Boolean)
@@ -477,9 +481,6 @@ object NativeTactics {
         /** Men fighting with no full agent, until their last report expires; see [NativeTactics.engaging]. */
         private val engagers = HashMap<UUID, Engager>()
 
-        /** Whether [id]'s plan decides his cover: not an engager's, nor a crewman's, whose plans have no cover (#258). */
-        fun coversFor(id: UUID) = id !in engagers && id !in loneOperators && id !in loneMedics && fireSupport.roster.unitOf(id) == null
-
         private fun engageOf(npc: NpcEntity) = engageStates.getOrPut(npc.uuid) { EngageState(npc) }
 
         // His engage facts' band memory, dropped with his agent like [engageStates].
@@ -531,11 +532,8 @@ object NativeTactics {
         /** The level's drone operators' stations and strike facts (#259). */
         private val drones = DroneWorld(level)
 
-        /** The squadless drone operators, each planned in a root of his own (#259); no plan decides their cover. */
+        /** The squadless drone operators, each planned in a root of his own (#259); no squad holds their drone back. */
         private val loneOperators = HashSet<UUID>()
-
-        // Squadless medics (#189): their care root has no cover, so the cover behaviour keeps ducking them.
-        private val loneMedics = HashSet<UUID>()
         val operations = OperationRegistry({ a, b -> Diplomacy.allied(SquadFaction.valueOf(a), SquadFaction.valueOf(b)) }, { _, _ -> true })
         private val snapshots = HashMap<UUID, TacticalSnapshot>()
         private val sharedViews = HashMap<UUID, TacticalSnapshot>()
@@ -1459,7 +1457,7 @@ object NativeTactics {
             if (fireSupport.roster.unitOf(npc.uuid) != null) result = fireSupport.manFacts(result, npc)
             if (air.roster.unitOf(npc.uuid) != null) result = air.manFacts(result, npc)
             if (tanks.roster.unitOf(npc.uuid) != null) result = tanks.manFacts(result, npc)
-            if (DroneWorld.operates(npc)) result = drones.manFacts(result, npc, teamTarget(id, npc), coversFor(npc.uuid))
+            if (DroneWorld.operates(npc)) result = drones.manFacts(result, npc, teamTarget(id, npc), npc.uuid !in loneOperators)
             return result
         }
         fun heard(squad: UUID, at: Point3, now: Long, walk: Boolean) = alarms.getOrPut(squad, ::SquadAlarms).heard(at, now, walk)
@@ -1712,7 +1710,7 @@ object NativeTactics {
                 commandCrews(now, desiredAgents)
                 commandAircraft(now, desiredAgents)
                 commandLoneOperators(now, desiredAgents)
-                commandLoneMedics(now, desiredAgents)
+                commandLoneRoots(now, desiredAgents)
                 withdrawDiscovered()
                 commandEngagers(now, desiredAgents)
                 agents.keys.filter { it !in desiredAgents }.toList().forEach { id ->
@@ -1847,19 +1845,26 @@ object NativeTactics {
          * patients are still treated: his treatment, his fight, else nothing. It stands in for his
          * engage-only agent, as a lone operator's does, so he has one NPC agent, not two.
          */
-        private fun commandLoneMedics(now: Long, desired: MutableSet<AgentId>) {
-            // A squadless man who needs a Supply, or has an empty gun, takes the same root (#189).
-            val lone = NpcRegistry.all(level).filter { it.isAlive && it.currentSquad() == null && (it.npcClass == NpcClass.MEDIC || supplies.needsLoneRoot(it)) && AgentId(AgentLevel.NPC, it.uuid) !in desired }
-            loneMedics.retainAll(lone.mapTo(HashSet()) { it.uuid })
+        private fun commandLoneRoots(now: Long, desired: MutableSet<AgentId>) {
+            // A squadless man who needs a Supply, or has an empty gun, takes the same root (#189), and
+            // so does any man on foot under fire or in his hole whom no other plan covers, squad or
+            // not: an engager's fight has no cover, and a man with no agent had nothing to answer it.
+            val lone = NpcRegistry.all(level).filter { it.isAlive && it.vehicle == null && AgentId(AgentLevel.NPC, it.uuid) !in desired && (answersFireAlone(it) || (it.currentSquad() == null && (it.npcClass == NpcClass.MEDIC || supplies.needsLoneRoot(it)))) }
             lone.forEach { npc ->
                 val agent = AgentId(AgentLevel.NPC, npc.uuid)
-                loneMedics += npc.uuid
                 desired += agent
                 val fresh = agent !in agents
                 ensure(agent).command(UUID.nameUUIDFromBytes("care:${npc.uuid}".toByteArray()), TacticalDomain.CARE_TASK.call(EngageTask(agent)), facts(agent, now))
-                if (fresh) DecisionTrace.man(npc.uuid, now, "agent", if (npc.npcClass == NpcClass.MEDIC) "squadless_medic" else "squadless_supply")
+                if (fresh) DecisionTrace.man(npc.uuid, now, "agent", loneReason(npc))
             }
         }
+
+        private fun loneReason(npc: NpcEntity) =
+            when {
+                answersFireAlone(npc) -> "under_fire_alone"
+                npc.npcClass == NpcClass.MEDIC -> "squadless_medic"
+                else -> "squadless_supply"
+            }
 
         /** The team agent [man] is planned in, or null. */
         fun teamOf(man: AgentId): AgentId? = children.entries.firstOrNull { (id, members) -> id.level == AgentLevel.TEAM && man in members }?.key
@@ -3058,7 +3063,6 @@ object NativeTactics {
             tanks.clear()
             drones.clear()
             loneOperators.clear()
-            loneMedics.clear()
             alarms.clear()
             closeContacts.clear()
             journeys.clear()

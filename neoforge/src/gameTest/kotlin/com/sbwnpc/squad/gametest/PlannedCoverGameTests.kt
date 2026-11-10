@@ -283,10 +283,10 @@ object PlannedCoverGameTests {
         }
     }
 
-    /** A role the planner does not cover keeps the cover behaviour until #256. */
+    /** A role with no plan of its own, a mortar crewman with no tube, takes cover in a root of his own (#189). */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "planned-cover-unplanned")
-    fun unplannedRoleKeepsSeekCover(helper: GameTestHelper) {
+    fun unplannedRoleTakesCoverInHisOwnRoot(helper: GameTestHelper) {
         val fire = UnderFire(helper, "planned-cover-unplanned", listOf(Vec3(20.5, 1.0, 57.5)), Vec3(140.5, 1.0, 50.5), wall = WALL, role = NpcClass.MORTAR)
         var covered = false
         helper.onEachTick {

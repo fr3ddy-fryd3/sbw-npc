@@ -48,10 +48,13 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * [NpcEntity.fireObservation] for his plan's facts.
  */
 class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
-    // ExtendedBehaviour defaults to a 60-tick runtime cap (confirmed via javap — see
-    // SeekCoverBehaviour's doc comment for the full story of what this silently broke there); this
-    // behaviour is meant to keep running for as long as ATTACK_TARGET stays set, not get force-
-    // stopped and immediately restarted every 3 seconds regardless of combat state.
+    // ExtendedBehaviour has a default 60-tick runtime cap (runtimeProvider defaults to a constant
+    // 60, confirmed via javap on the real jar), which vanilla Behavior.timedOut() enforces apart from
+    // shouldKeepRunning(): every start()/stop() pair of the old cover behaviour came exactly 61 ticks
+    // apart, whatever its state, and its men dropped out of cover into a fresh search each time.
+    // noTimeout() lifts the cap, so only shouldKeepRunning()/stop() end a behaviour. This one is
+    // meant to keep running for as long as ATTACK_TARGET stays set, not get force-stopped and
+    // immediately restarted every 3 seconds regardless of combat state.
     init {
         noTimeout()
     }

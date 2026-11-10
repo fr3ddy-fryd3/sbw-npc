@@ -45,7 +45,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // ExtendedBehaviour defaults to a 60-tick runtime cap (confirmed via javap — see
-    // SeekCoverBehaviour's doc comment for the full story); this needs to keep running for as long
+    // GunAttackBehaviour's init for the full story); this needs to keep running for as long
     // as it stays eligible, not get force-stopped/restarted (resetting repathCooldown etc.) every
     // 3 seconds regardless of squad-order state.
     init {
@@ -69,7 +69,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var defendPostHome: Vec3? = null
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
-    // canUse(). Unlike GunAttackBehaviour/SeekCoverBehaviour, nothing here is
+    // canUse(). Unlike GunAttackBehaviour, nothing here is
     // driven by a SmartBrainLib memory.
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 

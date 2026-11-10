@@ -19,9 +19,9 @@ import com.sbwnpc.squad.entity.NpcEntity
  * tick yields while [MandatoryRules.may] says no, and it keeps its state (the medic his patient, the
  * drone reaction its search) for when the higher rule lets go.
  *
- * Outside the table: the first duck under fire of the roles the planner does not cover yet
- * ([SeekCoverBehaviour]), and the roles that fly a drone or crew a tube, whose man stays at his post
- * even by a live grenade (they rank above [NpcActivity.EVADE]).
+ * Outside the table: the roles that fly a drone or crew a tube, whose man stays at his post even by
+ * a live grenade (they rank above [NpcActivity.EVADE]). Cover under fire is no rule: every man's plan
+ * answers fire (#189).
  *
  * @property activity the claim the rule's behaviour holds while it runs, or null for a rule that
  *   holds none: a kit used on the spot, or a trigger pulled while the plan keeps his feet.

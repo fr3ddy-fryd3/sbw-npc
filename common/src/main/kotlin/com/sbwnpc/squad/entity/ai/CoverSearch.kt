@@ -13,8 +13,8 @@ import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 
 /**
- * Where a suppressed NPC can get out of sight: [SeekCoverBehaviour]'s search for real cover, kept
- * apart from its phases because it keeps no state of its own.
+ * Where a suppressed NPC can get out of sight: the plan's search for real cover
+ * ([com.sbwnpc.squad.ai.integration.NativeCoverMove]), kept apart because it keeps no state of its own.
  */
 object CoverSearch {
     /** Keep cheap candidate restrictions separate from physical checks made nearest-first. */
@@ -30,7 +30,7 @@ object CoverSearch {
      *     where there's no single obvious wall to hug.
      *  Grid-scan-only would miss legitimate cover in uneven open terrain; random-only was what
      *  actually shipped before and, per user feedback in-game, mostly just resulted in NPCs backing
-     *  straight away from the threat (`SeekCoverBehaviour`'s fallback retreat) instead of finding real cover — because
+     *  straight away from the threat (the fallback retreat) instead of finding real cover — because
      *  purely random points rarely land next to a wall by chance within a small sample. */
     fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3, excluded: Set<BlockPos> = emptySet(), filter: Filter = Filter()): BlockPos? {
         val origin = entity.blockPosition()

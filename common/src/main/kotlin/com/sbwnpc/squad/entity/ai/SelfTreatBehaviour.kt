@@ -13,7 +13,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
  * In the Core tasks: a wounded NPC uses its own medical kit ([NpcEntity.medkitsLeft]) on the spot —
- * only once it is in cover, ducked or dug in (see [SeekCoverBehaviour]), or a medic at his patient,
+ * only once it is in cover, ducked or dug in (his plan's cover actions), or a medic at his patient,
  * never out in the open. A [MandatoryRule.SELF_TREAT].
  */
 class SelfTreatBehaviour : ExtendedBehaviour<NpcEntity>() {

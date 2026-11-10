@@ -4,7 +4,6 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.CoverPeekSearch
-import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
@@ -40,41 +39,6 @@ object CoverBudgetGameTests {
                 helper.assertTrue(result.point.y == npc.y && result.path.canReach(), "Continuation reused the rejected fence-top route")
                 helper.assertTrue(searches.values.all { it <= 1 } && searches.values.sum() == 2, "Continuation repeated native work: $searches")
                 scene.result("PASS", "rejectedAt=$rejectedAt resumedAt=${helper.tick} native=2 point=${helper.relativeVec(result.point)}")
-                helper.succeed()
-            }
-        }
-    }
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 200, batch = "cover-fallback-budget")
-    fun queuedFallbackPathsObeyNativeBudgetAndAllResume(helper: GameTestHelper) {
-        val scene = CombatIdleGameTests.Scene(helper, "cover-fallback-budget", recordTrace = false)
-        val searches = mutableMapOf<Long, Int>()
-        val tick = SeekCoverBehaviour::class.java.getDeclaredMethod("tick", NpcEntity::class.java).apply { isAccessible = true }
-        val actors = List(16) { i ->
-            val npc = scene.spawn(Vec3(20.5, 1.0, 12.5 + i * 12)).apply { isNoAi = true }
-            val threat = npc.eyePosition.add(96.0, 0.0, 0.0)
-            npc.suppress(threat)
-            val behaviour = SeekCoverBehaviour()
-            val goal = npc.blockPosition().offset(-8, 0, 0)
-            field("pendingFallback").set(behaviour, goal)
-            field("fallbackThreat").set(behaviour, threat)
-            (npc.navigation as VehicleAwareNavigation).pathWorkObserver = { _, _, native -> if (native) searches.merge(helper.tick, 1, Int::plus) }
-            Triple(npc, behaviour, goal)
-        }
-        scene.onClose = { actors.forEach { (npc, _, _) -> (npc.navigation as VehicleAwareNavigation).pathWorkObserver = null } }
-        helper.onEachTick {
-            if (helper.tick < 20) return@onEachTick
-            actors.forEach { (npc, behaviour, goal) ->
-                npc.setOnGround(true)
-                if (field("coverTarget").get(behaviour) != goal) tick.invoke(behaviour, npc)
-            }
-            val assigned = actors.count { (_, behaviour, goal) -> field("coverTarget").get(behaviour) == goal }
-            val maximum = searches.values.maxOrNull() ?: 0
-            helper.assertTrue(maximum <= 4, "Fallback paths exceeded native budget: $searches")
-            if (assigned == actors.size) {
-                helper.assertTrue(searches.values.sum() == 16, "Fallback admission rebuilt or omitted routes: $searches")
-                scene.result("PASS", "assigned=$assigned native=${searches.values.sum()} maximumNativePerTick=$maximum tick=${helper.tick}")
                 helper.succeed()
             }
         }
@@ -152,6 +116,4 @@ object CoverBudgetGameTests {
 
     /** The tick every man is suppressed at once, after the scene settles. */
     private const val SUPPRESSED_AT = 20L
-
-    private fun field(name: String) = SeekCoverBehaviour::class.java.getDeclaredField(name).apply { isAccessible = true }
 }

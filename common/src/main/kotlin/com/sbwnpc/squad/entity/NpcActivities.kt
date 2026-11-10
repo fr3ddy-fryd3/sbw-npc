@@ -44,17 +44,17 @@ enum class NpcActivity(val holds: Set<Cap>) {
     /** A medic walking to or treating a critically wounded ally: the plan's treatment, `MedicCare` (#189). */
     HEAL(setOf(Cap.FEET, Cap.FIRE, Cap.LOOK)),
 
-    /** Moving to, holding or leaving cover: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. */
+    /** Moving to, holding or leaving cover: his plan's cover actions ([com.sbwnpc.squad.ai.integration.NativeCoverMove]). */
     COVER(setOf(Cap.FEET, Cap.FIRE)),
 
     /**
-     * Stepping out of cover to return fire ([com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]). The
+     * Stepping out of cover to return fire ([com.sbwnpc.squad.ai.integration.NativeCoverCycle]). The
      * cover claim is let go for the peek, so the rifle is free; the feet belong to the peek.
      */
     PEEK(setOf(Cap.FEET)),
 
     /**
-     * Holding a foxhole it dug: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. The man fights from
+     * Holding a foxhole it dug: [com.sbwnpc.squad.ai.integration.NativeDig]. The man fights from
      * the hole, so the trigger stays free.
      */
     DUG_IN(setOf(Cap.FEET)),

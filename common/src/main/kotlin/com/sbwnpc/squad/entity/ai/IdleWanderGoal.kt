@@ -12,10 +12,10 @@ import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
  * SmartBrainLib Behaviours don't participate in `GoalSelector`'s `Flag` system, so nothing here
  * automatically excludes it the way a real target/flag conflict would in a fully vanilla AI.
  *
- * `target == null` alone was already the right gate for ordinary combat (SeekCoverBehaviour/
+ * `target == null` alone was already the right gate for ordinary combat (cover and
  * GunAttackBehaviour only ever run with a live target or while suppressed with the cover claim set).
  * not being dug in is required in addition: a dug-in mob deliberately clears the cover claim for its whole
- * holding duration (see `SeekCoverBehaviour.enterDugInHolding`) so `GunAttackBehaviour` can still
+ * holding duration (see `NativeHoldHole`) so `GunAttackBehaviour` can still
  * fire from the hole, and its target can legitimately go null for a moment (dies, breaks LOS)
  * without the mob actually being done holding its position — reported in-game as digging in not
  * reliably preventing the mob from wandering off once its immediate target disappeared.

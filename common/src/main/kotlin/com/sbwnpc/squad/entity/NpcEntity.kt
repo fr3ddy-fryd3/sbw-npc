@@ -9,7 +9,6 @@ import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
 import com.sbwnpc.squad.entity.ai.IdleWanderGoal
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarDeployment
-import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.SquadOrderBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleCombatSupportBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleCrewBehaviour
@@ -152,7 +151,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Command group this NPC belongs to, if any. Server-side; persisted. */
     var squadId: UUID? = null
 
-    // Suppression (see SeekCoverBehaviour): a temporary "duck and hold" state triggered by taking
+    // Suppression (his plan answers it, UnderFire): a temporary "duck and hold" state triggered by taking
     // ranged damage (below, hurt()) or a nearby explosion (SuppressionEvents). Backed by a
     // SmartBrainLib TTL memory — expires on its own, and shows in the brain's memory
     // (e.g. /data get entity <e> Brain).
@@ -352,7 +351,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     // Set by GunAttackBehaviour every time it actually fires (not just "has a target" — genuinely
-    // pulled the trigger this tick). Used by SeekCoverBehaviour to verify an ally is really
+    // pulled the trigger this tick). Used by the dig-in rule (CoverMechanics) to verify an ally is really
     // providing covering fire before digging in, rather than just inferring it from having a
     // target and line of sight. internal (not private) for the same cross-file reason isEnemy() is.
     var lastShotTick: Int = Int.MIN_VALUE / 2
@@ -1101,7 +1100,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.coreTasks(
             com.sbwnpc.squad.entity.ai.SquadTacticalBehaviour(),
             *VersionCompat.doorBehaviours(),
-            SeekCoverBehaviour(),
             com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(),
             com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(),
             VehicleCrewBehaviour(),
@@ -1184,7 +1182,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // Two RGN and two RGO per fighter, crews excepted (they aren't a combat-suppression role)
         // — per user request. Counted, NOT visible offhand items — user feedback: holding a
         // physical grenade in the offhand looked wrong (both hands full). Thrown by the plan's
-        // grenade throws (GrenadeChoice) and SeekCoverBehaviour's post-dig throw, all from these
+        // grenade throws (GrenadeChoice), all from these
         // same counts.
         rgnLeft = if (carriesGrenades()) GRENADES_OF_EACH else 0
         rgoLeft = rgnLeft

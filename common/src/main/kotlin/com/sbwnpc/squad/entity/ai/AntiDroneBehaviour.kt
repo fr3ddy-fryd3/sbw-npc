@@ -50,7 +50,7 @@ import kotlin.math.roundToInt
  *    drone crossing at speed is a hard target; the addon's FPV drone dies to one hit. Inside
  *    [SHOOTER_PANIC_RANGE] it's too late to shoot: break and run ([evade]).
  *  - MEDIC / GRENADIER / MORTAR crew: **take cover** — the drone's position becomes a suppression
- *    threat and [SeekCoverBehaviour] does what it already does (a roof overhead is the only real
+ *    threat and his plan answers it as any fire (#189) (a roof overhead is the only real
  *    answer to an FPV); inside [HIDER_PANIC_RANGE] with the drone closing, run instead.
  *  - An operator flying its own drone stays on the monitor (not eligible).
  *
@@ -233,7 +233,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.lookControl.setLookAt(drone.x, drone.y, drone.z)
             }
 
-            // Cover-seekers: hand the drone to SeekCoverBehaviour as a suppression threat (it
+            // Cover-seekers: hand the drone to his plan as a suppression threat (his cover search
             // finds a spot the threat position can't see — for a drone, that means a roof).
             else -> entity.suppress(drone.position())
         }

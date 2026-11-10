@@ -91,8 +91,8 @@ object Resupply {
             if (facts.value(SupplyFacts.EMPTY) == true && facts.value(SupplyFacts.TRIP) == null) Verdict.Allowed else Verdict.Rejected("not_empty")
         }
 
-    // An engage-only or squadless root has no position intent: only the drone keeps him then.
-    private fun standsAside(intent: PositionIntent?, facts: FactView): Verdict? = DroneStrike.flying(facts) ?: intent?.let { UnderFire.duty(it, facts) }
+    // An engage-only or squadless root has no position intent: his answer to fire there is UnderFire.alone's.
+    private fun standsAside(intent: PositionIntent?, facts: FactView): Verdict? = DroneStrike.flying(facts) ?: if (intent != null) UnderFire.duty(intent, facts) else UnderFire.alone(facts)
 
     fun trip(actor: AgentId, facts: FactView) = TaskNetwork.sequence(TRIP_TASK.call(SupplyTrip(actor, facts.value(SupplyFacts.TRIP)!!)))
 

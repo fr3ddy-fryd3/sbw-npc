@@ -33,8 +33,6 @@
     <ID>ComplexCondition:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$entity.movementLockedByCover() || entity.coverPeekPoint != null || entity.evadingGrenade() || entity.combatLockedByMedic()</ID>
     <ID>ComplexCondition:PlanningAgent.kt$PlanningAgent$runtime.completed &amp;&amp; search == null &amp;&amp; waiting.isEmpty() &amp;&amp; status == PlanningStatus.EXECUTING</ID>
     <ID>ComplexCondition:PlanningAgent.kt$PlanningAgent$search == null &amp;&amp; status in setOf(PlanningStatus.EXECUTING, PlanningStatus.COMPLETED) &amp;&amp; old != null &amp;&amp; !old.inputUnchanged(facts)</ID>
-    <ID>ComplexCondition:SeekCoverBehaviour.kt$SeekCoverBehaviour$entity.tickCount &gt;= phaseUntilTick || (!blindReply &amp;&amp; (target == null || !target.isAlive))</ID>
-    <ID>ComplexCondition:SeekCoverBehaviour.kt$SeekCoverBehaviour$target != null &amp;&amp; target.isAlive &amp;&amp; !ally.combatLockedByCover() &amp;&amp; ally.sensing.hasLineOfSight(target)</ID>
     <ID>ComplexCondition:SquadFormation.kt$SquadFormation$(shape == Shape.RING &amp;&amp; !rearSupport) || shape == Shape.PERIMETER || shape == Shape.SCATTER</ID>
     <ID>ComplexCondition:SquadManager.kt$SquadManager$npc != null &amp;&amp; npc.npcClass == NpcClass.DRONE_OPERATOR &amp;&amp; npc.isAlive &amp;&amp; npc.position().distanceToSqr(pos) &lt;= RESUPPLY_RADIUS * RESUPPLY_RADIUS</ID>
     <ID>ComplexCondition:SquadMarch.kt$SquadMarch$atEnd &amp;&amp; !march.complete &amp;&amp; level.gameTime - march.plannedAt &gt;= MIN_REPLAN_TICKS &amp;&amp; lastPlanTick != level.gameTime</ID>
@@ -105,10 +103,6 @@
     <ID>CyclomaticComplexMethod:OrderArrival.kt$OrderArrival$fun tick(server: MinecraftServer)</ID>
     <ID>CyclomaticComplexMethod:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>CyclomaticComplexMethod:PlanningAgent.kt$PlanningAgent$fun tick(facts: FactSnapshot, planningWork: Int = 4, executionWork: Int = 64)</ID>
-    <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$override fun tick(entity: NpcEntity)</ID>
-    <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickInCover(entity: NpcEntity, level: ServerLevel)</ID>
-    <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickMovingToCover(entity: NpcEntity, level: ServerLevel, threat: Vec3)</ID>
-    <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickPeeking(entity: NpcEntity)</ID>
     <ID>CyclomaticComplexMethod:ServerPayloadHandlers.kt$ServerPayloadHandlers$fun onRouteCmd(p: RouteCmdPayload, ctx: PayloadContext)</ID>
     <ID>CyclomaticComplexMethod:ServerPayloadHandlers.kt$ServerPayloadHandlers$fun onSquadCmd(p: SquadCmdPayload, ctx: PayloadContext)</ID>
     <ID>CyclomaticComplexMethod:ServerPayloadHandlers.kt$ServerPayloadHandlers$fun onSupplyCmd(p: SupplyCmdPayload, ctx: PayloadContext)</ID>
@@ -178,7 +172,6 @@
     <ID>LongMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap(), approach: Double? = null): Map&lt;UUID, FrontProposal&gt;</ID>
     <ID>LongMethod:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>LongMethod:RecruitScreen.kt$RecruitScreen$override fun init()</ID>
-    <ID>LongMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickMovingToCover(entity: NpcEntity, level: ServerLevel, threat: Vec3)</ID>
     <ID>LongMethod:ServerPayloadHandlers.kt$ServerPayloadHandlers$fun onSquadCmd(p: SquadCmdPayload, ctx: PayloadContext)</ID>
     <ID>LongMethod:SquadDetailsSnapshot.kt$fun buildSquadDetailsSnapshot(manager: SquadManager, server: MinecraftServer, owner: UUID, id: UUID, refresh: Boolean = false): CompoundTag?</ID>
     <ID>LongMethod:SquadMarch.kt$SquadMarch$private fun planLong(level: ServerLevel, npc: NpcEntity, march: March, goal: BlockPos, squadName: String)</ID>
@@ -222,7 +215,6 @@
     <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions, radius: Double = STANDING_RADIUS, requireSolidFloor: Boolean = false, acceptsPosition: (Vec3) -&gt; Boolean = { true }, )</ID>
     <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions, range: Int = SEARCH_RANGE, requireSolidFloor: Boolean = false, )</ID>
     <ID>LongParameterList:ScreenCompat.kt$WidgetCompat$(font: Font, x: Int, y: Int, label: Component, selected: Boolean, onChange: (Boolean) -&gt; Unit)</ID>
-    <ID>LongParameterList:SeekCoverBehaviour.kt$SeekCoverBehaviour$(entity: NpcEntity, level: ServerLevel, cover: BlockPos, aim: Vec3, target: LivingEntity?, blind: Boolean)</ID>
     <ID>LongParameterList:Sightline.kt$Sightline$( level: ServerLevel, from: Vec3, to: Vec3, passer: Entity, hulls: List&lt;AABB&gt;, spreadDegrees: Double = 0.0, )</ID>
     <ID>LongParameterList:Squad.kt$Squad$( val id: UUID, var name: String, var faction: SquadFaction, var order: SquadOrder, val members: MutableList&lt;UUID&gt;, var objective: BlockPos?, /** Entity the squad is focused on: attack it (ATTACK) or guard it (DEFEND). */ var focusEntity: UUID?, val owner: UUID, /** Barracks this squad resupplies from, if any. */ var barracks: BarracksRef? = null, /** Classes the squad was formed/last topped up with. */ var originalComposition: List&lt;NpcClass&gt; = emptyList(), /** Legacy recruitment setting retained in saved data; new soldiers start as RECRUIT. */ var rank: NpcRank = NpcRank.DEFAULT, /** Patrol route this squad walks when on PATROL order, if any — see `Route`/`SquadOrderBehaviour`. */ var routeId: UUID? = null, /** The fixed rally point for the current MOVE command. */ var moveAssembly: BlockPos? = null, /** True once every member has reached its slot at [moveAssembly]. */ var moveFormationReady: Boolean = false, )</ID>
     <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, facingYaw: Float, composition: List&lt;NpcClass&gt;, rank: NpcRank, faction: SquadFaction, difficulty: net.minecraft.world.DifficultyInstance, )</ID>
@@ -685,15 +677,6 @@
     <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$90</ID>
     <ID>MagicNumber:SafeSpawn.kt$SafeSpawn$0.1</ID>
     <ID>MagicNumber:SafeSpawn.kt$SafeSpawn$8</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$0.5</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$1.5</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$100</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$40</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$512</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$60</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$64.0</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$80</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$9</ID>
     <ID>MagicNumber:SelectionHighlight.kt$SelectionHighlight$0.05</ID>
     <ID>MagicNumber:SelectionHighlight.kt$SelectionHighlight$0.15</ID>
     <ID>MagicNumber:SelectionHighlight.kt$SelectionHighlight$0.3</ID>
@@ -976,7 +959,7 @@
     <ID>NestedBlockDepth:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
     <ID>NestedBlockDepth:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun recoverIfStuck(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean</ID>
     <ID>NestedBlockDepth:WaterMap.kt$WaterMap$private fun read(level: ServerLevel, y: Int, cx: Int, cz: Int, now: Long): Chunk</ID>
-    <ID>SpreadOperator:NpcEntity.kt$NpcEntity$( com.sbwnpc.squad.entity.ai.SquadTacticalBehaviour(), *VersionCompat.doorBehaviours(), SeekCoverBehaviour(), com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(), com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(), VehicleCrewBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(), VehicleCombatSupportBehaviour(), com.sbwnpc.squad.entity.ai.FollowRideBehaviour(), com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(), // Keep one journey executor through Idle/Fight changes: a remembered remote contact // must not prevent the squad from boarding or marching to its distant objective. com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(), SquadOrderBehaviour(), // Last: it has to override whatever the behaviours above did with the navigation. com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour(), )</ID>
+    <ID>SpreadOperator:NpcEntity.kt$NpcEntity$( com.sbwnpc.squad.entity.ai.SquadTacticalBehaviour(), *VersionCompat.doorBehaviours(), com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(), com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(), VehicleCrewBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(), VehicleCombatSupportBehaviour(), com.sbwnpc.squad.entity.ai.FollowRideBehaviour(), com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(), // Keep one journey executor through Idle/Fight changes: a remembered remote contact // must not prevent the squad from boarding or marching to its distant objective. com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(), SquadOrderBehaviour(), // Last: it has to override whatever the behaviours above did with the navigation. com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour(), )</ID>
     <ID>ThrowingExceptionsWithoutMessageOrCause:NpcEntity.kt$NpcEntity$Throwable()</ID>
     <ID>ThrowingExceptionsWithoutMessageOrCause:VehicleAwareNavigation.kt$VehicleAwareNavigation$Throwable()</ID>
     <ID>TooManyFunctions:AntiDroneBehaviour.kt$AntiDroneBehaviour : ExtendedBehaviour</ID>
@@ -1003,7 +986,6 @@
     <ID>TooManyFunctions:NpcEntity.kt$NpcEntity : NpcEntityBaseSmartBrainOwner</ID>
     <ID>TooManyFunctions:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour : ExtendedBehaviourMandatoryRuleOwner</ID>
     <ID>TooManyFunctions:RecruitScreen.kt$RecruitScreen : SquadScreen</ID>
-    <ID>TooManyFunctions:SeekCoverBehaviour.kt$SeekCoverBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:ServerPayloadHandlers.kt$ServerPayloadHandlers</ID>
     <ID>TooManyFunctions:SquadDetailsScreen.kt$SquadDetailsScreen : ScrollScreen</ID>
     <ID>TooManyFunctions:SquadFormation.kt$SquadFormation</ID>

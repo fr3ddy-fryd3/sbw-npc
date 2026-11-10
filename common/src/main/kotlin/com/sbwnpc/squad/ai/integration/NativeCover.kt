@@ -460,7 +460,7 @@ internal class NativeDig(private val dig: DigIn, npc: NpcEntity, private val sta
         val at = column ?: return ActionUpdate.Failed("no_dig_site")
         val pos = block ?: return ActionUpdate.Failed("no_dig_site")
         val current = npc.blockPosition()
-        // Pushed off the column, the hole would open beside him: see SeekCoverBehaviour's dig.
+        // Pushed off the column, the hole would open beside him and he would never stand in it.
         if (current.x != at.x || current.z != at.z) {
             level.destroyBlockProgress(npc.id, pos, -1)
             return ActionUpdate.Failed("displaced")
