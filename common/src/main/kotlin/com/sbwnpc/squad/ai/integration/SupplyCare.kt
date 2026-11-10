@@ -39,6 +39,10 @@ internal class SupplyCare(private val level: ServerLevel) {
     // A Supply he could not reach is off for a while: picked again at once, he held a place forever.
     private val unreachable = HashMap<UUID, Long>()
 
+    // Men whose trip executor runs now: topped up, a man still walking holds his place until it ends,
+    // or the next man set off while he was still counted away.
+    private val running = HashSet<UUID>()
+
     /** [npc]'s ammunition facts at [now]: his trip, if the allocation gave him one, and an empty gun. */
     fun observe(facts: FactSnapshot, npc: NpcEntity, now: Long): FactSnapshot {
         var result = facts
@@ -68,12 +72,14 @@ internal class SupplyCare(private val level: ServerLevel) {
     fun keep(squad: (UUID) -> Boolean, man: (UUID) -> Boolean) {
         squads.keys.removeIf { !squad(it) }
         lone.keys.removeIf { !man(it) }
+        running.removeIf { !man(it) }
     }
 
     fun clear() {
         squads.clear()
         lone.clear()
         unreachable.clear()
+        running.clear()
     }
 
     private fun allocate(trips: SquadTrips, squad: Squad?, npc: NpcEntity, now: Long) {
@@ -83,7 +89,7 @@ internal class SupplyCare(private val level: ServerLevel) {
         val candidates = if (squad?.resupplyAttack != null) {
             emptyList()
         } else {
-            men.filter(::candidate).mapNotNull { man ->
+            men.filter { candidate(it) || (it.uuid in running && it.uuid in trips.men) }.mapNotNull { man ->
                 val supply = man.nearestSupply() ?: return@mapNotNull null
                 SupplyCandidate(man.uuid, empty(man), man.ammoFraction(), man.position().distanceTo(supply))
             }
@@ -124,6 +130,7 @@ internal class SupplyCare(private val level: ServerLevel) {
 
         override fun start(now: Long): ActionUpdate {
             progressAt = now
+            running += npc.uuid
             FiringSpots.release(npc.uuid)
             npc.clearAlert()
             DebugFlags.log(LogGroup.SUPPLY, "[htn] actor={} event=resupply_started supply={} ammo={}", npc.uuid, supply, "%.2f".format(npc.ammoFraction()))
@@ -158,6 +165,7 @@ internal class SupplyCare(private val level: ServerLevel) {
 
         private fun end(now: Long, update: ActionUpdate, failed: Boolean): ActionUpdate {
             stop()
+            running -= npc.uuid
             drop(npc, now, failed)
             DebugFlags.log(LogGroup.SUPPLY, "[htn] actor={} event=resupply_ended result={} ammo={}", npc.uuid, update, "%.2f".format(npc.ammoFraction()))
             return update
@@ -172,7 +180,10 @@ internal class SupplyCare(private val level: ServerLevel) {
 
         override fun resume(now: Long) = Unit
 
-        override fun cancel(now: Long, reason: String) = stop()
+        override fun cancel(now: Long, reason: String) {
+            stop()
+            running -= npc.uuid
+        }
     }
 
     /** One squad's men on a trip now, or a squadless man's own, and when it is looked at again. */
