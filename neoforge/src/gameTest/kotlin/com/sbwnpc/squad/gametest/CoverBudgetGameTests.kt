@@ -116,6 +116,53 @@ object CoverBudgetGameTests {
     }
 
     /**
+     * Sixteen squadless men suppressed in one tick from a shooter none of them can see, on the open
+     * ground east of the arena where no cover is in reach (as in `noCoverNoTargetFallsBack`): each
+     * plan falls back (#189). Their sixteen fall-back searches queue in the per-tick tactical path
+     * budget, so no tick of the admission searches more than it allows, all are admitted within it,
+     * and every man gets away. Later native work (a walking man's repath, a peek) is not counted:
+     * the budget does not cover it, and with the AI on it is not the fall-backs'.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "cover-fallback-budget")
+    fun simultaneousFallBacksObeyNativeBudgetAndAllLeave(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "cover-fallback-budget", recordTrace = false)
+        val searches = mutableMapOf<Long, Int>()
+        val actors = List(16) { i ->
+            val npc = scene.spawn(Vec3(140.5, 1.0, 12.5 + i * 12))
+            (npc.navigation as VehicleAwareNavigation).pathWorkObserver = { _, _, native -> if (native) searches.merge(helper.tick, 1, Int::plus) }
+            npc to npc.eyePosition.add(-136.0, 0.0, 0.0)
+        }
+        scene.onClose = { actors.forEach { (npc, _) -> (npc.navigation as VehicleAwareNavigation).pathWorkObserver = null } }
+        val start = actors.associate { (npc, threat) -> npc to npc.eyePosition.distanceTo(threat) }
+        val left = mutableSetOf<NpcEntity>()
+        helper.onEachTick {
+            if (helper.tick == SUPPRESSED_AT) actors.forEach { (npc, threat) -> npc.suppress(threat) }
+            if (helper.tick < SUPPRESSED_AT) return@onEachTick
+            val admission = searches.filterKeys { it >= SUPPRESSED_AT && it < SUPPRESSED_AT + ADMISSION_TICKS }
+            val maximum = admission.values.maxOrNull() ?: 0
+            helper.assertTrue(maximum <= NATIVE_PATHS_PER_TICK, "Fall-back paths exceeded the native budget: $admission")
+            if (helper.tick == SUPPRESSED_AT + ADMISSION_TICKS) helper.assertTrue(admission.values.sum() >= actors.size, "Not every fall-back was admitted within $ADMISSION_TICKS ticks: $admission")
+            actors.filter { (npc, threat) -> npc.eyePosition.distanceTo(threat) - start.getValue(npc) >= FALL_BACK_GAIN }.forEach { left += it.first }
+            if (helper.tick % 40L == 0L) scene.result("RUNNING", "tick=${helper.tick} left=${left.size}/16 maximumNativePerTick=$maximum")
+            if (left.size == actors.size) {
+                helper.assertTrue(helper.tick >= SUPPRESSED_AT + ADMISSION_TICKS, "All left before the admission was checked")
+                scene.result("PASS", "tick=${helper.tick} maximumNativePerTick=$maximum admitted=${admission.values.sum()}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** The tactical path budget's paths per tick (`TacticalPathBudget`). */
+    private const val NATIVE_PATHS_PER_TICK = 4
+
+    /** Sixteen searches at four a tick, with room for the plans' first refresh window. */
+    private const val ADMISSION_TICKS = 15L
+
+    /** How far from the fire a man has to get to count as having fallen back, as in the planned-cover scene. */
+    private const val FALL_BACK_GAIN = 4.0
+
+    /**
      * A squadless man in the open with his enemy in sight, suppressed: his answer to fire is a root
      * of his own (#189), and once the suppression lapses the same refresh hands his agent the fight.
      * No tick between the two leaves him with a target and no plan; that gap was the throttle window
