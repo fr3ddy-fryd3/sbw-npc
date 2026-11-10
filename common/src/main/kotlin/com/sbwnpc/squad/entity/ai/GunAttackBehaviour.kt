@@ -197,7 +197,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             SquadTactics.repositionForFire(entity)
             entity.firingObstruction.reset()
         }
-        // The CORE blind-fire executor owns the gun and cached aim while vegetation hides the target.
+        // While vegetation hides the target, his plan's foliage bursts (EngageMove.FOLIAGE_FIRE) own the gun and the aim.
         if (foliageHidden) {
             entity.firingObstruction.observe(false)
             return

@@ -430,6 +430,12 @@ object TacticalFacts {
      */
     val OPENING_DUE = FactKey("actor.opening_due", Boolean::class.javaObjectType)
 
+    /**
+     * His target has just gone out of his sight into foliage and the two bursts at where he last
+     * saw it are still to fire ([com.sbwnpc.squad.combat.LastSeenFire]), nothing forbidding them.
+     */
+    val FOLIAGE_FIRE_DUE = FactKey("actor.foliage_fire_due", Boolean::class.javaObjectType)
+
     /** He walks off to resupply or withdraws: the ammunition rules have his feet. */
     val RESUPPLYING = FactKey("actor.resupplying", Boolean::class.javaObjectType)
 
@@ -909,7 +915,7 @@ object TacticalDomain {
                 PrimitiveSpec(
                     Engage.identity(unit),
                     ActionSpec(ENGAGE, unit, setOf(ResourceKey(unit.actor, "motion")), timeoutTicks = Engage.UNIT_TIMEOUT),
-                    TaskContract(maintain = Engage.maintain(), completed = Engage.unitOver(unit)),
+                    TaskContract(maintain = Engage.maintain(unit.move), completed = Engage.unitOver(unit)),
                     planning = ownActor(unit.actor),
                 )
             },

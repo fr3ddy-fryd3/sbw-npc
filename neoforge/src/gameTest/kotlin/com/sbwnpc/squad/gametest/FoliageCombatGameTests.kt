@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.gametest
 
 import com.mojang.authlib.GameProfile
+import com.sbwnpc.squad.ai.diagnostics.DecisionTrace
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.tactics.SquadTactics
@@ -79,6 +80,8 @@ object FoliageCombatGameTests {
         var hiddenAt: Long? = null
         var aim: Vec3? = null
         var ammoBefore = 0
+        // Every method his plans took: the trace keeps only his latest decisions.
+        var planned = false
         field.onRound = { round ->
             if (hiddenAt == null) {
                 direct++
@@ -94,6 +97,7 @@ object FoliageCombatGameTests {
             Files.writeString(field.report.resolve("$name.txt"), "lock=$lock direct=$direct blind=$blind\n")
         }
         helper.onEachTick {
+            planned = planned || DecisionTrace.decisionsOf(shooter.uuid).any { it.event == "plan" && "*foliage_fire" in it.detail }
             if (hiddenAt == null && direct > 0) {
                 aim = shooter.rememberedEye(enemy)
                 helper.assertTrue(aim != null, "No personal visual memory before concealment")
@@ -114,6 +118,8 @@ object FoliageCombatGameTests {
                 helper.assertTrue(blind == BLIND_ROUNDS, "Expected two real three-round bursts, got $blind")
                 helper.assertTrue(ammoBefore - Ports.guns.roundsLeft(shooter.mainHandItem) == BLIND_ROUNDS, "Blind fire did not spend exactly six real rounds")
                 helper.assertTrue(shooter.lastSeenFire.point(helper.level.gameTime) == null, "Blind fire did not end")
+                // The guess at a hidden target is his plan's (#189), not a behaviour's of its own.
+                helper.assertTrue(planned, "His plan never chose the foliage bursts")
             }
             helper.succeed()
         }

@@ -7,7 +7,6 @@
     <ID>ComplexCondition:Assignments.kt$AssignmentLedger$current.ticket != report.ticket || report.revision != current.revision || (current.status in terminal &amp;&amp; !(current.continuous &amp;&amp; current.status == AssignmentStatus.SUCCEEDED)) || !live(current.ticket.parent)</ID>
     <ID>ComplexCondition:Assignments.kt$AssignmentLedger$previous != null &amp;&amp; previous.ticket.parent != parent &amp;&amp; previous.status != AssignmentStatus.REVOKED &amp;&amp; live(previous.ticket.parent) &amp;&amp; authorized(previous.ticket.parent.owner.agent, child)</ID>
     <ID>ComplexCondition:Assignments.kt$AssignmentLedger$previous != null &amp;&amp; previous.ticket.parent == parent &amp;&amp; previous.task == task &amp;&amp; previous.continuous == continuous &amp;&amp; previous.status != AssignmentStatus.REVOKED</ID>
-    <ID>ComplexCondition:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$entity.busyWithRole() || entity.combatLockedByCover() || entity.combatLockedByMedic() || entity.resupplying || entity.vehicle != null || entity.evadingGrenade()</ID>
     <ID>ComplexCondition:CellPlanner.kt$CellPlanner.Search$dx != 0 &amp;&amp; dz != 0 &amp;&amp; (!medium.open(x + dx, z) || !medium.open(x, z + dz))</ID>
     <ID>ComplexCondition:CoverMechanics.kt$CoverMechanics$!(hurtEnough &amp;&amp; diggableGround &amp;&amp; flatEnough &amp;&amp; covered)</ID>
     <ID>ComplexCondition:DroneStation.kt$DroneStation$phase != Phase.LAUNCH &amp;&amp; phase != Phase.RETURN &amp;&amp; (drone.onGround() || drone.horizontalCollision || drone.verticalCollision)</ID>
@@ -57,7 +56,6 @@
     <ID>CyclomaticComplexMethod:Assignments.kt$AssignmentLedger$fun delegate(parent: ExecutionTicket, child: AgentId, task: TaskCall&lt;*&gt;, now: Long, continuous: Boolean = false): DelegationResult</ID>
     <ID>CyclomaticComplexMethod:Assignments.kt$AssignmentLedger$fun report(report: ChildReport, now: Long): Boolean</ID>
     <ID>CyclomaticComplexMethod:BarracksBlockEntity.kt$BarracksBlockEntity$private fun refresh(level: ServerLevel)</ID>
-    <ID>CyclomaticComplexMethod:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>CyclomaticComplexMethod:BoatTrips.kt$BoatTrips$fun tripsFor(npc: NpcEntity, goal: Vec3, waterAhead: Boolean, usable: (Entity) -&gt; Boolean): List&lt;Trip&gt;?</ID>
     <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
     <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$private fun partsOf(cell: Long): IntArray</ID>
@@ -153,7 +151,6 @@
     <ID>LargeClass:NativeTactics.kt$NativeTactics$World</ID>
     <ID>LargeClass:NpcEntity.kt$NpcEntity : NpcEntityBaseSmartBrainOwner</ID>
     <ID>LargeClass:VehicleTransportBehaviour.kt$VehicleTransportBehaviour : ExtendedBehaviour</ID>
-    <ID>LongMethod:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>LongMethod:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
     <ID>LongMethod:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
     <ID>LongMethod:CommandScreen.kt$CommandScreen$override fun init()</ID>
@@ -283,12 +280,6 @@
     <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$3</ID>
     <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$80f</ID>
     <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$90f</ID>
-    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$1200.0</ID>
-    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$20</ID>
-    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$50</ID>
-    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$50.0</ID>
-    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$9.0</ID>
-    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$90f</ID>
     <ID>MagicNumber:BoatTrips.kt$BoatTrips$15</ID>
     <ID>MagicNumber:BoatTrips.kt$BoatTrips$32.0</ID>
     <ID>MagicNumber:BoatTrips.kt$BoatTrips$4</ID>

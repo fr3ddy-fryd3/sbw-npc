@@ -4,7 +4,7 @@ import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /** Two short bursts after a personal sighting is lost in vegetation. Hidden coordinates never enter this memory. */
-class LastSeenFire {
+class LastSeenFire : BlindShot.Episode {
     private var target: UUID? = null
     private var eye: Vec3? = null
     private var seenAt = Long.MIN_VALUE
@@ -50,9 +50,9 @@ class LastSeenFire {
     }
 
     fun point(now: Long): Vec3? = eye?.takeIf { roundsLeft > 0 && now < expires }
-    fun ready(now: Long): Boolean = point(now) != null && now >= nextShot
+    override fun ready(now: Long): Boolean = point(now) != null && now >= nextShot
 
-    fun shot(now: Long, interval: Long) {
+    override fun shot(now: Long, interval: Long) {
         if (!ready(now)) return
         roundsLeft--
         nextShot = now + interval.coerceAtLeast(1)

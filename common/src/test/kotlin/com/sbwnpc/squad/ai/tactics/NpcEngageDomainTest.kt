@@ -25,6 +25,7 @@ class NpcEngageDomainTest {
         val allyBlocked: Boolean = false,
         val hullBlocked: Boolean = false,
         val openingDue: Boolean = false,
+        val foliageDue: Boolean = false,
         val units: Int = 0,
     )
 
@@ -35,7 +36,7 @@ class NpcEngageDomainTest {
             .observe(TacticalFacts.IN_REACH, s.inReach).observe(TacticalFacts.CLEAR_SHOT, s.clearShot).observe(TacticalFacts.HOLDING_ORDER, s.holding)
             .observe(TacticalFacts.OUTSIDE_AREA, s.outside).observe(TacticalFacts.MAY_ADVANCE, s.mayAdvance)
             .observe(TacticalFacts.LANE_BLOCKED_ALLY, s.allyBlocked).observe(TacticalFacts.LANE_BLOCKED_HULL, s.hullBlocked)
-            .observe(TacticalFacts.OPENING_DUE, s.openingDue)
+            .observe(TacticalFacts.OPENING_DUE, s.openingDue).observe(TacticalFacts.FOLIAGE_FIRE_DUE, s.foliageDue)
             .observe(TacticalFacts.ENGAGE_UNITS, s.units)
 
     private fun unit(input: FactSnapshot, call: PositionIntent = follower): EngageUnit {
@@ -103,6 +104,7 @@ class NpcEngageDomainTest {
             { s -> booleans.map { s.copy(allyBlocked = it) } },
             { s -> booleans.map { s.copy(hullBlocked = it) } },
             { s -> booleans.map { s.copy(openingDue = it) } },
+            { s -> booleans.map { s.copy(foliageDue = it) } },
         )
         return axes.fold(listOf(Situation())) { all, axis -> all.flatMap(axis) }
     }
@@ -116,7 +118,7 @@ class NpcEngageDomainTest {
             assertEquals(Engage.ORDER.first { Engage.wants(it, task, input) == Verdict.Allowed }, applying.single())
             if (!task.forward || s.sidearm) assertTrue(applying.single() !in Engage.FORWARD, "$s $task: ${applying.single()}")
         }
-        assertEquals(1 shl 11, cases.size)
+        assertEquals(1 shl 12, cases.size)
     }
 
     @Test fun `a clear shot flickering every 20 ticks under the 40-tick hold switches his move at most once`() {
@@ -131,6 +133,33 @@ class NpcEngageDomainTest {
         }
         val switches = chosen.zipWithNext().count { (a, b) -> a != b }
         assertTrue(switches <= 1, "switched $switches times: $chosen")
+    }
+
+    @Test fun `a target lost in foliage gets his bursts at its last-seen spot before any other fire or move, after keeping his distance and his area`() {
+        assertEquals(EngageMove.FOLIAGE_FIRE, move(Situation(foliageDue = true)))
+        // Facts his gun froze when the target vanished (an opening burst or a lane block) do not hold the bursts off.
+        assertEquals(EngageMove.FOLIAGE_FIRE, move(Situation(foliageDue = true, clearShot = true, openingDue = true, allyBlocked = true, hullBlocked = true)))
+        assertEquals(EngageMove.FOLIAGE_FIRE, move(Situation(foliageDue = true, holding = true, mayAdvance = true)))
+        assertEquals(EngageMove.FOLIAGE_FIRE, move(Situation(foliageDue = true, inReach = true)))
+        assertEquals(EngageMove.KEEP_AWAY, move(Situation(foliageDue = true, keepAway = true)))
+        assertEquals(EngageMove.RETURN_TO_AREA, move(Situation(foliageDue = true, holding = true, outside = true)))
+    }
+
+    @Test fun `the bursts keep running on a man whose feet another claim holds, and end with the episode`() {
+        val plan = (HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(follower), facts(Situation(foliageDue = true))).advance(40) as PlanningResult.Ready).plan
+        val contract = plan.tasks.single().spec.contract
+        val pinned = facts(Situation(foliageDue = true)).observe(TacticalFacts.MOVABLE, false)
+        assertEquals(Verdict.Allowed, contract.maintain.evaluate(pinned))
+        assertEquals(Verdict.Rejected("contact_lost"), contract.maintain.evaluate(facts(Situation(contact = false, foliageDue = true))))
+        val unit = plan.tasks.single().spec.action.parameters as EngageUnit
+        assertEquals(Verdict.Allowed, Engage.unitOver(unit).evaluate(facts(Situation())))
+        assertEquals(Verdict.Rejected("unit_running"), Engage.unitOver(unit).evaluate(facts(Situation(foliageDue = true))))
+    }
+
+    @Test fun `under a move order he does not stop for a guess`() {
+        val mover = follower.copy(duty = CombatDuty.MOVE)
+        val plan = (HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(mover), facts(Situation(foliageDue = true))).advance(40) as PlanningResult.Ready).plan
+        assertNotEquals(TacticalDomain.ENGAGE, plan.tasks.first().spec.action.key)
     }
 
     @Test fun `a unit is over when its executor finished it, or its opening fire or the lane block is over`() {

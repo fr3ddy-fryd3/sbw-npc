@@ -75,7 +75,7 @@ class DecisionLayerRuleTest {
 
         val BEHAVIOURS = sortedMapOf(
             "AntiDroneBehaviour" to "mandatory rule anti_drone, ranked in MandatoryRule (#257)",
-            "BlindReturnFireBehaviour" to "mandatory rule blind_return_fire, ranked in MandatoryRule (#257)",
+            "BlindReturnFireBehaviour" to "mandatory rule blind_return_fire, ranked in MandatoryRule (#257): the reply to incoming fire only; the foliage bursts are the engage's FOLIAGE_FIRE (#189)",
             "FollowRideBehaviour" to UNAUDITED,
             "GrenadeEvadeBehaviour" to "mandatory rule evade_grenade, ranked in MandatoryRule (#257)",
             "GunAttackBehaviour" to UNAUDITED,

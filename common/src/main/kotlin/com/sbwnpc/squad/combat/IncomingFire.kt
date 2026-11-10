@@ -3,7 +3,7 @@ package com.sbwnpc.squad.combat
 import net.minecraft.world.phys.Vec3
 
 /** A direction inferred from a hit, never a live reference to an unseen attacker. */
-class IncomingFire {
+class IncomingFire : BlindShot.Episode {
     private var aim: Vec3? = null
     private var expires = Long.MIN_VALUE
     private var lastEpisode = Long.MIN_VALUE
@@ -41,8 +41,8 @@ class IncomingFire {
         if (pending(now)) replyUntil = now + 60
     }
     fun replying(now: Long): Boolean = pending(now) && now < replyUntil
-    fun ready(now: Long): Boolean = replying(now) && now >= nextShot
-    fun shot(now: Long, interval: Long) {
+    override fun ready(now: Long): Boolean = replying(now) && now >= nextShot
+    override fun shot(now: Long, interval: Long) {
         if (!ready(now)) return
         rounds++
         nextShot = now + interval.coerceAtLeast(1)

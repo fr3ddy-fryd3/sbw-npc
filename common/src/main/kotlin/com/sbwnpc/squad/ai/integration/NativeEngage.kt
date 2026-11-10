@@ -8,6 +8,7 @@ import com.sbwnpc.squad.ai.tactics.Engage
 import com.sbwnpc.squad.ai.tactics.EngageMove
 import com.sbwnpc.squad.ai.tactics.EngageUnit
 import com.sbwnpc.squad.ai.tactics.TacticalFacts
+import com.sbwnpc.squad.combat.BlindShot
 import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FireObservation
@@ -16,8 +17,11 @@ import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.MandatoryRule
+import com.sbwnpc.squad.entity.ai.MandatoryRules
 import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.server.level.ServerLevel
@@ -178,6 +182,7 @@ internal object EngageFacts {
             .observe(TacticalFacts.LANE_BLOCKED_ALLY, seen.allyBlockedChecks >= Engage.LANE_DWELL_CHECKS)
             .observe(TacticalFacts.LANE_BLOCKED_HULL, seen.hullBlockedChecks >= Engage.LANE_DWELL_CHECKS)
             .observe(TacticalFacts.OPENING_DUE, openingDue(seen, target?.uuid, now))
+            .observe(TacticalFacts.FOLIAGE_FIRE_DUE, foliageFireDue(npc, target, now))
             .observe(TacticalFacts.RESUPPLYING, npc.lowAmmoFallback() != null || npc.retreatPoint() != null)
             .observe(TacticalFacts.ENGAGE_UNITS, state.units)
         val distance = target?.let { CombatGeometry.flat(npc.position(), it.position()) }
@@ -202,6 +207,18 @@ internal object EngageFacts {
         val first = seen.firstShootableAt?.takeIf { seen.target == target } ?: return false
         return now - first < Engage.OPENING_WINDOW && seen.shots < if (seen.automatic) Engage.OPENING_ROUNDS_AUTOMATIC else 1
     }
+
+    /**
+     * The bursts at where he last saw [target] are still to fire, and nothing forbids a guess: the
+     * gates the blind fire always had (#189). A ground armour target is the launcher's, a hidden
+     * recon squad does not fire at a guess (#194), a role or a vehicle has his hands, a man in cover
+     * peeks from it, and a higher mandatory rule (medic help, a grenade's evade, a drone) holds his
+     * fire or his look.
+     */
+    fun foliageFireDue(npc: NpcEntity, target: LivingEntity?, now: Long): Boolean =
+        target != null && npc.lastSeenFire.observed(target.uuid) && npc.lastSeenFire.point(now) != null &&
+            !VehicleTargeting.isGroundArmour(target) && !NativeTactics.holdsFire(npc) && !npc.busyWithRole() &&
+            npc.vehicle == null && !npc.holds(NpcActivity.COVER) && MandatoryRules.may(MandatoryRule.BLIND_RETURN_FIRE, npc)
 
     /**
      * A distance fact with a band: [within] the fact holds at [limit] or nearer and lets go only
@@ -269,6 +286,7 @@ internal abstract class EngageAction(protected val npc: NpcEntity, protected val
                 EngageMove.SIDESTEP -> Sidestep(npc, state, unit.sidearm)
                 EngageMove.RESEARCH_SPOT -> HoldSpot(npc, state, unit.sidearm, research = true)
                 EngageMove.OPEN_FIRE -> OpenFire(npc, state, unit.sidearm)
+                EngageMove.FOLIAGE_FIRE -> FoliageFire(npc, state, unit.sidearm)
                 EngageMove.ADVANCE_FROM_POST -> AdvanceFromPost(npc, state, unit.sidearm)
                 EngageMove.CLOSE_IN -> CloseIn(npc, state, unit.sidearm)
                 EngageMove.JOIN_FIRE -> JoinFire(npc, state, unit.sidearm)
@@ -452,6 +470,49 @@ private class OpenFire(npc: NpcEntity, state: EngageState, sidearm: Boolean) : E
     private companion object {
         /** Standing within this of his claimed spot, he is on it. */
         const val ARRIVE_DISTANCE = 1.0
+    }
+}
+
+/**
+ * Two short bursts at where he last saw his target before it vanished into foliage, standing where
+ * he is (#189). The episode ([com.sbwnpc.squad.combat.LastSeenFire]) counts the rounds and ends
+ * them; this aims and fires each through [BlindShot]. An episode that can never fire (armour in
+ * the bearing, a launcher or an empty gun) or whose lane stays blocked is given up, so his facts
+ * change and the plan moves him on rather than holding him for nothing.
+ */
+private class FoliageFire(npc: NpcEntity, state: EngageState, sidearm: Boolean) : EngageAction(npc, state, sidearm) {
+    private var blocked = 0
+
+    override fun step(target: LivingEntity) {
+        npc.navigation.stop()
+        state.hold(npc.position())
+        val now = npc.level().gameTime
+        val episode = npc.lastSeenFire
+        val aim = episode.point(now) ?: return done("episode_over")
+        // Re-checked each tick: the plan sees a rule that starts mid-burst only at its next look.
+        if (!MandatoryRules.may(MandatoryRule.BLIND_RETURN_FIRE, npc)) return
+        when (BlindShot.fire(npc, aim, aim, episode, "foliage-fire")) {
+            BlindShot.Outcome.FIRED -> {
+                blocked = 0
+                npc.lastFireAt = aim
+            }
+
+            BlindShot.Outcome.BLOCKED -> if (++blocked >= BLOCKED_GIVE_UP) giveUp("lane_blocked")
+
+            BlindShot.Outcome.REFUSED -> giveUp("refused")
+
+            BlindShot.Outcome.WAITING, BlindShot.Outcome.OUT_OF_REACH -> Unit
+        }
+    }
+
+    private fun giveUp(reason: String) {
+        npc.lastSeenFire.cancel()
+        done(reason)
+    }
+
+    private companion object {
+        /** Blocked shots in a row before the episode is given up, 1 s of a ready gun. */
+        const val BLOCKED_GIVE_UP = 20
     }
 }
 
