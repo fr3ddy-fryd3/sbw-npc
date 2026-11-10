@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
@@ -113,6 +114,39 @@ object CoverBudgetGameTests {
             }
         }
     }
+
+    /**
+     * A squadless man in the open with his enemy in sight, suppressed: his answer to fire is a root
+     * of his own (#189), and once the suppression lapses the same refresh hands his agent the fight.
+     * No tick between the two leaves him with a target and no plan; that gap was the throttle window
+     * of the refresh. No wall: behind one he loses his hidden target, and with it the fight to hand over.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "cover-lone-handoff")
+    fun squadlessManKeepsAPlanWhenHisAnswerToFireEnds(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "cover-lone-handoff", recordTrace = false)
+        val npc = scene.spawn(Vec3(20.5, 1.0, 50.5))
+        val enemy = scene.enemy(Vec3(60.5, 1.0, 50.5))
+        npc.target = enemy
+        var rooted = false
+        var endedAt = -1L
+        helper.onEachTick {
+            if (helper.tick == SUPPRESSED_AT) npc.suppress(enemy.eyePosition)
+            if (helper.tick <= SUPPRESSED_AT) return@onEachTick
+            rooted = rooted || NativeTactics.hasAgent(npc)
+            if (!rooted) return@onEachTick
+            if (endedAt < 0 && !npc.isSuppressed()) endedAt = helper.tick
+            if (endedAt < 0 || npc.target == null) return@onEachTick
+            helper.assertTrue(NativeTactics.hasAgent(npc), "No plan at tick ${helper.tick}, ${helper.tick - endedAt} ticks after his suppression ended at $endedAt")
+            if (helper.tick - endedAt >= HANDOFF_WATCH_TICKS) {
+                scene.result("PASS", "suppressionEnded=$endedAt watched=$HANDOFF_WATCH_TICKS")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** How long after his suppression ends the hand-off scene watches him: several refresh windows. */
+    private const val HANDOFF_WATCH_TICKS = 60L
 
     /** The tick every man is suppressed at once, after the scene settles. */
     private const val SUPPRESSED_AT = 20L

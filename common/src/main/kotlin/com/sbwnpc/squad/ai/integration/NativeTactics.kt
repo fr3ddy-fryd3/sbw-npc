@@ -479,6 +479,9 @@ object NativeTactics {
         /** Men fighting with no full agent, until their last report expires; see [NativeTactics.engaging]. */
         private val engagers = HashMap<UUID, Engager>()
 
+        /** The men [commandLoneRoots] gave a root at the last refresh. */
+        private val loneRooted = HashSet<UUID>()
+
         private fun engageOf(npc: NpcEntity) = engageStates.getOrPut(npc.uuid) { EngageState(npc) }
 
         // His engage facts' band memory, dropped with his agent like [engageStates].
@@ -507,8 +510,10 @@ object NativeTactics {
         fun engages(npc: NpcEntity): Boolean = agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports?.values?.any { Engage.isUnit(it.ticket.identity) && it.status == ExecutionStatus.RUNNING } == true
 
         fun engaging(npc: NpcEntity) {
-            // A man with a full agent plans his fight in it; who gets one is [planned]'s alone.
-            if (AgentId(AgentLevel.NPC, npc.uuid) in agents && npc.uuid !in engagers) return
+            // A man with a full agent plans his fight in it; who gets one is [planned]'s alone. A lone
+            // root's man (#189) reports too: the refresh that ends his root then hands the same agent
+            // his fight, with no tick without a plan, and [commandEngagers] drops the report meanwhile.
+            if (AgentId(AgentLevel.NPC, npc.uuid) in agents && npc.uuid !in engagers && npc.uuid !in loneRooted) return
             val known = engagers[npc.uuid]
             val stamp = npc.currentSquad()?.orderStamp ?: 0
             engagers[npc.uuid] = Engager(level.gameTime + ENGAGER_TICKS, known?.takeIf { it.stamp == stamp }?.command ?: UUID.nameUUIDFromBytes("engage:${npc.uuid}:$stamp".toByteArray()), stamp)
@@ -1851,7 +1856,9 @@ object NativeTactics {
             // so does any man on foot under fire or in his hole whom no other plan covers, squad or
             // not: an engager's fight has no cover, and a man with no agent had nothing to answer it.
             val lone = NpcRegistry.all(level).filter { it.isAlive && it.vehicle == null && AgentId(AgentLevel.NPC, it.uuid) !in desired && (answersFireAlone(it) || (it.currentSquad() == null && (it.npcClass == NpcClass.MEDIC || supplies.needsLoneRoot(it)))) }
+            loneRooted.clear()
             lone.forEach { npc ->
+                loneRooted += npc.uuid
                 val agent = AgentId(AgentLevel.NPC, npc.uuid)
                 desired += agent
                 val fresh = agent !in agents
