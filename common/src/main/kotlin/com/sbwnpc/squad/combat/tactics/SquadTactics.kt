@@ -43,7 +43,12 @@ object SquadTactics {
             seenBy = if (old != null && now - old.seenAt <= SquadKnowledge.KNOWN_TICKS) old.seenBy + npc.uuid else setOf(npc.uuid),
         )
         // Discovery is shared even before this observer can start its gun behavior.
-        TeamAwareness.report(squad.faction, target.uuid, target.position(), now, "${npc.npcClass} ${npc.uuid.toString().take(8)}")
+        val by = "${npc.npcClass} ${npc.uuid.toString().take(8)}"
+        if (npc.npcClass == com.sbwnpc.squad.npc.NpcClass.SCOUT) {
+            TeamAwareness.reportByScout(squad.faction, target.uuid, target.position(), now, by)
+        } else {
+            TeamAwareness.report(squad.faction, target.uuid, target.position(), now, by)
+        }
     }
 
     fun refresh(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.refresh(entity)
@@ -132,5 +137,5 @@ object SquadTactics {
     }
 
     private val SUPPORT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
-    private val GROUND_ROLES = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
+    private val GROUND_ROLES = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR, NpcClass.SCOUT)
 }

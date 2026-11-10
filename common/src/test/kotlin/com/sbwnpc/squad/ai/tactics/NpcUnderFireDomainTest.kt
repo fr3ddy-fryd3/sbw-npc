@@ -121,4 +121,38 @@ class NpcUnderFireDomainTest {
         val before = plan(facts(underFire = true))
         assertFalse(before.inputUnchanged(facts(underFire = true, cycles = 1)))
     }
+
+    @Test fun `shelled or suppressed with no sector he takes a roof near him, with a sector he answers the fire (owner 0811)`() {
+        val roof = Point3(12.0, 1.0, 4.0)
+        // Suppressed by fire whose source he does not know: no sector.
+        val unseen = FactSnapshot(actor, 1).observe(TacticalFacts.MOVABLE, true).observe(TacticalFacts.COVER, true)
+            .observe(TacticalFacts.UNDER_FIRE, true).observe(TacticalFacts.DIGS, 0).observe(TacticalFacts.ENGAGED, false).observe(TacticalFacts.DIG_POSSIBLE, false)
+        val sheltered = first(unseen.observe(TacticalFacts.ROOF, roof))
+        assertEquals(TacticalDomain.POSITION, sheltered.key)
+        val post = sheltered.parameters as PositionIntent
+        assertEquals(roof, post.anchor)
+        assertTrue(post.roofed)
+        assertEquals(CombatDuty.TAKE_COVER, post.duty)
+        // No roof and no sector: nothing to take cover from, he keeps his duty (take_cover needs a sector).
+        assertEquals(TacticalDomain.POSITION, first(unseen).key)
+        assertNotEquals(true, (first(unseen).parameters as PositionIntent).roofed)
+        // His post search under that roof failed: he no longer heads for it.
+        val failed = unseen.observe(TacticalFacts.ROOF, roof).observe(TacticalFacts.POST_FAILURE, LocalPositionFailure(Point3(12.5, 1.0, 4.5), 1, 1, emptyMap()))
+        assertNotEquals(true, (first(failed).parameters as? PositionIntent)?.roofed)
+        // A known sector wins over the roof.
+        assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true).observe(TacticalFacts.ROOF, roof)).key)
+        // A man moving for an assault keeps moving.
+        assertNotEquals(true, (first(unseen.observe(TacticalFacts.ROOF, roof), intent.copy(assault = true)).parameters as? PositionIntent)?.roofed)
+    }
+
+    @Test fun `a roof is one solid block, not leaves, two to five above his feet`() {
+        val air = false to false
+        val solid = true to false
+        val leaves = true to true
+        assertTrue(Shelter.covered(listOf(air, air, solid)))
+        assertTrue(Shelter.covered(listOf(air, air, air, air, air, solid)))
+        assertFalse(Shelter.covered(listOf(air, air, air, air, air, air, solid)))
+        assertFalse(Shelter.covered(listOf(air, air, leaves, leaves)))
+        assertFalse(Shelter.covered(listOf(air, air, air)))
+    }
 }

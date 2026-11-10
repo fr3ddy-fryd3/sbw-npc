@@ -20,6 +20,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.*
 import com.sbwnpc.squad.team.Diplomacy
+import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.core.SectionPos
@@ -306,6 +307,54 @@ object NativeTactics {
             world.pendingDeaths[entity.uuid] = PendingDeath(entity, cancelled)
         }
     }
+
+    /** [npc] was hit by an enemy's round: a scout's squad is discovered (#194). */
+    fun scoutHit(npc: NpcEntity) {
+        if (npc.npcClass == NpcClass.SCOUT) reconSquadOf(npc)?.let { world(npc).recon.discover(it, "hit", npc.incomingFire.point(npc.level().gameTime)) }
+    }
+
+    /** [hunter] took [target] as his target: a scout so taken has been seen, and a scout who takes one has seen an enemy (#194). */
+    fun targetTaken(hunter: NpcEntity, target: LivingEntity) {
+        if (target is NpcEntity && target.npcClass == NpcClass.SCOUT && SquadTeams.isHostile(hunter, target)) reconSquadOf(target)?.let { world(target).recon.discover(it, "targeted", hunter.position()) }
+        if (hunter.npcClass == NpcClass.SCOUT) reconSquadOf(hunter)?.let { world(hunter).recon.saw(it) }
+    }
+
+    // A scout recruited alone or into another squad gives nothing away for it: only a recon squad hides.
+    private fun reconSquadOf(npc: NpcEntity) = npc.currentSquad()?.takeIf { s -> (npc.level() as? ServerLevel)?.let { SquadManager.get(it).isReconSquad(s) } == true }
+
+    /**
+     * Whether [npc]'s recon squad holds its fire now ([ReconRules.holdsFire]). Only a squad of scouts
+     * does; a scout recruited alone or into another squad fights as its squad does.
+     */
+    fun holdsFire(npc: NpcEntity): Boolean {
+        if (npc.npcClass != NpcClass.SCOUT) return false
+        val level = npc.level() as? ServerLevel ?: return false
+        val squad = npc.currentSquad() ?: return false
+        return SquadManager.get(level).isReconSquad(squad) && world(npc).squadHoldsFire(squad)
+    }
+
+    /**
+     * How [npc]'s cautious approach goes (#148, #194): [IntelWait.WAITING] walks the whole way while
+     * his operation waits for its recon squad; [IntelWait.WITH_RECON] drops the last-100-blocks walk,
+     * since the recon has already looked; [IntelWait.NONE] is the approach as without recon.
+     */
+    fun intelWait(npc: NpcEntity): IntelWait = npc.squadId?.let { worlds[npc.level()]?.intelWait(it) } ?: IntelWait.NONE
+
+    /** Whether fire support of [squad] holds its fire (#194): its operation awaits its recon report, and shells would give the scouts away. */
+    fun holdsReconSightings(level: ServerLevel, squad: UUID?): Boolean {
+        val world = squad?.let { worlds[level] } ?: return false
+        return world.operations.committedTo(squad)?.let { world.operationWaits(it, level.gameTime) } == true
+    }
+
+    /** See [intelWait]. */
+    enum class IntelWait { NONE, WAITING, WITH_RECON }
+
+    /** [squad]'s recon stage under its current order, or null when it is on none (scenes read it). */
+    fun reconStage(level: ServerLevel, squad: UUID): ReconStage? = worlds[level]?.reconStageOf(squad)
+
+    /** Whether [npc] stalks with his recon squad: crouched and wary on its approach (#194). */
+    fun stalks(npc: NpcEntity): Boolean = npc.npcClass == NpcClass.SCOUT && npc.squadId?.let { worlds[npc.level()]?.stalks(it) } == true
+
     fun clearAll() {
         worlds.values.forEach { it.clear() }
         worlds.clear()
@@ -340,7 +389,7 @@ object NativeTactics {
      * whose plan decides his cover too. An engage-only agent plans only his moves in a fight, a crewman's only his tube (#258).
      */
     fun plans(npc: NpcEntity): Boolean = hasAgent(npc) && worlds[npc.level()]?.coversFor(npc.uuid) == true
-    private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
+    private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR, NpcClass.SCOUT)
 
     private class PendingDeath(val entity: LivingEntity, val cancelled: () -> Boolean)
 
@@ -353,6 +402,13 @@ object NativeTactics {
      * must not be dropped and made again each time.
      */
     private const val ENGAGER_TICKS = 40L
+
+    /** How far beyond where it stood a discovered recon squad withdraws (#194). */
+    private const val WITHDRAW_DISTANCE = 80.0
+    private const val ASSAULT_RANGE = 48.0
+
+    /** Enemies this close to the objective are what a recon squad reports from its post (#194). */
+    private const val INTEL_RADIUS = 48.0
 
     /** Bearings this close (radians) are the same sector: the pinning group's is head-on exactly. */
     private const val SAME_BEARING = 1e-6
@@ -399,6 +455,9 @@ object NativeTactics {
         /** What each man's cover actions found and did, read back as his facts (#251). */
         private val cover = HashMap<UUID, CoverState>()
 
+        // Roofs near men shelled from where they cannot see (owner 08.11).
+        private val roofs = RoofSearch()
+
         /** Each man's last squadmate-spacing check: when, and whether he was crowded (#299). */
         private val crowding = HashMap<UUID, Pair<Long, Boolean>>()
 
@@ -419,6 +478,7 @@ object NativeTactics {
         // Who may throw a grenade and at what (#263).
         private val grenades = GrenadeChoice(level)
         private val medics = MedicCare(level)
+        val recon = ReconWatch()
 
         // The mandatory rule each man's plan was last suspended for (#257), for the decision trace.
         private val suspendedBy = HashMap<UUID, MandatoryRule>()
@@ -577,6 +637,207 @@ object NativeTactics {
          * order, the squad's end or the squad's own update deciding otherwise.
          */
         private val journeys = HashMap<UUID, Int>()
+
+        // Recon squads (#194): each one's approach under its order, the squads on it now, and the
+        // stalking ones whose men keep crouched and wary.
+        private val reconProgress = HashMap<UUID, ReconProgress>()
+        private val reconnoitring = HashSet<UUID>()
+        private val stalking = HashSet<UUID>()
+
+        /** [squad]'s recon stage, see [NativeTactics.reconStage]. */
+        fun reconStageOf(squad: UUID): ReconStage? = reconProgress[squad]?.stage
+
+        /** Whether [squad]'s men stalk: crouched, wary, on a hidden recon approach. */
+        fun stalks(squad: UUID) = squad in stalking
+
+        /**
+         * [saved]'s recon stage and the point its men make for, or null when it is no hidden recon
+         * squad under an ATTACK order. Discovered, or alone and having found its enemy, it fights instead
+         * (ReconRules.holdsFire).
+         */
+        private fun reconStage(saved: Squad, centre: Point3, now: Long): Pair<ReconStage, Point3>? {
+            val objective = saved.objective?.center?.point()
+            val hidden = SquadManager.get(level).isReconSquad(saved) && squadHoldsFire(saved)
+            if (objective == null || saved.order != SquadOrder.ATTACK || !hidden) {
+                reconProgress.remove(saved.id)
+                reconnoitring -= saved.id
+                stalking -= saved.id
+                return null
+            }
+            val progress = reconProgress[saved.id]?.takeIf { it.stamp == saved.orderStamp } ?: ReconProgress(saved.orderStamp).also { reconProgress[saved.id] = it }
+            val before = progress.stage
+            val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now, centre, reconSees(saved, progress, objective, centre, now), recon.sawEnemy(saved))
+            if (stage != before) {
+                DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=stage from={} to={}", saved.id, before, stage)
+                if (stage == ReconStage.REPORTED) {
+                    recon.report(saved)
+                    // It keeps its post and reports until contact (owner 09.11), whoever is beside it.
+                    progress.holdsPost = true
+                    progress.reported(now)
+                    progress.fallBack = ReconProgress.along(objective, centre, ReconProgress.FALL_BACK_DISTANCE)
+                    progress.noteReport(reportIntel(saved, objective, now))
+                }
+            }
+            progress.tally(enemiesAt(saved, objective, now), now)?.let { (fresh, total) ->
+                if (total == 0 && progress.closer()) {
+                    DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=closer post={}", saved.id, progress.postDistance)
+                    SquadReports.movingCloser(level.server, saved, progress.postDistance.toInt())
+                    progress.noteReport(0)
+                } else {
+                    DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_update new={} total={}", saved.id, fresh, total)
+                    SquadReports.postUpdate(level.server, saved, fresh, total)
+                    progress.noteReport(total)
+                }
+            }
+            reconnoitring += saved.id
+            if (stage == ReconStage.STAGING) stalking -= saved.id else stalking += saved.id
+            return stage to progress.point(objective, centre)
+        }
+
+        /**
+         * Whether [saved] may take its post where it stands (owner 09.11): one of its men sees the
+         * objective. Stalking into a new ring it first searches that ring for a spot with a view; none
+         * there, it posts at the ring as before rather than walk on blind.
+         */
+        private fun reconSees(saved: Squad, progress: ReconProgress, objective: Point3, centre: Point3, now: Long): Boolean {
+            if (progress.stage != ReconStage.STALK) return true
+            val men = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }
+            if (progress.spotRing != progress.postDistance) {
+                val found = ReconPostSearch.find(level, objective, centre, progress.postDistance, men.firstOrNull())
+                progress.searched(found, now)
+                DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_search ring={} from={} objective={} spot={}", saved.id, progress.postDistance, centre, objective, found)
+            }
+            // The men look only once in the ring: a line per man per tick on the way there is waste.
+            if (progress.spot == null || hypot(centre.x - objective.x, centre.z - objective.z) > progress.postDistance) return false
+            return men.any { ReconPostSearch.sees(level, it.eyePosition, objective) }
+        }
+
+        /** The report from the post (owner 26.10): the enemies its side knows round the objective, or nobody. */
+        private fun reportIntel(saved: Squad, objective: Point3, now: Long): Int {
+            val seen = enemiesAt(saved, objective, now).size
+            DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=report enemies={}", saved.id, seen)
+            level.server.let { com.sbwnpc.squad.squad.SquadReports.intel(it, saved, seen) }
+            return seen
+        }
+
+        private val intelWaits = HashMap<UUID, IntelWait>()
+        private val intelReleased = HashSet<UUID>()
+
+        // Operations whose infantry has gone into the assault: their recon leaves its post and fights.
+        private val assaulting = HashSet<UUID>()
+
+        /**
+         * The assault of [saved]'s operation begins (owner 08.11) once the wait for the report is over and
+         * its infantry is fired on or has an enemy within [ASSAULT_RANGE]; a far sighting relayed from the
+         * post does not start it. Latched per operation.
+         */
+        private fun noteAssault(saved: Squad, incoming: Boolean, centre: Vec3, enemies: List<Vec3>) {
+            if (intelWaits[saved.id] != IntelWait.WITH_RECON || !attackingInfantry(saved)) return
+            val operation = operations.committedTo(saved.id) ?: return
+            if (!incoming && enemies.none { hypot(it.x - centre.x, it.z - centre.z) <= ASSAULT_RANGE }) return
+            if (assaulting.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=assault squad={} incoming={}", operation.id, saved.id, incoming)
+        }
+        private val intelAnnounced = HashSet<UUID>()
+
+        fun intelWait(squad: UUID): IntelWait = intelWaits[squad] ?: IntelWait.NONE
+
+        /**
+         * Whether [saved], an attacking infantry squad, waits for its operation's recon report (#194),
+         * kept for its men's pace in [intelWaits]. Once released an operation does not wait again.
+         */
+        private fun awaitingIntel(saved: Squad, now: Long): Boolean {
+            val manager = SquadManager.get(level)
+            val operation = operations.committedTo(saved.id)
+            val recons = operation?.members?.keys.orEmpty().mapNotNull(manager::get).filter { manager.isReconSquad(it) && it.order == SquadOrder.ATTACK && it.members.isNotEmpty() }
+            // Drone operators wait beside the infantry (playtest 08.11): left to their own post they
+            // walked up almost onto the objective before the scouts had reported.
+            val waits = attackingInfantry(saved) || (saved.order == SquadOrder.ATTACK && manager.isDroneSquad(saved))
+            if (operation == null || recons.isEmpty() || !waits) {
+                intelWaits.remove(saved.id)
+                return false
+            }
+            val waiting = operationWaits(operation, now)
+            if (waiting && intelAnnounced.add(operation.id)) SquadReports.awaitingIntel(level.server, saved)
+            intelWaits[saved.id] = if (waiting) IntelWait.WAITING else IntelWait.WITH_RECON
+            return waiting
+        }
+
+        /**
+         * Whether [operation] still waits for its recon report (ReconRules.awaitsIntel): its infantry
+         * holds short, and its own mortars and drones hold their fire so as not to give the scouts away.
+         */
+        fun operationWaits(operation: OperationView, now: Long): Boolean {
+            if (operation.id in intelReleased) return false
+            val manager = SquadManager.get(level)
+            val recons = operation.members.keys.mapNotNull(manager::get).filter { manager.isReconSquad(it) && it.order == SquadOrder.ATTACK && it.members.isNotEmpty() }
+            if (recons.isEmpty()) return false
+            // From the latest post: one that steps nearer seeing nobody starts its watch again there.
+            val atPost = recons.mapNotNull { reconProgress[it.id]?.takeIf { p -> p.stamp == it.orderStamp }?.postFrom }.minOrNull()
+            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { r -> reconProgress[r.id]?.takeIf { it.stamp == r.orderStamp }?.reportsDone ?: false })
+            if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end", operation.id)
+            return waiting
+        }
+
+        // Where each waiting squad holds, fixed once per order: taken from its live centre every pass
+        // (inside the line the centre itself) it moved as the men bunched, and they were sent again.
+        private val intelHolds = HashMap<UUID, Pair<Int, Point3>>()
+
+        private fun intelHoldPoint(saved: Squad, centre: Point3): Point3? {
+            intelHolds[saved.id]?.takeIf { it.first == saved.orderStamp }?.let { return it.second }
+            val objective = saved.objective?.center?.point() ?: return null
+            return ReconProgress.shortOf(objective, centre, ReconProgress.STAGING_DISTANCE).also { intelHolds[saved.id] = saved.orderStamp to it }
+        }
+
+        private fun attackingInfantry(squad: Squad): Boolean {
+            val manager = SquadManager.get(level)
+            return squad.order == SquadOrder.ATTACK && !manager.isReconSquad(squad) && !manager.isMortarSquad(squad) && !manager.isDroneSquad(squad)
+        }
+
+        // The enemies [saved]'s side knows round [objective]: what its recon post counts and reports.
+        private fun enemiesAt(saved: Squad, objective: Point3, now: Long): Set<UUID> = TeamAwareness.knownContacts(saved.faction, now).filterTo(HashSet()) { id -> level.getEntity(id)?.let { hypot(it.x - objective.x, it.z - objective.z) <= INTEL_RADIUS } == true }
+
+        /** Whether [squad], a recon squad, holds its fire now ([ReconRules.holdsFire]). */
+        fun squadHoldsFire(squad: Squad): Boolean = ReconRules.holdsFire(company(squad), squad.order == SquadOrder.ATTACK && recon.sawEnemy(squad), recon.discovered(squad), recon.reported(squad), operations.committedTo(squad.id)?.id in assaulting)
+
+        /**
+         * A recon squad discovered since the last pass that does not fight leaves at once, as a RETREAT
+         * does (smoke once fired on, RetreatSmoke): away from the objective, or from the enemy who found it.
+         */
+        private fun withdrawDiscovered() {
+            if (recon.pending.isEmpty()) return
+            val manager = SquadManager.get(level)
+            recon.pending.toList().forEach { (id, threat) ->
+                recon.pending.remove(id)
+                val squad = manager.get(id) ?: return@forEach
+                if (!ReconRules.retreats(company(squad), squad.order == SquadOrder.ATTACK, recon.sawEnemy(squad)) || squad.order == SquadOrder.RETREAT || squad.order == SquadOrder.FOLLOW) return@forEach
+                val men = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }
+                if (men.isEmpty()) return@forEach
+                val centre = Point3(men.map { it.x }.average(), men.map { it.y }.average(), men.map { it.z }.average())
+                val from = threat?.point() ?: squad.objective?.center?.point() ?: return@forEach
+                val away = ReconProgress.along(from, centre, hypot(centre.x - from.x, centre.z - from.z) + WITHDRAW_DISTANCE)
+                manager.withdraw(id, "recon_discovered")
+                manager.setObjective(level, id, net.minecraft.core.BlockPos.containing(away.x, centre.y, away.z))
+                DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=withdraw to={}", id, away)
+                SquadReports.reconDiscovered(level.server, squad)
+            }
+        }
+
+        // Who else is in [squad]'s operation, as the recon rules see it.
+        private fun company(squad: Squad): ReconRules.Company {
+            val manager = SquadManager.get(level)
+            // A squad on its way to join counts already (playtest 08.11): sixteen riflemen sent after a
+            // recon squad and its drone operators left the scouts acting as if they had no infantry.
+            val operation = operations.operationOf(squad.id)
+            val others = (operation?.members?.keys.orEmpty() + operation?.let { operations.reinforcing(it.id) }.orEmpty()).filter { it != squad.id }.mapNotNull(manager::get)
+            return when {
+                others.isEmpty() -> ReconRules.Company.ALONE
+                others.any { !manager.isReconSquad(it) && !manager.isMortarSquad(it) && !manager.isDroneSquad(it) } -> ReconRules.Company.INFANTRY
+                else -> ReconRules.Company.SUPPORT
+            }
+        }
+
+        // Whether water lies between a squad and its objective (owner 08.11).
+        private val crossings = WaterCrossings(level)
 
         /**
          * A travelling squad's seats as its plan gave them out ([TacticalDomain.BOARD], #255), with
@@ -1040,6 +1301,7 @@ object NativeTactics {
             manoeuvreTeams[id]?.let { result = result.observe(TacticalFacts.MANOEUVRE_TEAM, it) }
             rallies[id]?.let { result = result.observe(TacticalFacts.RALLY, it) }
             if (id in journeys) result = result.observe(TacticalFacts.TRAVELLING, true)
+            if (id in reconnoitring) result = result.observe(TacticalFacts.RECONNOITRING, true)
             seatsDue[id]?.let { result = result.observe(TacticalFacts.SEATS, it) }
             approaches[id]?.let { result = result.observe(TacticalFacts.APPROACH, it) }
             strategies[id]?.let { (strategy, since) ->
@@ -1055,6 +1317,17 @@ object NativeTactics {
             if (state?.commitment != null && !state.hidden(npc, feet)) return false
             val contacts = npc.squadId?.let(::combatView)?.contacts.orEmpty()
             return contacts.none { it.knownArmourTo(npc, level, level.gameTime) && !armourShelter(npc, it.eye, it.id, feet) }
+        }
+
+        private fun roofFor(npc: NpcEntity, underFire: Boolean, sector: FireSector?, digs: Int, now: Long): Point3? {
+            // Under his roof already, he stays while shells still fall anywhere he hears them, not only
+            // within 24: the barrage walking off a little sent men out between rounds (owner 09.11).
+            val shelling = npc.shelled() || underFire || (npc.shellingHeard() && roofs.sheltering(npc))
+            // A target shared from 80+ blocks that he neither sees nor reaches is no fight (owner 09.11:
+            // gunners and snipers on their posts ignored every shell with no contact at all).
+            val fighting = shelling && npc.target?.let { com.sbwnpc.squad.combat.FiringOpportunity.assess(npc, it) == com.sbwnpc.squad.combat.tactics.TacticalTargetSelection.Opportunity.SHOOTABLE } == true
+            val unseen = shelling && sector == null && !fighting && npc.vehicle == null
+            return if (unseen && digs == 0) roofs.near(npc, now) else null
         }
 
         private fun coverOf(npc: NpcEntity) = cover.getOrPut(npc.uuid, ::CoverState)
@@ -1080,6 +1353,8 @@ object NativeTactics {
                 .observe(TacticalFacts.SHELTERED, state?.sheltered(npc, sector) == true)
                 .observe(TacticalFacts.CROWDED, crowded(npc, now))
             sector?.let { result = result.observe(TacticalFacts.FIRE_SECTOR, it) }
+            // Shelled or suppressed with no sector and nothing in sight: a roof near him, if any.
+            roofFor(npc, underFire, sector, digs, now)?.let { result = result.observe(TacticalFacts.ROOF, it) }
             state?.failure?.let { result = result.observe(TacticalFacts.COVER_FAILURE, it, observedAt = it.failedAt, expiresAt = it.failedAt + FAILURE_MEMORY_TICKS) }
             // Only the answers to no cover and the hole read these, and a man peeking from cover
             // sees his target and loses it again: observed always, they would replan him each time.
@@ -1235,7 +1510,14 @@ object NativeTactics {
                     lastHits.remove(id)
                     closeContacts.remove(id)
                     retreatSmoke.forget(id)
+                    crossings.forgetSquad(id)
                     grenades.forgetSquad(id)
+                    recon.forget(id)
+                    intelWaits.remove(id)
+                    intelHolds.remove(id)
+                    reconProgress.remove(id)
+                    reconnoitring -= id
+                    stalking -= id
                     lastAbove.remove(id)
                     alarms.remove(id)
                     regroupEnds.remove(id)
@@ -1398,12 +1680,15 @@ object NativeTactics {
                     unverified.remove(id.id)
                     unverifiedSeen.remove(id.id)
                     areaTasks.remove(id.id)
+                    intelReleased.remove(id.id)
+                    assaulting.remove(id.id)
                     operations.forget(id.id)
                 }
                 commandCrews(now, desiredAgents)
                 commandAircraft(now, desiredAgents)
                 commandLoneOperators(now, desiredAgents)
                 commandLoneMedics(now, desiredAgents)
+                withdrawDiscovered()
                 commandEngagers(now, desiredAgents)
                 agents.keys.filter { it !in desiredAgents }.toList().forEach { id ->
                     DebugFlags.log(LogGroup.ORDER, "[htn] actor={} level={} event=agent_dropped reason=actor_not_active", id.id, id.level)
@@ -1426,6 +1711,7 @@ object NativeTactics {
                 engageStates.entries.removeIf { (id, state) -> (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) state.dispose() } }
                 engageBands.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 crowding.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                roofs.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 grenades.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 medics.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 suspendedBy.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -2111,6 +2397,21 @@ object NativeTactics {
                 val entry = if (marching && saved.order == SquadOrder.ATTACK) reinforcementPoint(saved.id, view.center.point()) else null
                 val following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW
                 val transit = journeys[saved.id] == saved.orderStamp
+                // With water between it and the objective (WaterCrossings) the recon stages and the wait for
+                // its report keep off: their points fell on the water and the near bank, and nobody crossed
+                // (playtest 08.11). The attack's own posts swim across.
+                val wet = crossings.crossing(saved, view.center, now)
+                val reconnoitre = reconStage(saved, view.center.point(), now)?.takeUnless { wet }
+                // Waiting for the recon report, infantry stops short of its firing line unless it is fired on.
+                // An enemy merely seen far off does not end it: in the playtest of 08.11 a sighting at
+                // the objective sent the infantry on past the scouts before they reported.
+                val awaiting = awaitingIntel(saved, now)
+                noteAssault(saved, view.incoming.isNotEmpty(), view.center, contacts.map { it.position })
+                val intelHold = if (awaiting && view.incoming.isEmpty() && !wet) intelHoldPoint(saved, view.center.point()) else null.also { intelHolds.remove(saved.id) }
+                if (reconnoitre != null && reconnoitre.first != ReconStage.STAGING) {
+                    val toward = saved.objective!!.center
+                    view.members.forEach { (level.getEntity(it.id) as? NpcEntity)?.becomeWary(toward) }
+                }
                 val leader = if (following) level.getPlayerByUUID(saved.owner) else null
                 val heading = saved.followHeading.takeIf { it != net.minecraft.world.phys.Vec3.ZERO }?.let { it.x to it.z }
                 val intents = view.members.mapIndexed { index, member ->
@@ -2120,7 +2421,12 @@ object NativeTactics {
                     val waypoint = waypoints[member.id]
                     val proposal = waypoint?.let { FrontProposal(CombatDuty.MOVE, it, null) } ?: proposals.getValue(member.id)
                     val held = dutyRules[member.id]
-                    val decision = entry?.takeUnless { transit }?.let { DutyDecision(RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)), null) } ?: MemberDuties.choose(
+                    val decision = entry?.takeUnless { transit }?.let { DutyDecision(RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)), null) } ?: reconnoitre?.let { (stage, point) ->
+                        // On the post, watching or holding it after the report, the observer's post search places them;
+                        // a plain MOVE to the objective would walk them onto the enemy.
+                        val duty = if (stage == ReconStage.WATCH || (stage == ReconStage.REPORTED && reconProgress[saved.id]?.holdsPost == true)) CombatDuty.OBSERVE else CombatDuty.MOVE
+                        DutyDecision(RuledDuty("recon_${stage.name.lowercase()}", DutyChoice(duty, point)), null)
+                    } ?: intelHold?.let { DutyDecision(RuledDuty("intel_wait", DutyChoice(CombatDuty.MOVE, it)), null) } ?: MemberDuties.choose(
                         DutyInputs(
                             order = saved.order.tactical(),
                             position = member.position.point(),
@@ -2190,7 +2496,10 @@ object NativeTactics {
                     val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding && !fallingBack
                     val requireShelter = PostRequirements.shelter(duty, situation.incoming) && !fallingBack
                     val settled = strategyKept && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
-                    val moving = waypoint != null || member.id in wasArcing || bounding
+                    // A recon stage's point, or the intel wait's, replaces his post: kept as settled, the scouts
+                    // stood on their staging line and never reached a post (playtest 08.11). Both are fixed
+                    // points within a stage, so this does not churn.
+                    val moving = waypoint != null || member.id in wasArcing || bounding || ruled.rule.startsWith("recon_") || ruled.rule == "intel_wait"
                     val byLegs = ruled.rule in LEG_RULES
                     // A blind slot brought nearer than the role's clearance lets its man come that near (#93).
                     val sightClearance = slotSights[member.id]?.sighted?.takeIf { waypoint == null && it.post == proposal.anchor }?.clearance
@@ -2221,7 +2530,7 @@ object NativeTactics {
                             sightClearance = sightClearance,
                             // A travelling squad's men make for the vehicles or the objective: no cover
                             // on the way, and its strategy stands aside (#228, #255).
-                            ordered = bounding || transit,
+                            ordered = bounding || transit || reconnoitre != null,
                             legs = byLegs,
                         )
                     }
@@ -2713,6 +3022,7 @@ object NativeTactics {
             legs.clear()
             armour.clear()
             cover.clear()
+            roofs.clear()
             crowding.clear()
             supportWaits.clear()
             coverStalls.clear()
@@ -2733,8 +3043,18 @@ object NativeTactics {
             seatsDue.clear()
             seatChecks.clear()
             retreatSmoke.clear()
+            crossings.clear()
             grenades.clear()
             medics.clear()
+            recon.clear()
+            reconProgress.clear()
+            intelWaits.clear()
+            intelReleased.clear()
+            assaulting.clear()
+            intelHolds.clear()
+            intelAnnounced.clear()
+            reconnoitring.clear()
+            stalking.clear()
             suspendedBy.clear()
         }
     }

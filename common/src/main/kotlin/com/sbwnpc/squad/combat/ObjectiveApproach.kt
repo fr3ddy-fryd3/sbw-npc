@@ -27,6 +27,9 @@ object ObjectiveApproach {
     /** Walking pace over running pace on ATTACK, see `SquadOrderBehaviour.WALK_SPEED_MODIFIER`. */
     private const val WALK_PACE_AMOUNT = 0.6 - 1.0
 
+    /** Whether a cautious approach on [order] walks: an ATTACK does, unless shells are landing near him (owner 08.11). */
+    fun walks(order: SquadOrder, shelled: Boolean): Boolean = order == SquadOrder.ATTACK && !shelled
+
     fun cautious(order: SquadOrder, distance: Double, onFoot: Boolean, spent: Boolean): Boolean = !spent && onFoot && distance <= RANGE && (order == SquadOrder.ATTACK || order == SquadOrder.MOVE)
 
     /** One per NPC. */
@@ -47,6 +50,7 @@ object ObjectiveApproach {
                 }
                 return
             }
+            runIfShelled(npc)
             if ((npc.tickCount + npc.id) % CHECK_TICKS != 0) return
             val squad = npc.currentSquad()
             val objective = squad?.objective
@@ -54,9 +58,18 @@ object ObjectiveApproach {
             val spent = spentSquad == squad.id && spentStamp == squad.orderStamp
             val onFoot = npc.vehicle == null && !npc.holds(com.sbwnpc.squad.entity.NpcActivity.VEHICLE)
             val distance = npc.position().distanceTo(Vec3.atCenterOf(objective))
-            if (!cautious(squad.order, distance, onFoot, spent)) return end(npc)
+            // Scouts stalk on their own approach; infantry waiting for them walks from the start, and
+            // once they have looked it runs the rest of the way (#194).
+            val wait = if (npc.npcClass == com.sbwnpc.squad.npc.NpcClass.SCOUT) null else com.sbwnpc.squad.ai.integration.NativeTactics.intelWait(npc)
+            val walking = wait == com.sbwnpc.squad.ai.integration.NativeTactics.IntelWait.WAITING && onFoot
+            if (!walking && (wait != com.sbwnpc.squad.ai.integration.NativeTactics.IntelWait.NONE || !cautious(squad.order, distance, onFoot, spent))) return end(npc)
             toward = Vec3.atCenterOf(objective)
-            slow(npc, squad.order == SquadOrder.ATTACK)
+            slow(npc, walks(squad.order, npc.shelled()))
+        }
+
+        // Shelled, he speeds up at once rather than at the next check.
+        private fun runIfShelled(npc: NpcEntity) {
+            if (npc.shelled() && toward != null) slow(npc, false)
         }
 
         private fun end(npc: NpcEntity) {

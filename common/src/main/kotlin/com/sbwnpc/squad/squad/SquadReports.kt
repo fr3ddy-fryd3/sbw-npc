@@ -29,6 +29,7 @@ object SquadReports {
         ARRIVED(0, ChatFormatting.GREEN),
         ATTACK_FAILED(0, ChatFormatting.GOLD),
         ATTACK(0, ChatFormatting.AQUA),
+        INTEL(0, ChatFormatting.DARK_AQUA),
     }
 
     private val lastSent = HashMap<Pair<UUID, Kind>, Long>()
@@ -105,10 +106,36 @@ object SquadReports {
         send(server, squad, Kind.RESUPPLY, "${className(npc)} going to resupply")
     }
 
+    /** The attack waits for its recon squad before it closes in (#194). */
+    fun awaitingIntel(server: MinecraftServer, squad: Squad) {
+        send(server, squad, Kind.INTEL, "Waiting for intelligence")
+    }
+
+    /** A recon squad was found and leaves (#194). */
+    fun reconDiscovered(server: MinecraftServer, squad: Squad) {
+        send(server, squad, Kind.INTEL, "Discovered, withdrawing")
+    }
+
+    /** A recon post's running count every 10 s while it watches (#194, owner 08.11). */
+    fun postUpdate(server: MinecraftServer, squad: Squad, fresh: Int, total: Int) {
+        send(server, squad, Kind.INTEL, if (total == 0) "Observation post: nobody seen" else "Observation post: +$fresh new, $total at the objective")
+    }
+
+    /** Seeing nobody from its post, a recon squad moves nearer (owner 08.11). */
+    fun movingCloser(server: MinecraftServer, squad: Squad, distance: Int) {
+        send(server, squad, Kind.INTEL, "Observation post: nobody seen, moving closer ($distance m out)")
+    }
+
+    /** A recon squad's report from its observation post (#194). */
+    fun intel(server: MinecraftServer, squad: Squad, enemies: Int) {
+        send(server, squad, Kind.INTEL, if (enemies > 0) "Observation post: $enemies enemies at the objective" else "Observation post: nobody seen at the objective")
+    }
+
     /**
      * The attack has [able] of its [base] men left with something to fire, too few to go on.
      * [toSupply] is null when no fallback point could be picked, the squad's men not being loaded.
      */
+
     fun attackCalledOff(server: MinecraftServer, squad: Squad, able: Int, base: Int, toSupply: Boolean?) {
         val to = when (toSupply) {
             true -> ". Falling back to the Supply"

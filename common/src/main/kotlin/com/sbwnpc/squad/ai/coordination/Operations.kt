@@ -122,6 +122,12 @@ class OperationRegistry(
     fun operationOf(squad: UUID): OperationView? = membership[squad]?.let(operations::get)
     fun pending(squad: UUID): PendingReinforcement? = reinforcements[squad]
 
+    /** The squads on their way to join [operation]: committed to it, though not yet its members. */
+    fun reinforcing(operation: UUID): Set<UUID> = reinforcements.values.filter { it.operation == operation }.mapTo(HashSet()) { it.participant.id }
+
+    /** [squad]'s operation, or the one it is on its way to join. */
+    fun committedTo(squad: UUID): OperationView? = operationOf(squad) ?: reinforcements[squad]?.operation?.let(operations::get)
+
     fun detach(squad: UUID) {
         reinforcements.remove(squad)
         val id = membership.remove(squad) ?: return

@@ -21,7 +21,9 @@ object UnderFire {
      */
     private val PositionIntent.answers get() = !assault && !ordered
 
-    private val FactView.firing get() = value(TacticalFacts.UNDER_FIRE) == true
+    // Suppressed with no known sector there is nothing to take cover from: take_cover read the sector
+    // unchecked and the plan failed. Such a man shelters under a roof (Shelter) or keeps his duty.
+    private val FactView.firing get() = value(TacticalFacts.UNDER_FIRE) == true && value(TacticalFacts.FIRE_SECTOR) != null
 
     private val FactView.digs get() = value(TacticalFacts.DIGS) ?: 0
 
@@ -29,6 +31,7 @@ object UnderFire {
     fun duty(intent: PositionIntent, facts: FactView): Verdict? =
         when {
             facts.digs > 0 -> Verdict.Rejected("in_hole")
+            Shelter.eligible(intent).evaluate(facts) == Verdict.Allowed -> Verdict.Rejected("shelter")
             facts.firing && intent.answers -> Verdict.Rejected("under_fire")
             else -> null
         }
@@ -40,6 +43,7 @@ object UnderFire {
                 facts.digs > 0 -> Verdict.Rejected("in_hole")
                 !facts.firing -> Verdict.Rejected("not_under_fire")
                 !intent.answers -> Verdict.Rejected("keeps_moving")
+                Shelter.eligible(intent).evaluate(facts) == Verdict.Allowed -> Verdict.Rejected("shelter")
                 else -> Verdict.Allowed
             }
         }

@@ -66,7 +66,7 @@ enum class CombatDuty(
  * @property spread the step off a squadmate's block by a man whose post search found nothing (#299);
  *   its failure is remembered so the step is tried once per failed anchor.
  */
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val sightClearance: Double? = null, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val coveredBy: Set<java.util.UUID> = emptySet(), val armour: ArmourContact? = null, val holdFeet: Boolean = false, val spread: Boolean = false) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val sightClearance: Double? = null, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val coveredBy: Set<java.util.UUID> = emptySet(), val armour: ArmourContact? = null, val holdFeet: Boolean = false, val spread: Boolean = false, val roofed: Boolean = false) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
@@ -340,6 +340,9 @@ object TacticalFacts {
     /** The squad travels to its objective instead of fighting where it is ([SquadJourney], #255). */
     val TRAVELLING = FactKey("squad.travelling", Boolean::class.javaObjectType)
 
+    /** A hidden recon squad is on its approach to an observation post (#194): no strategy shapes it. */
+    val RECONNOITRING = FactKey("squad.reconnoitring", Boolean::class.javaObjectType)
+
     /** Who of a team in a fight mans which empty armed vehicle's gun ([WeaponStations]). */
     val STATIONS = FactKey("team.stations", StationPlan::class.java)
 
@@ -355,6 +358,9 @@ object TacticalFacts {
     /** The men covering his rush are firing; see [PositionIntent.coveredBy]. */
     val SUPPORT_FIRING = FactKey("actor.support_firing", Boolean::class.javaObjectType)
     val ATTACK_PHASE = FactKey("operation.attack_phase", AttackPhase::class.java)
+
+    /** A spot under a roof near a man shelled from where he cannot see (Shelter); absent otherwise. */
+    val ROOF = FactKey("actor.roof", Point3::class.java)
 
     /** He is under fire (suppressed). Observed every tick, true or false, so methods that exclude it never wait on it. */
     val UNDER_FIRE = FactKey("actor.under_fire", Boolean::class.javaObjectType)
@@ -553,6 +559,11 @@ object TacticalDomain {
                     Method<SquadMission>("support_only", eligible = { mission ->
                         Condition { if (mission.teams.isEmpty() && (mission.support + mission.air + mission.tanks).isNotEmpty()) Verdict.Allowed else Verdict.Rejected("has_ground_teams") }
                     }, decompose = { mission, facts -> TaskNetwork(children(FireSupport.delegations(mission) + AirSupport.delegations(mission) + TankSupport.delegations(mission)).nodes + listOfNotNull(boarding(mission, facts))) }),
+                    // A hidden recon squad stalks to its observation post (#194): its men's stages are
+                    // ordered duties, as a travelling squad's are, and no strategy shapes them.
+                    Method<SquadMission>("reconnoitre", eligible = { mission ->
+                        Condition { facts -> if (mission.teams.isNotEmpty() && facts.value(TacticalFacts.RECONNOITRING) == true) Verdict.Allowed else Verdict.Rejected("not_reconnoitring") }
+                    }, decompose = { mission, _ -> children(mission.teams.map { DelegationTask(it.agent, TEAM.call(it)) }) }),
                     // A squad travelling to its objective (#255) is no squad in a fight: its men make
                     // for the vehicles or the objective as their order says, and no strategy shapes them.
                     Method<SquadMission>("travel", eligible = { mission ->
@@ -567,7 +578,17 @@ object TacticalDomain {
                         eligible = { mission ->
                             when {
                                 mission.teams.isEmpty() -> Condition { Verdict.Rejected("no_ground_teams") }
-                                else -> Condition.all(Condition { facts -> if (facts.value(TacticalFacts.TRAVELLING) == true) Verdict.Rejected("travelling") else Verdict.Allowed }, SquadManners.eligible(strategy))
+
+                                else -> Condition.all(
+                                    Condition { facts ->
+                                        when {
+                                            facts.value(TacticalFacts.TRAVELLING) == true -> Verdict.Rejected("travelling")
+                                            facts.value(TacticalFacts.RECONNOITRING) == true -> Verdict.Rejected("reconnoitring")
+                                            else -> Verdict.Allowed
+                                        }
+                                    },
+                                    SquadManners.eligible(strategy),
+                                )
                             }
                         },
                         score = { _, facts -> SquadManners.score(strategy, facts) },
@@ -707,6 +728,8 @@ object TacticalDomain {
                     // below stands aside meanwhile (UnderFire.duty), so exactly one family applies.
                     // A drone in the air keeps him at its monitor through all of it (DroneStrike.flying).
                     Method<PositionIntent>("answer_armour", eligible = { intent -> Condition { facts -> if (ArmourResponse.answers(intent, facts) && !ArmourResponse.launches(facts)) Verdict.Allowed else Verdict.Rejected("no_armour_response") } }, decompose = { intent, _ -> TaskNetwork.sequence(ArmourResponse.TASK.call(intent)) }),
+                    // Shelled with no sector and a roof near, he takes it; under_fire and every duty stand aside meanwhile.
+                    Method("shelter", eligible = { intent -> Condition { facts -> DroneStrike.flying(facts) ?: Shelter.eligible(intent).evaluate(facts) } }, decompose = { intent, facts -> TaskNetwork.sequence(POST.call(Shelter.post(intent, facts.value(TacticalFacts.ROOF)!!))) }),
                     Method("under_fire", eligible = { intent -> Condition { facts -> DroneStrike.flying(facts) ?: UnderFire.eligible(intent).evaluate(facts) } }, decompose = { intent, _ -> TaskNetwork.sequence(UNDER_FIRE.call(intent)) }),
                     Method("in_hole", eligible = { _ -> Condition { facts -> DroneStrike.flying(facts) ?: UnderFire.inHole().evaluate(facts) } }, decompose = { intent, _ -> TaskNetwork.sequence(IN_HOLE.call(intent)) }),
                     // A drone operator flies his drone, or launches one when not under fire, ahead

@@ -276,6 +276,33 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Wary and, on ATTACK, walking while within 100 blocks of the squad's objective, until the first target (#148). */
     private val approach = com.sbwnpc.squad.combat.ObjectiveApproach.State()
 
+    // Shells landing near him (owner 08.11): until when he counts as under shelling.
+    private var shelledUntilTick = 0
+
+    /** Whether a shell burst within [com.sbwnpc.squad.combat.Hearing.SHELL_NEAR] blocks of him in the last 15 s. */
+    fun shelled(): Boolean = tickCount < shelledUntilTick
+
+    /**
+     * A shell he heard burst at [at], near him: he runs rather than walks the approach and looks
+     * about faster (owner 08.11: mortar rounds landed and nobody reacted), wary of where it fell.
+     */
+    fun shell(at: Vec3) {
+        shelledUntilTick = tickCount + SHELLED_TICKS
+        becomeWary(at)
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MOVEMENT, "{} shelled at {} pace=run", uuid.toString().take(8), BlockPos.containing(at))
+    }
+
+    // Any shell he heard, near or far: one under a roof stays there while the barrage goes on.
+    private var shellingHeardUntilTick = 0
+
+    /** Whether he heard a shell burst anywhere in the last 15 s (owner 09.11: they left the roof between rounds). */
+    fun shellingHeard(): Boolean = tickCount < shellingHeardUntilTick
+
+    /** He heard a shell burst, however far. */
+    fun hearShelling() {
+        shellingHeardUntilTick = tickCount + SHELLED_TICKS
+    }
+
     /** Whether the NPC is wary: a squadmate fell, a round hit or missed it narrowly, so it watches where the threat came from. */
     fun wary(): Boolean = approach.toward != null || (waryAt != null && tickCount < waryUntilTick)
 
@@ -707,6 +734,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (result && !level().isClientSide && Ports.gear.isBulletDamage(source)) {
             // A known ally's stray round is damage, but is not a new enemy contact.
             if (source.entity?.let { SquadTeams.sameSide(this, it) } == true) return result
+            com.sbwnpc.squad.ai.integration.NativeTactics.scoutHit(this)
             incomingFire.record(eyePosition, source.directEntity?.takeIf { it !== source.entity }?.deltaMovement, source.entity?.eyePosition ?: source.sourcePosition, level().gameTime)
             val from = incomingFire.point(level().gameTime) ?: source.sourcePosition ?: position()
             suppress(from)
@@ -1451,6 +1479,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
         /** How long (30 s) an NPC stays wary after a squadmate fell or it was shot from out of sight. */
         private const val WARY_TICKS = 600
+
+        /** How long a near shell burst keeps him running and looking about: 15 s. */
+        private const val SHELLED_TICKS = 300
 
         /** How far (16 blocks) the men round an NPC shot by an unseen enemy grow wary with it. */
         private const val HIT_WARNING_RADIUS = 16.0
