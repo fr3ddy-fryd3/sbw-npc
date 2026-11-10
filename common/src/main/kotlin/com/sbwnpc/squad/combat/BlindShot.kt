@@ -21,7 +21,7 @@ object BlindShot {
         /** Aimed, waiting for the episode's or the gun's next shot. */
         WAITING,
 
-        /** Terrain, a hull or an ally stands in the lane: no round. */
+        /** Terrain, a hull or an ally stands in the lane: no round. Logged on his ticks divisible by 20 only. */
         BLOCKED,
 
         /** Out of reach or with no gun in hand: nothing aimed. */

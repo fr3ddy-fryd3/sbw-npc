@@ -212,13 +212,15 @@ internal object EngageFacts {
      * The bursts at where he last saw [target] are still to fire, and nothing forbids a guess: the
      * gates the blind fire always had (#189). A ground armour target is the launcher's, a hidden
      * recon squad does not fire at a guess (#194), a role or a vehicle has his hands, a man in cover
-     * peeks from it, and a higher mandatory rule (medic help, a grenade's evade, a drone) holds his
-     * fire or his look.
+     * peeks from it, a higher mandatory rule (medic help, a grenade's evade, a drone) holds his
+     * fire or his look, and the reply to incoming fire comes first: both aim the one gun, and the
+     * reply always had the priority.
      */
     fun foliageFireDue(npc: NpcEntity, target: LivingEntity?, now: Long): Boolean =
         target != null && npc.lastSeenFire.observed(target.uuid) && npc.lastSeenFire.point(now) != null &&
             !VehicleTargeting.isGroundArmour(target) && !NativeTactics.holdsFire(npc) && !npc.busyWithRole() &&
-            npc.vehicle == null && !npc.holds(NpcActivity.COVER) && MandatoryRules.may(MandatoryRule.BLIND_RETURN_FIRE, npc)
+            npc.vehicle == null && !npc.holds(NpcActivity.COVER) && MandatoryRules.may(MandatoryRule.BLIND_RETURN_FIRE, npc) &&
+            !npc.incomingFire.replying(now)
 
     /**
      * A distance fact with a band: [within] the fact holds at [limit] or nearer and lets go only
@@ -485,32 +487,39 @@ private class FoliageFire(npc: NpcEntity, state: EngageState, sidearm: Boolean) 
 
     override fun step(target: LivingEntity) {
         npc.navigation.stop()
-        state.hold(npc.position())
+        val here = npc.position()
+        if (state.spot?.let { CombatGeometry.flat(it, here) <= ARRIVE_DISTANCE } != true) state.hold(here)
         val now = npc.level().gameTime
         val episode = npc.lastSeenFire
         val aim = episode.point(now) ?: return done("episode_over")
         // Re-checked each tick: the plan sees a rule that starts mid-burst only at its next look.
-        if (!MandatoryRules.may(MandatoryRule.BLIND_RETURN_FIRE, npc)) return
+        if (!MandatoryRules.may(MandatoryRule.BLIND_RETURN_FIRE, npc) || npc.incomingFire.replying(now)) return
         when (BlindShot.fire(npc, aim, aim, episode, "foliage-fire")) {
             BlindShot.Outcome.FIRED -> {
                 blocked = 0
                 npc.lastFireAt = aim
+                DebugFlags.log(LogGroup.ORDER, "[foliage-fire] {} shot: aim={} remaining={}", npc.uuid, aim, episode.roundsLeft)
             }
 
             BlindShot.Outcome.BLOCKED -> if (++blocked >= BLOCKED_GIVE_UP) giveUp("lane_blocked")
 
-            BlindShot.Outcome.REFUSED -> giveUp("refused")
+            // He stands still and the point does not move: out of reach now is out of reach for the episode.
+            BlindShot.Outcome.REFUSED, BlindShot.Outcome.OUT_OF_REACH -> giveUp("cannot_fire")
 
-            BlindShot.Outcome.WAITING, BlindShot.Outcome.OUT_OF_REACH -> Unit
+            BlindShot.Outcome.WAITING -> Unit
         }
     }
 
     private fun giveUp(reason: String) {
         npc.lastSeenFire.cancel()
+        DebugFlags.log(LogGroup.ORDER, "[foliage-fire] {} given up: {}", npc.uuid, reason)
         done(reason)
     }
 
     private companion object {
+        /** Standing within this of his claimed spot, he is on it, as for the opening burst. */
+        const val ARRIVE_DISTANCE = 1.0
+
         /** Blocked shots in a row before the episode is given up, 1 s of a ready gun. */
         const val BLOCKED_GIVE_UP = 20
     }
