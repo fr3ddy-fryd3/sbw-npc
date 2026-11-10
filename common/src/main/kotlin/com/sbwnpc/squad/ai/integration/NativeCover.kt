@@ -514,6 +514,8 @@ internal class NativeHoldHole(private val npc: NpcEntity, private val state: Cov
 
     override fun resume(now: Long) = Unit
 
+    // The hole outlives a replan: the claim is the hole's, let go by climbing out or, once his plan
+    // ends (a seat taken counts), by the world's sweep at its next refresh.
     override fun cancel(now: Long, reason: String) = Unit
 }
 

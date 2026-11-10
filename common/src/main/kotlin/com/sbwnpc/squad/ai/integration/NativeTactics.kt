@@ -401,8 +401,6 @@ object NativeTactics {
      */
     fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) { it is PlanExecutor || it === MortarDeployment }
 
-    /** Whether the planner plans for [npc]: any agent of his decides his cover too (#189). */
-    fun plans(npc: NpcEntity): Boolean = hasAgent(npc)
     private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR, NpcClass.SCOUT)
 
     private class PendingDeath(val entity: LivingEntity, val cancelled: () -> Boolean)

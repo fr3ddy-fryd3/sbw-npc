@@ -78,8 +78,6 @@ object SquadTactics {
     /** Whether [entity]'s plan has sent him to look at a spot (a SEARCH post). */
     fun scouting(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.scouting(entity)
 
-    /** Whether the planner plans for [entity]; his cover under fire is then his plan's (#251). */
-    fun plans(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.plans(entity)
     fun repositionForFire(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.reposition(entity)
 
     /** Runs the HTN planning this NPC takes part in, once per tick for its squad and above. */

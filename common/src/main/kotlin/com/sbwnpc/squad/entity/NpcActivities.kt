@@ -54,8 +54,9 @@ enum class NpcActivity(val holds: Set<Cap>) {
     PEEK(setOf(Cap.FEET)),
 
     /**
-     * Holding a foxhole it dug: [com.sbwnpc.squad.ai.integration.NativeDig]. The man fights from
-     * the hole, so the trigger stays free.
+     * Holding a foxhole it dug ([com.sbwnpc.squad.ai.integration.NativeDig]), claimed by the hole
+     * itself ([com.sbwnpc.squad.ai.integration.CoverState]) until he climbs out. The man fights
+     * from the hole, so the trigger stays free.
      */
     DUG_IN(setOf(Cap.FEET)),
 
