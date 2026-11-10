@@ -187,7 +187,7 @@ object AttackStrengthGameTests {
 
     /**
      * Six dry riflemen holding a line, a Supply 30 blocks behind (#189, owner 09.11): at most half of
-     * them are on a trip at once, and all six end topped up. They used to leave together.
+     * them are away at once, there or on the way back, and all six end topped up. They used to leave together.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 3000, batch = "strength-half-resupply")
@@ -199,8 +199,8 @@ object AttackStrengthGameTests {
         scene.manager.setObjective(helper.level, scene.squad.id, scene.members[2].blockPosition())
         var most = 0
         helper.onEachTick {
-            // A man walking back topped up is not on a trip any more; a dry one near the Supply is, claim or not.
-            val away = scene.members.count { it.holds(NpcActivity.RESUPPLY) || (it.ammoFraction() < 0.8 && it.position().distanceTo(supply) < NEAR_SUPPLY) }
+            // A man walking back topped up is still away (owner 10.11), and anyone near the Supply is, claim or not.
+            val away = scene.members.count { it.holds(NpcActivity.RESUPPLY) || it.position().distanceTo(supply) < NEAR_SUPPLY }
             most = maxOf(most, away)
             if (away > 3) {
                 helper.fail(
@@ -215,5 +215,5 @@ object AttackStrengthGameTests {
         }
     }
 
-    private const val NEAR_SUPPLY = 15.0
+    private const val NEAR_SUPPLY = 18.0
 }

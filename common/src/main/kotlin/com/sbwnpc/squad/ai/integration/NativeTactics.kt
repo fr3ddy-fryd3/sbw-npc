@@ -952,7 +952,7 @@ object NativeTactics {
                 },
             )
 
-        /** A medic's treatment (#189), of the patient [MedicCare] allocated him. */
+        /** A man's Supply trip and his empty-gun withdrawal (#189), as [SupplyCare] allocated them. */
         private fun supplyBindings() =
             listOf(
                 ActionBinding(Resupply.TRIP_ACTION) { ticket, trip ->
@@ -965,6 +965,7 @@ object NativeTactics {
                 },
             )
 
+        /** A medic's treatment (#189), of the patient [MedicCare] allocated him. */
         private fun medicBinding() =
             listOf(
                 ActionBinding(MedicalCare.ACTION) { ticket, treatment ->

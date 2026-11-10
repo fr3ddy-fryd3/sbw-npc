@@ -20,7 +20,9 @@ import com.sbwnpc.squad.entity.ai.MandatoryRule
 import com.sbwnpc.squad.entity.ai.MandatoryRuleOwner
 import com.sbwnpc.squad.entity.ai.MandatoryRules
 import com.sbwnpc.squad.squad.Squad
+import com.sbwnpc.squad.squad.SquadReports
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /**
@@ -48,9 +50,14 @@ internal class SupplyCare(private val level: ServerLevel) {
     // executor, and a fresh allowance each time let him walk off without a limit.
     private val retreats = HashMap<UUID, AmmoRetreat>()
 
+    // Topped-up men on their way back: each holds his place in the half until he is in the line again.
+    private val returning = HashMap<UUID, Return>()
+
     /** [npc]'s ammunition facts at [now]: his trip, if the allocation gave him one, and an empty gun. */
     fun observe(facts: FactSnapshot, npc: NpcEntity, now: Long): FactSnapshot {
         var result = facts
+        // Rounds again end his empty-gun episode, whichever executor last ran it.
+        if (Ports.guns.inHand(npc)?.hasAmmo() == true) retreats.remove(npc.uuid)
         if (empty(npc)) result = result.observe(SupplyFacts.EMPTY, true)
         val squad = npc.currentSquad()
         val trips = if (squad != null) squads.getOrPut(squad.id, ::SquadTrips) else lone.getOrPut(npc.uuid, ::SquadTrips)
@@ -67,7 +74,7 @@ internal class SupplyCare(private val level: ServerLevel) {
     fun onTrip(npc: NpcEntity): Boolean = npc.uuid in ((npc.currentSquad()?.let { squads[it.id] } ?: lone[npc.uuid])?.men ?: emptySet<UUID>())
 
     /** Whether [npc] is squadless and needs his own root for a trip or a withdrawal. */
-    fun needsLoneRoot(npc: NpcEntity): Boolean = npc.currentSquad() == null && (candidate(npc) || empty(npc))
+    fun needsLoneRoot(npc: NpcEntity): Boolean = npc.currentSquad() == null && (candidate(npc) || empty(npc) || npc.uuid in running)
 
     fun action(npc: NpcEntity, supply: Point3): ActionExecution = Trip(npc, supply)
 
@@ -80,6 +87,7 @@ internal class SupplyCare(private val level: ServerLevel) {
         running.removeIf { !man(it) }
         // Not by his agent: between two targets he has none, and the episode must survive that.
         retreats.keys.removeIf { (level.getEntity(it) as? NpcEntity)?.isAlive != true }
+        returning.keys.removeIf { (level.getEntity(it) as? NpcEntity)?.isAlive != true }
     }
 
     fun clear() {
@@ -88,6 +96,7 @@ internal class SupplyCare(private val level: ServerLevel) {
         unreachable.clear()
         running.clear()
         retreats.clear()
+        returning.clear()
     }
 
     private fun allocate(trips: SquadTrips, squad: Squad?, npc: NpcEntity, now: Long) {
@@ -102,18 +111,23 @@ internal class SupplyCare(private val level: ServerLevel) {
                 SupplyCandidate(man.uuid, empty(man), man.ammoFraction(), man.position().distanceTo(supply))
             }
         }
-        val picked = Resupply.pick(trips.men, candidates, men.size, squadless = squad == null)
+        val back = men.filter { it.uuid in returning && (candidate(it) || returning.getValue(it.uuid).over(it, now)) }
+        back.forEach { returning.remove(it.uuid) }
+        val away = men.count { it.uuid in returning }
+        val picked = Resupply.pick(trips.men, candidates, men.size, squadless = squad == null, returning = away)
         if (picked != trips.men) {
-            (picked - trips.men).forEach { id -> (level.getEntity(id) as? NpcEntity)?.let { com.sbwnpc.squad.squad.SquadReports.goingToResupply(it) } }
-            DebugFlags.log(LogGroup.SUPPLY, "[htn] squad={} event=resupply_allocated men={} cap={} candidates={} living={}", squad?.id ?: npc.uuid, picked, Resupply.cap(men.size), candidates.size, men.size)
+            (picked - trips.men).forEach { id -> (level.getEntity(id) as? NpcEntity)?.let { SquadReports.goingToResupply(it) } }
+            DebugFlags.log(LogGroup.SUPPLY, "[htn] squad={} event=resupply_allocated men={} cap={} candidates={} living={} returning={}", squad?.id ?: npc.uuid, picked, Resupply.cap(men.size), candidates.size, men.size, away)
         }
         trips.men = picked
     }
 
     // Who needs a trip, as before: empty in a fight, low with nobody to fight, all but out while firing.
+    // Ordered back, nobody: an empty man runs to his rally slot (#253), the rest go with the squad.
     private fun candidate(npc: NpcEntity): Boolean {
-        if (vetoed(npc) || npc.uuid in unreachable || npc.nearestSupply() == null) return false
-        return empty(npc) || (npc.target == null && npc.wantsResupply() && npc.retreatPoint() == null) || (npc.target != null && npc.allButOut())
+        if (vetoed(npc) || npc.uuid in unreachable) return false
+        if (npc.retreatPoint() != null || npc.nearestSupply() == null) return false
+        return empty(npc) || (npc.target == null && npc.wantsResupply()) || (npc.target != null && npc.allButOut())
     }
 
     private fun drop(npc: NpcEntity, now: Long, failed: Boolean) {
@@ -135,9 +149,13 @@ internal class SupplyCare(private val level: ServerLevel) {
         private var closest = Double.MAX_VALUE
         private var progressAt = 0L
         private var nextRepath = 0L
+        private var origin: Vec3 = npc.position()
+        private var originDistance = 0.0
 
         override fun start(now: Long): ActionUpdate {
             progressAt = now
+            origin = npc.position()
+            originDistance = npc.nearestSupply()?.let(origin::distanceTo) ?: 0.0
             running += npc.uuid
             FiringSpots.release(npc.uuid)
             npc.clearAlert()
@@ -174,6 +192,7 @@ internal class SupplyCare(private val level: ServerLevel) {
         private fun end(now: Long, update: ActionUpdate, failed: Boolean): ActionUpdate {
             stop()
             running -= npc.uuid
+            if (update is ActionUpdate.Completed && npc.currentSquad() != null) returning[npc.uuid] = Return(origin, originDistance, now + RETURN_TICKS)
             drop(npc, now, failed)
             DebugFlags.log(LogGroup.SUPPLY, "[htn] actor={} event=resupply_ended result={} ammo={}", npc.uuid, update, "%.2f".format(npc.ammoFraction()))
             return update
@@ -194,6 +213,15 @@ internal class SupplyCare(private val level: ServerLevel) {
         }
     }
 
+    /** Where a topped-up man left the line, how far that was from the Supply, and when his place lapses anyway. */
+    private data class Return(val origin: Vec3, val distance: Double, val until: Long) {
+        /** [npc] is in the line again: near where he left it, or about as far from the Supply as he was; a minute at most. */
+        fun over(npc: NpcEntity, now: Long): Boolean {
+            val supply = npc.nearestSupply() ?: return true
+            return now >= until || npc.position().distanceTo(origin) <= BACK_DISTANCE || npc.position().distanceTo(supply) >= distance - BACK_DISTANCE
+        }
+    }
+
     /** One squad's men on a trip now, or a squadless man's own, and when it is looked at again. */
     private class SquadTrips {
         var men: Set<UUID> = emptySet()
@@ -207,6 +235,8 @@ internal class SupplyCare(private val level: ServerLevel) {
         const val UNREACHABLE_TICKS = 600L
         const val PROGRESS_STEP = 1.0
         const val RUN_SPEED = 1.4
+        const val BACK_DISTANCE = 6.0
+        const val RETURN_TICKS = 1200L
 
         /** Well inside the block's reach, so the next issue round catches it. */
         const val ARRIVE_DISTANCE = SupplyBlockEntity.RADIUS - 3.0

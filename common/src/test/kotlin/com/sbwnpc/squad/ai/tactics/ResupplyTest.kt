@@ -11,6 +11,9 @@ class ResupplyTest {
         assertEquals(3, Resupply.pick(emptySet(), men(6), living = 6).size)
         assertEquals(2, Resupply.pick(emptySet(), men(5), living = 5).size)
         assertEquals(1, Resupply.pick(emptySet(), men(3), living = 3).size)
+        // Men still on their way back hold places in the half (owner 10.11).
+        assertEquals(1, Resupply.pick(emptySet(), men(6), living = 6, returning = 2).size)
+        assertEquals(0, Resupply.pick(emptySet(), men(6), living = 6, returning = 3).size)
         assertEquals(1, Resupply.pick(emptySet(), men(2), living = 2).size)
         assertEquals(1, Resupply.pick(emptySet(), men(1), living = 1).size)
         // Men who need nothing still count: two of eight need rounds, both go.

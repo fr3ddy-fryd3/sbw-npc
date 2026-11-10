@@ -55,11 +55,12 @@ object Resupply {
     /**
      * The men of one squad on a trip after this pass: those of [current] still among [candidates]
      * keep theirs, as each hand-over replanned both men; free places go to the empty first, then the
-     * lowest, then the nearest. [squadless] men are on their own: no cap.
+     * lowest, then the nearest. [returning] men, topped up and still on their way back, hold their
+     * places too (owner 10.11): the line keeps its half. [squadless] men are on their own: no cap.
      */
-    fun pick(current: Set<UUID>, candidates: List<SupplyCandidate>, living: Int, squadless: Boolean = false): Set<UUID> {
+    fun pick(current: Set<UUID>, candidates: List<SupplyCandidate>, living: Int, squadless: Boolean = false, returning: Int = 0): Set<UUID> {
         val kept = candidates.filter { it.id in current }.mapTo(LinkedHashSet()) { it.id }
-        val room = if (squadless) candidates.size else cap(living)
+        val room = if (squadless) candidates.size else cap(living) - returning
         val order = compareBy<SupplyCandidate>({ !it.empty }, { it.fraction }, { it.distance })
         candidates.filter { it.id !in kept }.sortedWith(order).forEach { if (kept.size < room) kept += it.id }
         return kept
