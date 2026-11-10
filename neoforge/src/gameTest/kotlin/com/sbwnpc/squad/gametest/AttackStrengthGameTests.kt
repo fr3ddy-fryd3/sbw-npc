@@ -4,6 +4,7 @@ import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SidearmKit
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
@@ -183,4 +184,35 @@ object AttackStrengthGameTests {
             if (helper.tick >= 400L) helper.succeed()
         }
     }
+
+    /**
+     * Six dry riflemen holding a line, a Supply 30 blocks behind (#189, owner 09.11): at most half of
+     * them are on a trip at once, and all six end topped up. They used to leave together.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 3000, batch = "strength-half-resupply")
+    fun halfTheSquadAtMostGoesToResupplyAtOnce(helper: GameTestHelper) {
+        val scene = AttackScene(helper, men = 6)
+        val supply = Vec3.atBottomCenterOf(scene.supply(helper.absolutePos(BlockPos(90, 1, 61))))
+        scene.dry(0, 1, 2, 3, 4, 5)
+        scene.manager.issueOrder(scene.squad.id, SquadOrder.DEFEND)
+        scene.manager.setObjective(helper.level, scene.squad.id, scene.members[2].blockPosition())
+        var most = 0
+        helper.onEachTick {
+            // A man walking back topped up is not on a trip any more; a dry one near the Supply is, claim or not.
+            val away = scene.members.count { it.holds(NpcActivity.RESUPPLY) || (it.ammoFraction() < 0.8 && it.position().distanceTo(supply) < NEAR_SUPPLY) }
+            most = maxOf(most, away)
+            if (away > 3) {
+                helper.fail("$away of 6 men were away resupplying at tick ${helper.tick}: " +
+                    scene.members.joinToString { "${it.uuid.toString().take(8)} trip=${it.holds(NpcActivity.RESUPPLY)} ammo=${"%.2f".format(it.ammoFraction())} supply=${"%.1f".format(it.position().distanceTo(supply))}" },
+                )
+            }
+            if (scene.members.all { it.ammoFraction() >= 0.8 }) {
+                helper.assertTrue(most == 3, "Never more than $most away: the squad did not use its half")
+                helper.succeed()
+            }
+        }
+    }
+
+    private const val NEAR_SUPPLY = 15.0
 }
