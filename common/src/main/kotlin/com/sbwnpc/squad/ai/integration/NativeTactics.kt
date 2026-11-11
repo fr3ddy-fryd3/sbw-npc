@@ -541,6 +541,9 @@ object NativeTactics {
         private val attacks = HashMap<UUID, AttackProgress>()
         private val sectors = HashMap<UUID, ApproachSectors<SectorGroup>>()
 
+        // Per operation, who of its men on the arc to a flank sector has stopped getting round it (#312).
+        private val arcStalls = HashMap<UUID, ArcStall>()
+
         // Per operation of two attacking groups (#173): what its manoeuvre is scored on, measured once at
         // first contact, the group the manoeuvre moves, and the manoeuvre its plan chose.
         private val manoeuvreInputs = HashMap<UUID, ManoeuvreAssessment>()
@@ -1673,6 +1676,7 @@ object NativeTactics {
                     areaOccupied.remove(id.id)
                     attacks.remove(id.id)
                     sectors.remove(id.id)
+                    arcStalls.remove(id.id)
                     forgetManoeuvre(id.id)
                     sectorTraces.remove(id.id)
                     flankTraces.remove(id.id)
@@ -2048,6 +2052,7 @@ object NativeTactics {
                 operations.finish(operation, OperationStatus.CANCELLED)
                 attacks.remove(operation)
                 sectors.remove(operation)
+                arcStalls.remove(operation)
                 forgetManoeuvre(operation)
                 sectorTraces.remove(operation)
                 flankTraces.remove(operation)
@@ -2368,7 +2373,17 @@ object NativeTactics {
             // A sector is held once at most half its ready men are still on the arc.
             val held = members.filter { it.ready }.groupBy { bearings[it.id] }.values.all { group -> group.count { it.id in waypoints } * 2 <= group.size }
             sectorsHeld[operation] = held
-            squads.singleOrNull()?.let { noteBlockedFlank(it.id, waypoints.keys, now) }
+            val stall = arcStalls.getOrPut(operation, ::ArcStall)
+            stall.retain(waypoints.keys)
+            if (objective != null) {
+                members.filter { it.id in waypoints }.forEach { stall.note(it.id, ApproachSectors.toGo(objective, it.position.point(), bearings.getValue(it.id)), failures[it.id]?.failedAt, now) }
+            }
+            val single = squads.singleOrNull()
+            if (single != null) {
+                noteBlockedFlank(single.id, waypoints.keys, stall, now)
+            } else if (objective != null) {
+                refuseBlockedSectors(operation, squads, waypoints.keys, objective, now)
+            }
             if (flankTraces.put(operation, waypoints.size) != waypoints.size && bearings.isNotEmpty()) {
                 DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=flank_march flanking={} of={} held={}", operation, waypoints.size, members.size, held)
             }
@@ -2764,15 +2779,42 @@ object NativeTactics {
 
         /**
          * Notes the flank of [squad] blocked when at least half of its manoeuvre group still on the
-         * arc ([flanking]) failed [FLANK_BLOCK_FAILURES] post searches in a row there.
+         * arc ([flanking]) failed [FLANK_BLOCK_FAILURES] post searches in a row there, or got no further
+         * round it ([ArcStall]): the arc waypoint moves with the man, so failures on one anchor seldom add up.
          */
-        private fun noteBlockedFlank(squad: UUID, flanking: Set<UUID>, now: Long) {
+        private fun noteBlockedFlank(squad: UUID, flanking: Set<UUID>, stall: ArcStall, now: Long) {
             val group = manoeuvres[squad].orEmpty().filter { it in flanking }
             if (group.isEmpty()) return
-            val stuck = group.count { id -> failures[id]?.let { now < it.failedAt + FAILURE_MEMORY_TICKS && it.attempts >= FLANK_BLOCK_FAILURES } == true }
+            val stuck = group.count { id -> stall.stuck(id, now) || failures[id]?.let { now < it.failedAt + FAILURE_MEMORY_TICKS && it.attempts >= FLANK_BLOCK_FAILURES } == true }
             if (stuck * 2 < group.size || flankBlockedAt[squad]?.let { now - it < FLANK_BLOCK_TICKS } == true) return
             flankBlockedAt[squad] = now
             DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=flank_blocked stuck={} of={}", squad, stuck, group.size)
+        }
+
+        /**
+         * Refuses the sector of each of [squads] whose men on the arc to it ([flanking]) have, half of
+         * them or more, stopped getting round it ([ArcStall]), and gives it the nearest sector left, as
+         * [noteBlockedFlank] does for a lone squad's flank team. The design's "one flank is unreachable":
+         * the refusal comes back to the operation, which places the squad elsewhere. The ground does not
+         * change in an attack, so the refusal lasts the operation.
+         */
+        private fun refuseBlockedSectors(operation: UUID, squads: List<Squad>, flanking: Set<UUID>, objective: Point3, now: Long) {
+            val sectors = sectors[operation] ?: return
+            val stall = arcStalls[operation] ?: return
+            squads.forEach { saved ->
+                val men = snapshots.getValue(saved.id).members
+                val onArc = men.filter { it.id in flanking }
+                if (onArc.isEmpty()) return@forEach
+                val stuck = onArc.count { stall.stuck(it.id, now) }
+                if (stuck * 2 < onArc.size) return@forEach
+                val centre = Point3(men.map { it.position.x }.average(), men.map { it.position.y }.average(), men.map { it.position.z }.average())
+                val bearing = sectors.refuse(SectorGroup(saved.id, false), objective, centre) ?: return@forEach
+                // On his new sector's arc, if any, a man starts his walk afresh.
+                onArc.forEach { stall.forget(it.id) }
+                val degrees = Math.toDegrees(bearing).toInt()
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} squad={} event=flank_blocked stuck={} of={} bearing={}", operation, saved.id, stuck, onArc.size, degrees)
+                DecisionTrace.group(operation, now, "operation", "flank_blocked", "${saved.name}: $stuck of ${onArc.size} on the arc got no further round, now at $degrees°")
+            }
         }
 
         /** Fixes where [squad] gathers once it regroups: [REGROUP_PULLBACK] behind its centre, away from [focus]. */
