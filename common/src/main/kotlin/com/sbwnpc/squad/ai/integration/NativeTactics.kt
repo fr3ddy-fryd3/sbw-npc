@@ -772,9 +772,25 @@ object NativeTactics {
             if (recons.isEmpty()) return false
             // From the latest post: one that steps nearer seeing nobody starts its watch again there.
             val atPost = recons.mapNotNull { reconProgress[it.id]?.takeIf { p -> p.stamp == it.orderStamp }?.postFrom }.minOrNull()
-            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { r -> reconProgress[r.id]?.takeIf { it.stamp == r.orderStamp }?.reportsDone ?: false })
-            if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end", operation.id)
+            val engaged = operation.members.keys.mapNotNull(manager::get).filter(::attackingInfantry).filter(::infantryEngaged)
+            val waiting = ReconRules.awaitsIntel(now - operation.issuedAt, atPost?.let { now - it }, recons.all { !recon.discovered(it) }, recons.any { r -> reconProgress[r.id]?.takeIf { it.stamp == r.orderStamp }?.reportsDone ?: false }, engaged.isNotEmpty())
+            if (!waiting && intelReleased.add(operation.id)) DebugFlags.log(LogGroup.ORDER, "[recon] operation={} event=intel_wait_end engaged={}", operation.id, engaged.map { it.name })
             return waiting
+        }
+
+        // Each waiting infantry squad's living men when its wait began, under its order.
+        private val intelStrength = HashMap<UUID, Pair<Int, Int>>()
+
+        /**
+         * Whether waiting infantry [squad] is fired on or has lost a man since it began to wait: the
+         * recon's picture no longer matters to men already in the fight. A man killed by his first hit
+         * leaves no incoming fire behind, so a loss counts as well.
+         */
+        private fun infantryEngaged(squad: Squad): Boolean {
+            if (snapshots[squad.id]?.incoming?.isNotEmpty() == true) return true
+            val living = AttackStrength.count(squad, level).living
+            val start = intelStrength[squad.id]?.takeIf { it.first == squad.orderStamp }?.second ?: living.also { intelStrength[squad.id] = squad.orderStamp to it }
+            return living < start
         }
 
         // Where each waiting squad holds, fixed once per order: taken from its live centre every pass
@@ -3042,6 +3058,7 @@ object NativeTactics {
             assaulting.clear()
             intelHolds.clear()
             intelAnnounced.clear()
+            intelStrength.clear()
             reconnoitring.clear()
             stalking.clear()
             suspendedBy.clear()
