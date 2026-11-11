@@ -149,7 +149,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
                 // The planner's posts and route legs are the only searches a man under its orders makes:
                 // boxed in on a ledge, a scout's every one ended where he stood, and with no march path
                 // the stuck recovery never heard of it (playtest 11.11).
-                reportProgress(positions, it)
+                reportProgress(positions, it, noPathCounts = false)
             }
         } finally {
             super.setMaxVisitedNodesMultiplier(saved)
@@ -159,10 +159,14 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
 
     /**
      * Tells the stuck recovery whether a ground search for [targets] leads anywhere: it goes nowhere
-     * when it found no path, or one ending where he stands, while every target is far.
+     * when it found no path, or one ending where he stands, while every target is far. A planner's
+     * search for posts finds none for many reasons besides a box round him (every post out of reach,
+     * a sniper's on a tower): only one whose search got no further than his own block counts, so
+     * [noPathCounts] is false for those.
      */
-    private fun reportProgress(targets: Set<BlockPos>, result: Path?) {
+    private fun reportProgress(targets: Set<BlockPos>, result: Path?, noPathCounts: Boolean = true) {
         val npc = mob as? com.sbwnpc.squad.entity.NpcEntity ?: return
+        if (result == null && !noPathCounts) return
         val here = mob.blockPosition()
         val end = result?.endNode?.asBlockPos()
         val stays = result == null || (end != null && end.distManhattan(here) <= 1)
