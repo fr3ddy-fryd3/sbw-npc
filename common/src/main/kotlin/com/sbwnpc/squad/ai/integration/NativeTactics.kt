@@ -2132,7 +2132,11 @@ object NativeTactics {
             if (objective == null) return emptyMap()
             val manoeuvre = single?.let(::manoeuvreGroup).orEmpty()
             if (single != null && manoeuvre.isEmpty()) return emptyMap()
-            val members = squads.flatMap { saved -> snapshots.getValue(saved.id).members.map { SectorGroup(saved.id, it.id in manoeuvre) to it } }
+            // A hidden recon squad holds fire at its post and does not assault: as the group nearest
+            // the objective it took the head-on line and sent the infantry round a flank (forest 10.11, #312).
+            // Once found or the assault is on, it fights and joins as any late group does.
+            val members = squads.filterNot(::hiddenRecon).flatMap { saved -> snapshots.getValue(saved.id).members.map { SectorGroup(saved.id, it.id in manoeuvre) to it } }
+            if (members.isEmpty()) return emptyMap()
             val centres = members.groupBy({ it.first }, { it.second.position }).mapValues { (_, at) -> Point3(at.map { it.x }.average(), at.map { it.y }.average(), at.map { it.z }.average()) }
             val bearings = sectors.getOrPut(operation, ::ApproachSectors).bearings(objective, centres, contact, single?.let { SectorGroup(it.id, false) })
             if (bearings.isNotEmpty()) measureManoeuvre(operation, objective, centres, bearings, squads)
@@ -2334,9 +2338,12 @@ object NativeTactics {
                 // Only the point's defenders set the sector lines back: a contact off to one side
                 // would push a line far from the fight.
                 val defenders = enemies.filter { OperationTactics.atObjective(it, objective) }
-                actors.groupBy { bearings.getValue(it.id) }.flatMap { (bearing, sector) ->
+                // A hidden recon squad's men have no sector; their recon stage places them.
+                val (placed, unplaced) = actors.partition { it.id in bearings }
+                placed.groupBy { bearings.getValue(it.id) }.flatMap { (bearing, sector) ->
                     OperationFront.propose(sector, defenders, objective, formationDuties, bearing).entries
-                }.associate { (id, proposal) -> id to withSight(operation, id, proposal, defenders, members.first { it.id == id }.role) }
+                }.associate { (id, proposal) -> id to withSight(operation, id, proposal, defenders, members.first { it.id == id }.role) } +
+                    OperationFront.propose(unplaced, enemies, focus?.point(), formationDuties)
             }
             proposals.forEach { (id, proposal) -> formationDuties[id] = proposal.duty }
             val rise = frontRise(operation, attacking && focus != null, members.filter { it.role in HEIGHT_ROLES && it.primaryAmmo }, proposals, now)
@@ -2349,9 +2356,10 @@ object NativeTactics {
                 // the arc, he would leave the bound and come back to it.
                 val bounders = attacks[operation]?.bounders.orEmpty()
                 members.filter { it.id !in bounders }.mapNotNull { member ->
+                    val bearing = bearings[member.id] ?: return@mapNotNull null
                     val post = proposals.getValue(member.id).anchor
                     val slack = if (member.id in offArc) ApproachSectors.ARC_RESUME_SLACK else 0.0
-                    ApproachSectors.arcWaypoint(objective, member.position.point(), bearings.getValue(member.id), hypot(post.x - objective.x, post.z - objective.z), slack)?.let { member.id to it }
+                    ApproachSectors.arcWaypoint(objective, member.position.point(), bearing, hypot(post.x - objective.x, post.z - objective.z), slack)?.let { member.id to it }
                 }.toMap()
             }
             val wasArcing = members.filter { it.id in arcing }.mapTo(HashSet()) { it.id }
