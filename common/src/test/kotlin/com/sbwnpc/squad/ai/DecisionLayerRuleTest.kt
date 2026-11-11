@@ -81,7 +81,6 @@ class DecisionLayerRuleTest {
             "GunAttackBehaviour" to UNAUDITED,
             "HelicopterGunnerBehaviour" to UNAUDITED,
             "HelicopterRideBehaviour" to UNAUDITED,
-            "SelfTreatBehaviour" to "mandatory rule self_treat, ranked in MandatoryRule (#257)",
             "SquadOrderBehaviour" to UNAUDITED,
             "SquadTacticalBehaviour" to UNAUDITED,
             "SquadTargetSensor" to UNAUDITED,

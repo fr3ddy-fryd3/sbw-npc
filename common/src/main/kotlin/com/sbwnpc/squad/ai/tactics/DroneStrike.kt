@@ -235,7 +235,7 @@ object DroneStrike {
             // before (owner 10.11): the drone flies on by itself (keepFlying) while he hides.
             CompoundTask(
                 ALONE,
-                FireAnswers.forRoot<StrikeCall> { it.actor } + listOf(
+                listOf(SelfCare.method<StrikeCall> { it.actor }) + FireAnswers.forRoot<StrikeCall> { it.actor } + listOf(
                     Method<StrikeCall>("drone_strike", eligible = { Condition { facts -> UnderFire.alone(facts) ?: takesOver().evaluate(facts) } }, decompose = { call, _ -> TaskNetwork.sequence(TASK.call(call)) }),
                     Method<StrikeCall>("engage", eligible = {
                         Condition { facts -> UnderFire.alone(facts) ?: standsAside(facts) ?: Condition.test(TacticalFacts.IN_CONTACT, "no_contact") { it }.evaluate(facts) }

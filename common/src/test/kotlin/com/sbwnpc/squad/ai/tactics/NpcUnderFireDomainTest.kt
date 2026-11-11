@@ -64,6 +64,21 @@ class NpcUnderFireDomainTest {
         assertNotEquals(MedicalCare.ACTION, root(TacticalDomain.CARE_TASK, facts(underFire = false).observe(TacticalFacts.IN_CONTACT, true)))
     }
 
+    @Test fun `a wounded man in cover dresses himself first, in every root, above a patient (#189)`() {
+        val due = { input: FactSnapshot -> input.observe(SelfCareFacts.DUE, true) }
+        assertEquals(SelfTreatment(actor), first(due(facts(underFire = true))).parameters)
+        assertEquals(SelfCare.ACTION, first(due(facts(underFire = true, digs = 1))).key)
+        assertEquals(SelfCare.ACTION, first(due(facts(underFire = false).observe(MedicalFacts.PATIENT, UUID(7, 7)))).key)
+        assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true).observe(SelfCareFacts.DUE, false)).key)
+        val root = { key: TaskKey<EngageTask> -> (HtnPlanningSession(TacticalDomain.npc, owner, key.call(EngageTask(actor)), due(facts(underFire = true))).advance(40) as? PlanningResult.Ready)?.plan?.tasks?.firstOrNull()?.spec?.action?.key }
+        assertEquals(SelfCare.ACTION, root(TacticalDomain.FIGHT_TASK))
+        assertEquals(SelfCare.ACTION, root(TacticalDomain.CARE_TASK))
+        val crew = HtnPlanningSession(TacticalDomain.npc, owner, FireSupport.NPC_TASK.call(CrewDuty(actor, CrewWork.OPERATE)), due(facts(underFire = true))).advance(40) as PlanningResult.Ready
+        assertEquals(SelfCare.ACTION, crew.plan.tasks.first().spec.action.key)
+        val alone = HtnPlanningSession(TacticalDomain.npc, owner, DroneStrike.ALONE.call(StrikeCall(actor)), due(facts(underFire = true))).advance(60) as PlanningResult.Ready
+        assertEquals(SelfCare.ACTION, alone.plan.tasks.first().spec.action.key)
+    }
+
     @Test fun `a trip to a Supply comes after a patient and before his duty, and stands aside under fire (#189)`() {
         val supply = com.sbwnpc.squad.ai.coordination.Point3(5.0, 64.0, 5.0)
         assertEquals(Resupply.TRIP_ACTION, first(facts(underFire = false).observe(SupplyFacts.TRIP, supply)).key)

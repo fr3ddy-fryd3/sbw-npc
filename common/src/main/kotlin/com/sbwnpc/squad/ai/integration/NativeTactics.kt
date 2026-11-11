@@ -490,6 +490,7 @@ object NativeTactics {
         // Who may throw a grenade and at what (#263).
         private val grenades = GrenadeChoice(level)
         private val medics = MedicCare(level)
+        private val selfCare = SelfTreatCare(level)
         val supplies = SupplyCare(level)
         val recon = ReconWatch()
 
@@ -976,6 +977,10 @@ object NativeTactics {
                     require(ticket.owner.agent == treatment.actor)
                     medics.action(requireNotNull(level.getEntity(treatment.actor.id) as? NpcEntity), treatment.patient)
                 },
+                ActionBinding(SelfCare.ACTION) { ticket, call ->
+                    require(ticket.owner.agent == call.actor)
+                    selfCare.action(requireNotNull(level.getEntity(call.actor.id) as? NpcEntity))
+                },
             )
 
         /** A crewman's duty (#258), run on his own [CrewHand]. */
@@ -1459,6 +1464,7 @@ object NativeTactics {
             var result = EngageFacts.observe(facts, npc, engageOf(npc), engageBands.getOrPut(npc.uuid, ::EngageBands), now)
             result = grenades.observe(result, npc, now)
             result = medics.observe(result, npc, now)
+            result = selfCare.observe(result, npc, now)
             result = supplies.observe(result, npc, now)
             if (fireSupport.roster.unitOf(npc.uuid) != null) result = fireSupport.manFacts(result, npc)
             if (air.roster.unitOf(npc.uuid) != null) result = air.manFacts(result, npc)
@@ -1743,6 +1749,7 @@ object NativeTactics {
                 roofs.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 grenades.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 medics.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
+                selfCare.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 supplies.keep({ SquadManager.get(level).get(it) != null }, { AgentId(AgentLevel.NPC, it) in desiredAgents })
                 suspendedBy.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -3085,6 +3092,7 @@ object NativeTactics {
             crossings.clear()
             grenades.clear()
             medics.clear()
+            selfCare.clear()
             supplies.clear()
             recon.clear()
             reconProgress.clear()

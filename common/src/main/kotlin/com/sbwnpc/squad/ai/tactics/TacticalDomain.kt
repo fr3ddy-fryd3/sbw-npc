@@ -729,6 +729,8 @@ object TacticalDomain {
                     }, decompose = { intent, facts -> TaskNetwork.sequence(Grenades.next(intent.actor, facts)) }),
                     // A patient the allocation gave him comes before cover, his hole and his duty, as
                     // medical help did before (#189): a critical man pulls a medic under fire out of his fight.
+                    // His own wound, once he is in cover or at his patient, before anything (#189).
+                    SelfCare.method { it.actor },
                     Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { intent, facts -> MedicalCare.treat(intent.actor, facts) }),
                     // His squad's trip to a Supply, or an empty gun with no trip (#189): after a patient,
                     // before his duty; under fire, in his hole or under a roof he answers that first.
@@ -875,6 +877,7 @@ object TacticalDomain {
                 listOf(
                     // An engage-only man has no cover or hole of his own in his plan to answer first.
                     Method("grenade", eligible = { _ -> Condition { facts -> Grenades.throws(facts, Verdict.Rejected("no_under_fire_plan")) } }, decompose = { task, facts -> TaskNetwork.sequence(Grenades.next(task.actor, facts)) }),
+                    SelfCare.method { it.actor },
                     Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { task, facts -> MedicalCare.treat(task.actor, facts) }),
                     Method("resupply", eligible = { _ -> Resupply.goes(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, facts -> Resupply.trip(task.actor, facts) }),
                     Method("ammo_withdraw", eligible = { _ -> Resupply.withdraws(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, _ -> Resupply.withdraw(task.actor) }),
@@ -891,6 +894,7 @@ object TacticalDomain {
                 listOf<Method<EngageTask>>(
                     // Suppressed with a grenade due, he throws it before his cover, as a planned man does.
                     Method("grenade", eligible = { _ -> Condition { facts -> Grenades.throws(facts, UnderFire.firedOnAlone.evaluate(facts)) } }, decompose = { task, facts -> TaskNetwork.sequence(Grenades.next(task.actor, facts)) }),
+                    SelfCare.method { it.actor },
                     Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { task, facts -> MedicalCare.treat(task.actor, facts) }),
                     Method("resupply", eligible = { _ -> Resupply.goes(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, facts -> Resupply.trip(task.actor, facts) }),
                     Method("ammo_withdraw", eligible = { _ -> Resupply.withdraws(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, _ -> Resupply.withdraw(task.actor) }),
@@ -901,6 +905,7 @@ object TacticalDomain {
             ),
             Grenades.task(),
             MedicalCare.task(),
+            SelfCare.task(),
             Resupply.tripTask(),
             Resupply.withdrawTask(),
             CompoundTask(

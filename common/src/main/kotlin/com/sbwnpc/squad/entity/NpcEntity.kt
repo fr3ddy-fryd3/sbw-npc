@@ -609,7 +609,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  squad's own movement leave it alone. */
     fun busyWithRole(): Boolean = activities?.ownsHandsAndFeet(tickCount) == true
 
-    /** Medical kits on this NPC, for itself — see [com.sbwnpc.squad.entity.ai.SelfTreatBehaviour].
+    /** Medical kits on this NPC, for itself — see [com.sbwnpc.squad.ai.tactics.SelfCare].
      *  Every class carries [MEDKITS]. Persisted. */
     var medkitsLeft: Int = MEDKITS
 
@@ -1107,7 +1107,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(),
             VehicleCombatSupportBehaviour(),
             com.sbwnpc.squad.entity.ai.FollowRideBehaviour(),
-            com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(),
             // Keep one journey executor through Idle/Fight changes: a remembered remote contact
             // must not prevent the squad from boarding or marching to its distant objective.
             com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(),

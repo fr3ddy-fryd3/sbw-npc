@@ -225,7 +225,7 @@ object FireSupport {
                 // Under fire from a known sector, or in his hole, he answers that first (#189), his
                 // tube left meanwhile; with no cover and no dig he fights from where he stands
                 // rather than serve it (owner 10.11).
-                FireAnswers.forRoot<CrewDuty> { it.actor } + listOf(
+                listOf(SelfCare.method<CrewDuty> { it.actor }) + FireAnswers.forRoot<CrewDuty> { it.actor } + listOf(
                     // An enemy at arm's length: he fights it off through the engage every man has
                     // (#251), never forward, and serves again once it is gone.
                     Method<CrewDuty>("self_defence", eligible = { Condition { facts -> UnderFire.alone(facts) ?: flagCondition(CrewFacts.THREATENED, "not_threatened").evaluate(facts) } }, decompose = { duty, _ ->
