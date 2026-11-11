@@ -53,6 +53,12 @@ class ReconRulesTest {
         assertFalse(ReconRules.awaitsIntel(100, null, reconHidden = true, reported = false, engaged = true))
     }
 
+    @Test fun `infantry holding short for the reports holds its fire unless fired on`() {
+        assertTrue(ReconRules.infantryHoldsFire(holdingShort = true, underFire = false))
+        assertFalse(ReconRules.infantryHoldsFire(holdingShort = true, underFire = true))
+        assertFalse(ReconRules.infantryHoldsFire(holdingShort = false, underFire = false))
+    }
+
     @Test fun `four wet blocks in a row are water to cross, a puddle is not`() {
         assertTrue(ReconRules.waterBetween(listOf(false, true, true, true, true, false)))
         assertFalse(ReconRules.waterBetween(listOf(true, true, true, false, true, true, true)))

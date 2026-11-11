@@ -79,6 +79,14 @@ object ReconRules {
         return false
     }
 
+    /**
+     * Whether a man of attacking infantry holds his fire (owner 11.11): while his squad is [holdingShort]
+     * of its firing line for the recon's reports, unless he is [underFire]. The infantry waits so it goes
+     * in knowing how many there are: shooting at a scout's first shared sighting gives it away and ends
+     * the wait before the reports are in.
+     */
+    fun infantryHoldsFire(holdingShort: Boolean, underFire: Boolean) = holdingShort && !underFire
+
     /** Whether a man of a squad that [holds] its fire may still shoot at a target [distance] blocks away. */
     fun mayFire(holds: Boolean, distance: Double) = !holds || distance < CLOSE
 }

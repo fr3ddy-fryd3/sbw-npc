@@ -40,11 +40,55 @@ object SavedForestAttackGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 4200, batch = "saved-forest-attack-far", skyAccess = true)
     fun savedForestAttackOrderedFromAfarStartsAtOnce(helper: GameTestHelper) = forestAttack(helper, watched = false)
 
+    /**
+     * Playtest 11.11, the same men on the same spots: the owner's ATTACK on 31,-15 at night. A scout's
+     * first sighting reached Echo while the operation waited for its reports; Echo fired at a man none
+     * of them could see, Bravo found them by their fire, and the wait ended with Echo under fire after
+     * one report of three. Until the wait is over Echo holds its fire.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 3200, batch = "saved-forest-night", skyAccess = true)
+    fun savedNightAttackInfantryHoldsFireForTheReports(helper: GameTestHelper) {
+        val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
+        Files.createDirectories(report)
+        val replay = SavedBattleReplay(helper.level, Path.of(System.getProperty("sbwnpc.gameTestReplay")))
+        val dayTime = helper.level.dayTime
+        restoreOnEnd(helper, replay) { helper.level.dayTime = dayTime }
+        replay.restore()
+        helper.assertTrue(ATTACKERS.all { replay.manager.get(it) != null }, "The fixture lacks Charlie, Delta or Echo")
+        val hold = FireHold(replay.npcs.filter { it.squadId == INFANTRY })
+        NpcEntity.fullRateBrains = true
+        helper.level.dayTime = MIDNIGHT
+        val trace = report.resolve("attackers-night.csv")
+        Files.writeString(trace, "tick,squad,npc,order,x,y,z,job\n")
+        helper.onEachTick {
+            val medic = replay.npcs.first { it.uuid == SPOTTED_MEDIC }
+            if (helper.tick == ORDER_TICK) {
+                // The fixture is the world of 10.11; on 11.11 Bravo had patrolled for 14 minutes first, and
+                // its medic stood here, south of the objective, from the scouts' first sighting until he
+                // was fired on. His patrol would walk him off: he stays until the wait is over.
+                medic.teleportTo(29.5, 112.0, 20.5)
+                medic.isNoAi = true
+                GroupOrders.apply(helper.level, replay.manager, ATTACKERS, SquadOrder.ATTACK, 31, -15)
+            }
+            if (helper.tick % 20L == 0L) Files.writeString(trace, rows(helper, replay), APPEND)
+            if (hold.check(helper)) medic.isNoAi = false
+            if (helper.tick >= NIGHT_END_TICK) {
+                // Without an enemy in Echo's sights during the wait the scene did not test the hold.
+                helper.assertTrue(hold.targeted, "Echo never had an enemy in its sights while it waited (wait ended at ${hold.ended})")
+                helper.succeed()
+            }
+        }
+    }
+
     private val RECON = UUID.fromString("3da81287-a7eb-4679-9c60-0107acfd58a7")
     private val MORTAR = UUID.fromString("fea9177c-5496-498f-84b9-64a222f9d3ff")
     private val INFANTRY = UUID.fromString("fa4340dd-3352-43bb-87da-073f84c61414")
     private val ATTACKERS = listOf(RECON, MORTAR, INFANTRY)
     private val OBJECTIVE = Vec3(38.5, 121.0, -17.5)
+
+    /** Bravo's medic, the first man Charlie's scouts saw on 11.11. */
+    private val SPOTTED_MEDIC = UUID.fromString("89477ccd-d524-4208-a24b-69823d5d8558")
 
     private fun forestAttack(helper: GameTestHelper, watched: Boolean) {
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
@@ -70,9 +114,9 @@ object SavedForestAttackGameTests {
     }
 
     /** Puts the log groups, brain rate and replayed world back however the scene ends. */
-    private fun restoreOnEnd(helper: GameTestHelper, replay: SavedBattleReplay) {
+    private fun restoreOnEnd(helper: GameTestHelper, replay: SavedBattleReplay, also: () -> Unit = {}) {
         val previousGroups = DebugFlags.enabledGroups
-        DebugFlags.enabledGroups = previousGroups + setOf(LogGroup.ORDER, LogGroup.FIRE_SUPPORT, LogGroup.PATH, LogGroup.VEHICLE)
+        DebugFlags.enabledGroups = previousGroups + setOf(LogGroup.ORDER, LogGroup.FIRE_SUPPORT, LogGroup.PATH, LogGroup.VEHICLE, LogGroup.HEARING, LogGroup.SPOTTING)
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
             override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
@@ -82,6 +126,7 @@ object SavedForestAttackGameTests {
                 DebugFlags.enabledGroups = previousGroups
                 NpcEntity.fullRateBrains = false
                 replay.close()
+                also()
             }
         })
     }
@@ -96,6 +141,39 @@ object SavedForestAttackGameTests {
             if (helper.tick != ORDER_TICK + SET_OFF_TICKS) return
             val idle = walkers.filter { it.isAlive && it.uuid !in moved }.map { it.uuid.toString().take(8) }
             helper.assertTrue(idle.isEmpty(), "Attackers still on their start $SET_OFF_TICKS ticks after the order: $idle")
+        }
+    }
+
+    /**
+     * No man of [infantry] fires while its operation waits for the recon's reports, and at least one has
+     * an enemy in his sights then, or the scene did not test the hold.
+     */
+    private class FireHold(private val infantry: List<NpcEntity>) {
+        private var waited = false
+
+        /** Whether a man had a target while the operation waited. */
+        var targeted = false
+            private set
+
+        /** The tick the wait ended, once it has. */
+        var ended: Long? = null
+            private set
+
+        /** Checks this tick; true on the tick the wait ends. */
+        fun check(helper: GameTestHelper): Boolean {
+            val waiting = helper.tick > ORDER_TICK && NativeTactics.holdsReconSightings(helper.level, INFANTRY)
+            val living = infantry.filter { it.isAlive }
+            if (waiting) {
+                // A shot by the man's own record: not every gun's round joins the world as an entity.
+                val shooter = living.firstOrNull { it.firedRecently(1) }
+                if (shooter != null) helper.fail("Echo fired while its operation still waited for the recon's reports: ${shooter.uuid.toString().take(8)} at tick ${helper.tick}")
+                waited = true
+                if (living.any { it.target != null }) targeted = true
+                return false
+            }
+            if (!waited || ended != null) return false
+            ended = helper.tick
+            return true
         }
     }
 
@@ -128,4 +206,10 @@ object SavedForestAttackGameTests {
     private const val SET_OFF_DISTANCE = 3.0
     private const val CREW_DRIFT = 4.0
     private const val END_TICK = 4000L
+
+    /** The owner's night (`/time set night` and some minutes on): moonlight only. */
+    private const val MIDNIGHT = 18000L
+
+    /** The playtest's wait ran 47 s from the order; this leaves it room to end by the reports. */
+    private const val NIGHT_END_TICK = 3000L
 }

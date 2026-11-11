@@ -326,14 +326,26 @@ object NativeTactics {
     private fun reconSquadOf(npc: NpcEntity) = npc.currentSquad()?.takeIf { s -> (npc.level() as? ServerLevel)?.let { SquadManager.get(it).isReconSquad(s) } == true }
 
     /**
-     * Whether [npc]'s recon squad holds its fire now ([ReconRules.holdsFire]). Only a squad of scouts
-     * does; a scout recruited alone or into another squad fights as its squad does.
+     * Whether [npc] holds his fire now: a scout of a recon squad by [ReconRules.holdsFire]; a man of
+     * attacking infantry by [ReconRules.infantryHoldsFire], while his squad holds short for the recon's
+     * reports. A scout recruited alone or into another squad fights as its squad does.
      */
     fun holdsFire(npc: NpcEntity): Boolean {
-        if (npc.npcClass != NpcClass.SCOUT) return false
+        if (scoutHoldsFire(npc)) return true
         val level = npc.level() as? ServerLevel ?: return false
         val squad = npc.currentSquad() ?: return false
-        return SquadManager.get(level).isReconSquad(squad) && world(npc).squadHoldsFire(squad)
+        // His own hits count at once: the squad's hold is renewed only every squad pass.
+        return ReconRules.infantryHoldsFire(worlds[level]?.holdsShort(squad) == true, npc.incomingFire.pending(level.gameTime))
+    }
+
+    /**
+     * Whether [npc] is a scout of a hidden recon squad, who stays out of the fight altogether. Waiting
+     * infantry only holds the trigger: it aims and seeks a post it can hit from, ready when the wait ends.
+     */
+    fun scoutHoldsFire(npc: NpcEntity): Boolean {
+        val level = npc.level() as? ServerLevel ?: return false
+        val squad = npc.currentSquad() ?: return false
+        return npc.npcClass == NpcClass.SCOUT && SquadManager.get(level).isReconSquad(squad) && world(npc).squadHoldsFire(squad)
     }
 
     /**
@@ -814,6 +826,9 @@ object NativeTactics {
             val objective = saved.objective?.center?.point() ?: return null
             return ReconProgress.shortOf(objective, centre, ReconProgress.STAGING_DISTANCE).also { intelHolds[saved.id] = saved.orderStamp to it }
         }
+
+        /** Whether [saved], attacking infantry, holds short of its firing line for its recon's reports under its current order. */
+        fun holdsShort(saved: Squad): Boolean = attackingInfantry(saved) && intelHolds[saved.id]?.first == saved.orderStamp
 
         private fun attackingInfantry(squad: Squad): Boolean {
             val manager = SquadManager.get(level)
