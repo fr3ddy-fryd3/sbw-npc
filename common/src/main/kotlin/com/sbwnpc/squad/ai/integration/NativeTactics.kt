@@ -2463,7 +2463,8 @@ object NativeTactics {
                 // A hidden recon squad's men have no sector; their recon stage places them.
                 val (placed, unplaced) = actors.partition { it.id in bearings }
                 placed.groupBy { bearings.getValue(it.id) }.flatMap { (bearing, sector) ->
-                    OperationFront.propose(sector, defenders, objective, formationDuties, bearing).entries
+                    val share = sector.size.toDouble() / placed.size
+                    OperationFront.propose(sector, defenders, objective, formationDuties, FrontSector(bearing, share)).entries
                 }.associate { (id, proposal) -> id to withSight(operation, id, proposal, defenders, members.first { it.id == id }.role) } +
                     OperationFront.propose(unplaced, enemies, focus?.point(), formationDuties)
             }

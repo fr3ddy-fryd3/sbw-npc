@@ -13,17 +13,26 @@ import kotlin.math.sin
 data class FormationActor(val id: UUID, val squad: UUID, val position: Point3, val engagementDistance: Double = 56.0)
 data class FrontProposal(val duty: CombatDuty, val anchor: Point3, val watch: Point3?)
 
+/**
+ * One sector of an attack: its [bearing] in radians from the focus (see [ApproachSectors]) and the
+ * [share] of the front the enemy needs that it mans, its part of the attack's men placed in
+ * sectors. Each sector still faces the whole enemy from its own bearing; it only mans less of it. Sectors of one attack split that front, so
+ * the men a sector does not need on it watch the rear (#290).
+ */
+data class FrontSector(val bearing: Double, val share: Double = 1.0)
+
 /** Proposes a curved front from reported enemy extent; surplus capacity covers depth and rear. */
 object OperationFront {
     /**
-     * Each of [actors] mapped to its duty and post on a front facing [focus]. Without [approach]
-     * the front faces it from the actors' centre. With [approach] (a bearing in radians from
-     * [focus], see [ApproachSectors]) the front stands on that bearing instead, and is moved back
-     * so every one of [enemies], not only [focus], is at least each row's distance in front of it.
+     * Each of [actors] mapped to its duty and post on a front facing [focus]. Without [sector]
+     * the front faces it from the actors' centre. With [sector] the front stands on its bearing
+     * instead, and is moved back so every one of [enemies], not only [focus], is at least each
+     * row's distance in front of it; it mans the sector's share of the front.
      */
-    fun propose(actors: List<FormationActor>, enemies: List<Point3>, focus: Point3?, priorDuties: Map<UUID, CombatDuty> = emptyMap(), approach: Double? = null): Map<UUID, FrontProposal> {
+    fun propose(actors: List<FormationActor>, enemies: List<Point3>, focus: Point3?, priorDuties: Map<UUID, CombatDuty> = emptyMap(), sector: FrontSector? = null): Map<UUID, FrontProposal> {
         if (actors.isEmpty()) return emptyMap()
         require(actors.map { it.id }.distinct().size == actors.size)
+        val approach = sector?.bearing
         val center = Point3(actors.map { it.position.x }.average(), actors.map { it.position.y }.average(), actors.map { it.position.z }.average())
         val dx = approach?.let { -cos(it) } ?: ((focus?.x ?: center.x) - center.x)
         val dz = approach?.let { -sin(it) } ?: ((focus?.z ?: center.z + 1) - center.z)
@@ -44,7 +53,7 @@ object OperationFront {
         // lengthens the row rather than sending more men to the rear.
         val columns = min(actors.size, max(1, ceil(width / 3).toInt()))
         val minimumSupport = min(actors.size, max(1, actors.size / 3))
-        val frontCount = min(actors.size - minimumSupport, columns * 2)
+        val frontCount = min(actors.size - minimumSupport, ceil(columns * 2 * (sector?.share ?: 1.0)).toInt())
         val supportCount = min(actors.size - frontCount, max(minimumSupport, frontCount / 2))
 
         // Round-robin the squads before allocating duties, then preserve lateral order per duty.
