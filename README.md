@@ -18,7 +18,7 @@ and command your own AI-driven infantry, mortar, tank, drone, and helicopter squ
 ## What is this
 
 [SBW] NPC Squads lets you recruit NPCs with a single tool, form them into squads, and command them like
-a small AI-controlled army: riflemen, shotgunners, medics, snipers, machine gunners, grenadiers, mortar crews,
+a small AI-controlled army: riflemen, shotgunners, medics, snipers, machine gunners, grenadiers, scouts, mortar crews,
 tank and helicopter crews, and kamikaze-drone operators. Squads take cover, dig in under fire, avoid shooting
 their own side, relay spotted enemies to the rest of their faction, ride and crew vehicles, and
 follow orders — Attack, Defend, Patrol, Move, Follow — from a quick-command HUD or by pointing and
@@ -27,7 +27,7 @@ you when they make contact, lose men, need ammunition, or reach their objective.
 
 ## Alpha
 
-1.0.0-alpha1 is the first release for all three loaders. It is an alpha: expect rough edges in the AI,
+1.0.0-alpha2 is the second release for all three loaders. It is an alpha: expect rough edges in the AI,
 and keep backups of worlds you care about. Bug reports are welcome on the [Issues](../../issues) page.
 
 ## Requirements
@@ -88,7 +88,12 @@ guaranteed response time.
 - **Spotting takes time**, by distance, light, weather, cover and experience; men grow wary after a
   contact and look around.
 - **Joint operations** — several squads on one point attack it together, each from its own sector,
-  and call off a beaten attack.
+  and call off a beaten attack. A second group goes round the flank, takes the high ground or
+  envelops, whichever suits the ground, and waits for the mortars to soften the objective first.
+- **Recon squads** — three fast scouts creep to an observation post short of the objective, report
+  what they see in chat and hold their fire. Attackers in the same operation wait for the report.
+- **Fire teams** — larger squads split into lasting teams, each with its machine gunner and
+  assault man.
 - **Soldiers with a record** — each one has a persistent name and experience, and earns his rank.
 - **Ground and water transport** — squads drive, crew mounted guns, plan routes around terrain and
   cross water by boat. Amphibious vehicles travel between land and water.
@@ -122,7 +127,7 @@ Two modes, switched with **Ctrl + right-click on air**. The current one is on th
   of particles, visible only to you, marks the spot while the tool is in your hand.
 - **Shift + right-click** opens the deploy config: preset, class (Single only), faction, and the
   vehicle or airframe where the preset has one.
-- Presets: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `32: Company`, `Mortar Crew`, `Tank Crew`
+- Presets: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `32: Company`, `Recon`, `Mortar Crew`, `Tank Crew`
   (ZTZ-99A / T-90A / M1A2), `Drone Team`, `Heli Crew` — Mi-28 gunship or AH-6 transport, and the
   airframe decides which crew comes with it. `5` and `7` can bring a LAV-25 / LAV-150 / BMP-2.
 - New soldiers start as `RECRUIT`, with a persistent name and personal experience. Ranks progress
@@ -246,10 +251,14 @@ before it had logistics support may need to be broken and placed again.
   of grass or fern along the sightline hide a target. Enemy footsteps are heard within 4 blocks
   when walking, 8 when running and 3 when landing; crouching is silent.
 - Every NPC has one medical kit and uses it on itself when wounded in cover; Supply replenishes it.
+- Shelled from a gun they can't see, NPCs run for a roof nearby; shells landing close make them
+  run and look about.
+- Half a squad at most leaves for a Supply at a time; the rest hold the line.
 - Machine gunners carry a launcher on the side for anything riding a vehicle; infantry stays the
   machine gun's job.
-- NPCs throw grenades at covered enemies or when pinned, one thrower per squad at a time, checking
-  reach, obstacles, vehicle hulls and nearby allies. Passengers don't throw.
+- NPCs throw grenades at covered enemies or when pinned, lobbing them over cover when needed, one
+  thrower per squad at a time, checking reach, obstacles, vehicle hulls and nearby allies.
+  Passengers don't throw.
 - NPCs open wooden doors and ladder or scaffolding trapdoors, and climb ladders and scaffolding.
 - Mobs that hunt players hunt NPCs too, and NPCs fight back.
 - Mortar crews only shell what their own side has actually seen. Out of reach of the target, they
