@@ -32,6 +32,12 @@ object SquadFormation {
     // squad should look like it moves together, so this sits between the two.
     private const val SLOT_SPACING = 3.0
 
+    /** How far apart the two men of a marching pair walk. */
+    private const val PAIR_WIDTH = 2.5
+
+    /** How far behind one marching pair the next one walks: three to four blocks (owner, 11.11). */
+    private const val PAIR_GAP = 3.5
+
     /** Interval for a squad advancing on an enemy — see GunAttackBehaviour. */
     const val COMBAT_SPACING = 6.0
 
@@ -72,7 +78,7 @@ object SquadFormation {
         return d <= NEAR_POINT || (member.navigation.isDone && d <= NEAR_POINT + (squadSize / 2) * SLOT_SPACING * 1.5)
     }
 
-    private enum class Shape { WEDGE, LINE, COLUMN, GRID, RING, PERIMETER, SCATTER }
+    private enum class Shape { WEDGE, LINE, COLUMN, PAIRS, GRID, RING, PERIMETER, SCATTER }
 
     /**
      * Radius of a defending squad's ring: wide enough that its men stand apart and cover the
@@ -163,6 +169,11 @@ object SquadFormation {
                 ((rows - 1) / 2.0 - row) * spacing,
             )
         }
+        if (shape == Shape.PAIRS) {
+            // The pair's two men either side of the route, so neither walks in the other's steps.
+            val side = if (slotIndex % 2 == 0) -PAIR_WIDTH / 2 else PAIR_WIDTH / 2
+            return Vec3(side, 0.0, -(slotIndex / 2) * PAIR_GAP)
+        }
         if (slotIndex <= 0) return Vec3.ZERO
         val rank = (slotIndex + 1) / 2
         val side = if (slotIndex % 2 == 1) -1.0 else 1.0
@@ -177,7 +188,7 @@ object SquadFormation {
             // dead in the last member's footsteps.
             Shape.COLUMN -> Vec3(side * spacing * 0.4, 0.0, -rank * spacing)
 
-            Shape.GRID, Shape.RING, Shape.PERIMETER, Shape.SCATTER -> Vec3.ZERO // unreachable, handled above
+            Shape.PAIRS, Shape.GRID, Shape.RING, Shape.PERIMETER, Shape.SCATTER -> Vec3.ZERO // unreachable, handled above
         }
     }
 
@@ -268,9 +279,16 @@ object SquadFormation {
         )
     }
 
-    /** The [slotIndex]-th of [squadSize]'s place in [order]'s marching formation — wedge, line,
-     *  column or grid — relative to the formation's point, +Z forward, not yet turned to a heading. */
-    fun transitOffset(order: SquadOrder, slotIndex: Int, squadSize: Int): Vec3 = localOffset(shapeFor(order, false), slotIndex, squadSize)
+    /**
+     * The [slotIndex]-th of [squadSize]'s place on the march to [order]'s point, relative to the
+     * formation's point, +Z forward, not yet turned to a heading. Out of contact a squad marches
+     * in a column of twos (owner, 11.11): strung out singly on one track it read as a queue, and a
+     * line or wedge needs open ground on both sides of the route. MOVE keeps its ordered grid.
+     */
+    fun transitOffset(order: SquadOrder, slotIndex: Int, squadSize: Int): Vec3 {
+        val shape = if (order == SquadOrder.MOVE) Shape.GRID else Shape.PAIRS
+        return localOffset(shape, slotIndex, squadSize)
+    }
 
     /** Where the [slotIndex]-th of [squadSize] stands in the MOVE grid relative to its centre, not
      *  turned to any heading — what a MOVE order with no distance to cover forms up into. */
