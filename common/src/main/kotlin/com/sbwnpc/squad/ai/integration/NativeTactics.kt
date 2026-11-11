@@ -258,7 +258,7 @@ object NativeTactics {
     /** Whether [npc]'s plan holds him settled at his place at the rally point, firing from round it. */
     fun settledAtRally(npc: NpcEntity): Boolean = worlds[npc.level()]?.dutyRule(npc.uuid) == MemberDuties.RETREAT_SETTLED_RULE
 
-    /** The rule that set [npc]'s duty on the last pass (`flank_march`, `recon_watch`, ...), or null. */
+    /** The rule that set [npc]'s duty on the last pass (`flank_march`, `recon_watch`, ...), or null: what the GameTests watch. */
     fun dutyRule(npc: NpcEntity): String? = worlds[npc.level()]?.dutyRule(npc.uuid)
 
     /** Whether [npc] has an NPC agent of either kind, full or engage-only: what ticks it. */
@@ -2140,9 +2140,9 @@ object NativeTactics {
             if (objective == null) return emptyMap()
             val manoeuvre = single?.let(::manoeuvreGroup).orEmpty()
             if (single != null && manoeuvre.isEmpty()) return emptyMap()
-            // A hidden recon squad holds fire at its post and does not assault: as the group nearest
-            // the objective it took the head-on line and sent the infantry round a flank (forest 10.11, #312).
-            // Once found or the assault is on, it fights and joins as any late group does.
+            // A hidden recon squad holds fire at its post and does not assault, so it must not set the
+            // head-on line and push the infantry round a flank. Once found or the assault is on, it
+            // fights and joins as any late group does.
             val members = squads.filterNot(::hiddenRecon).flatMap { saved -> snapshots.getValue(saved.id).members.map { SectorGroup(saved.id, it.id in manoeuvre) to it } }
             if (members.isEmpty()) return emptyMap()
             val centres = members.groupBy({ it.first }, { it.second.position }).mapValues { (_, at) -> Point3(at.map { it.x }.average(), at.map { it.y }.average(), at.map { it.z }.average()) }
@@ -2378,14 +2378,11 @@ object NativeTactics {
             sectorsHeld[operation] = held
             val stall = arcStalls.getOrPut(operation, ::ArcStall)
             stall.retain(waypoints.keys)
+            // Waypoints exist only round an objective.
             if (objective != null) {
                 members.filter { it.id in waypoints }.forEach { stall.note(it.id, ApproachSectors.toGo(objective, it.position.point(), bearings.getValue(it.id)), failures[it.id]?.failedAt, now) }
-            }
-            val single = squads.singleOrNull()
-            if (single != null) {
-                noteBlockedFlank(single.id, waypoints.keys, stall, now)
-            } else if (objective != null) {
-                refuseBlockedSectors(operation, squads, waypoints.keys, objective, now)
+                val single = squads.singleOrNull()
+                if (single != null) noteBlockedFlank(single.id, waypoints.keys, stall, now) else refuseBlockedSectors(operation, squads, waypoints.keys, objective, now)
             }
             if (flankTraces.put(operation, waypoints.size) != waypoints.size && bearings.isNotEmpty()) {
                 DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=flank_march flanking={} of={} held={}", operation, waypoints.size, members.size, held)
@@ -2802,7 +2799,7 @@ object NativeTactics {
          * change in an attack, so the refusal lasts the operation.
          */
         private fun refuseBlockedSectors(operation: UUID, squads: List<Squad>, flanking: Set<UUID>, objective: Point3, now: Long) {
-            val sectors = sectors[operation] ?: return
+            val assigned = sectors[operation] ?: return
             val stall = arcStalls[operation] ?: return
             squads.forEach { saved ->
                 val men = snapshots.getValue(saved.id).members
@@ -2810,8 +2807,9 @@ object NativeTactics {
                 if (onArc.isEmpty()) return@forEach
                 val stuck = onArc.count { stall.stuck(it.id, now) }
                 if (stuck * 2 < onArc.size) return@forEach
-                val centre = Point3(men.map { it.position.x }.average(), men.map { it.position.y }.average(), men.map { it.position.z }.average())
-                val bearing = sectors.refuse(SectorGroup(saved.id, false), objective, centre) ?: return@forEach
+                // Where the arc men stand, not the squad: men already up or bounding would pull the new sector their way.
+                val centre = Point3(onArc.map { it.position.x }.average(), onArc.map { it.position.y }.average(), onArc.map { it.position.z }.average())
+                val bearing = assigned.refuse(SectorGroup(saved.id, false), objective, centre) ?: return@forEach
                 // On his new sector's arc, if any, a man starts his walk afresh.
                 onArc.forEach { stall.forget(it.id) }
                 val degrees = Math.toDegrees(bearing).toInt()

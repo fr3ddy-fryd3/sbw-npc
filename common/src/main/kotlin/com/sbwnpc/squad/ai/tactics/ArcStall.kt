@@ -3,11 +3,11 @@ package com.sbwnpc.squad.ai.tactics
 import java.util.UUID
 
 /**
- * Which men walking round the arc to their flank sector have stopped getting round it (#312).
+ * Which men walking round the arc to their flank sector have stopped getting round it.
  *
- * A failed post search alone does not say so: the arc waypoint is worked out afresh from where a man
- * stands on every pass, so failures on one anchor never added up, and in the forest replay of 10.11 a
- * squad searched for 50 s under fire against a powder-snow field it could not cross. What is measured
+ * Counting failed post searches on one anchor does not say so: the arc waypoint is worked out afresh
+ * from where a man stands on every pass, so such failures seldom add up, and a squad can search for
+ * posts under fire against ground it cannot cross until the attack is called off. What is measured
  * is the angle still to go round the objective. A man is stuck once it has not shrunk by
  * [PROGRESS] for [STALL_TICKS] and one of his post searches failed in that time, so a man waiting for
  * cover or his bound turn, with no failed search, is not.

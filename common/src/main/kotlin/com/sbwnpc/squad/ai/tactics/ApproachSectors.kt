@@ -31,7 +31,7 @@ class ApproachSectors<K : Any> {
     // The flank sector each steered group was first given, so the envelop can send it back.
     private val home = HashMap<K, Double>()
 
-    // The sectors each group was found unable to reach (#312): never given to it again.
+    // The sectors each group was found unable to reach: never given to it again.
     private val refused = HashMap<K, MutableSet<Double>>()
 
     /**
@@ -79,8 +79,8 @@ class ApproachSectors<K : Any> {
     }
 
     /**
-     * Takes [group]'s sector from it, found unreachable (#312: a powder-snow field across the arc
-     * left a squad searching for posts under fire for 50 s), and gives it the sector of those left
+     * Takes [group]'s sector from it, found unreachable (ground its men cannot path across, such as
+     * powder snow), and gives it the sector of those left
      * that is the least walk from where it stands [at]. Head-on is never refused: the last resort
      * every group can share. Returns the new bearing, or null when there was nothing to refuse.
      */

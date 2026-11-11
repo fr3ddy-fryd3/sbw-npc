@@ -49,6 +49,7 @@ object FlankSectorGameTests {
         Files.writeString(trace, "tick,squad,npc,x,z,distance,rule\n")
         var arced = false
         var arcTicks = 0
+        val scouts = ReconWatch()
         helper.onEachTick {
             val living = flank.filter { it.isAlive }
             if (living.any { NativeTactics.dutyRule(it) == FLANK_RULE }) {
@@ -60,15 +61,14 @@ object FlankSectorGameTests {
             if (helper.tick % 20L == 0L) writeTrace(helper, trace, front, flank, goal)
             if (recon) {
                 helper.assertTrue(!arced, "The infantry beside a hidden recon squad was sent round a flank arc")
-                // Found, the recon squad fights and joins the sectors: it must not break the operation.
-                if (helper.tick == DISCOVERED_TICK) front.firstOrNull { it.isAlive }?.let(NativeTactics::scoutHit)
+                scouts.observe(helper.tick, front)
             }
             helper.assertTrue(living.none { it.position().subtract(goal).horizontalDistance() < CLOSEST }, "A flanker walked onto the objective")
             val distance = living.map { it.position().subtract(goal).horizontalDistance() }.average()
             val closedIn = helper.tick >= SETTLE && distance <= CLOSED_IN
-            if (closedIn && (recon || arced)) helper.succeed()
+            if (closedIn && if (recon) scouts.done else arced) helper.succeed()
             if (helper.tick == DEADLINE) {
-                helper.fail("The second squad stayed ${"%.0f".format(distance)} blocks out (arc walked: $arced); see ${trace.fileName}")
+                helper.fail("The second squad stayed ${"%.0f".format(distance)} blocks out (arc walked: $arced, recon: $scouts); see ${trace.fileName}")
             }
         }
     }
@@ -98,6 +98,22 @@ object FlankSectorGameTests {
         val objective = helper.absolutePos(BlockPos(130, 1, 64))
         GroupOrders.apply(helper.level, manager, listOf(first.id, second.id), SquadOrder.ATTACK, objective.x, objective.z)
         return front to flank
+    }
+
+    /** Whether the scouts held their recon stage while hidden and, found at [DISCOVERED_TICK], joined the attack. */
+    private class ReconWatch {
+        private var watched = false
+        private var joined = false
+        val done get() = watched && joined
+
+        fun observe(tick: Long, scouts: List<NpcEntity>) {
+            val rules = scouts.filter { it.isAlive }.map(NativeTactics::dutyRule)
+            if (tick < DISCOVERED_TICK && rules.any { it?.startsWith("recon_") == true }) watched = true
+            if (tick > DISCOVERED_TICK && rules.any { it != null && !it.startsWith("recon_") }) joined = true
+            if (tick == DISCOVERED_TICK) scouts.firstOrNull { it.isAlive }?.let(NativeTactics::scoutHit)
+        }
+
+        override fun toString() = "watched $watched, joined $joined"
     }
 
     private fun writeTrace(helper: GameTestHelper, trace: Path, front: List<NpcEntity>, flank: List<NpcEntity>, goal: Vec3) {
