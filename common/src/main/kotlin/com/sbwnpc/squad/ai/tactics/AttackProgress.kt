@@ -54,6 +54,14 @@ class AttackProgress(now: Long) {
     /** The members on a bound, see [bounds]: they close on the defenders and keep off the arc. */
     val bounders: Set<UUID> get() = boundPosts.keys.toSet()
 
+    /**
+     * Whether the attack has seen a contact round its objective (`threatsNearby` in [observe]):
+     * from then on its squads stopped by an enemy fight their way in and do not go back to the
+     * march when the defence drops out of sight (#312).
+     */
+    var defenceMet = false
+        private set
+
     /** The closed-in assault goes onto the point despite defenders still seen round it. */
     var occupying = false
         private set
@@ -81,6 +89,7 @@ class AttackProgress(now: Long) {
         if (incoming) lastIncomingAt = now
         peakEnemies = max(peakEnemies, enemiesAtObjective)
         peakThreats = max(peakThreats, threatsNearby)
+        if (threatsNearby > 0) defenceMet = true
         val inputs = AttackPhase.Inputs(
             readyShooters = readyShooters,
             enemiesAtObjective = enemiesAtObjective,

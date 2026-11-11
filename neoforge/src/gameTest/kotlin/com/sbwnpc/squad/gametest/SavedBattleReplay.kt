@@ -1,5 +1,8 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.ai.integration.NativeTactics
+import com.sbwnpc.squad.combat.Hearing
+import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.team.SquadTeams
@@ -44,6 +47,12 @@ internal class SavedBattleReplay(private val level: ServerLevel, private val roo
         require(Files.isRegularFile(root.resolve("manifest.json"))) { "Replay requires a copied saved-world fixture with a manifest" }
         val squads = NbtIo.readCompressed(root.resolve("data/sbwnpc_squads.dat"), NbtAccounter.unlimitedHeap()).getCompound("data")
         manager = SquadManager.load(squads)
+        // The saved men and squads come back under their saved ids and order stamps, which an earlier
+        // scene on the same fixture has already used: what it left (a recon found, a wait released, a
+        // faction's sightings of these men) would hold again.
+        NativeTactics.clearAll()
+        TeamAwareness.clearAll()
+        Hearing.clearAll()
         val tags = readEntityTags()
         val combatants = tags.filter { it.getString("id") == "sbwnpc:npc" || (it.getString("id").startsWith("superbwarfare:") && !it.getString("id").contains("rocket")) }
         require(combatants.isNotEmpty()) { "Fixture has no combatants" }

@@ -130,7 +130,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.incomingFire.replying(entity.level().gameTime) && !canTrackTarget(entity, target)) return false
         val gun = currentGun(entity) ?: return false
         // A recon squad's authority rule, decided in ReconRules: hidden, it fires only at a man at arm's length (#194).
-        if (!ReconRules.mayFire(NativeTactics.holdsFire(entity), entity.distanceTo(target).toDouble())) return false
+        if (!ReconRules.mayFire(NativeTactics.scoutHoldsFire(entity), entity.distanceTo(target).toDouble())) return false
         return target.isAlive && gun.hasAmmo()
     }
 
@@ -325,10 +325,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private enum class FireBlocker { WEAPON_RANGE, SIGHT_BLOCKED, ARMOUR, BURST_PAUSE, FRIENDLY_OR_VEHICLE, BLAST_SAFETY, WEAPON_CYCLE, AIMING }
+    private enum class FireBlocker { WEAPON_RANGE, SIGHT_BLOCKED, ARMOUR, BURST_PAUSE, FRIENDLY_OR_VEHICLE, BLAST_SAFETY, WEAPON_CYCLE, AIMING, HELD }
     private var lastFireBlocker: FireBlocker? = null
     private var lastFireTarget: java.util.UUID? = null
 
+    // HELD: infantry waiting for the recon's reports keeps its aim and its post search, not its shot.
     private fun fireBlocker(entity: NpcEntity, target: LivingEntity, gun: HandGun, clearShot: Boolean, pausedBetweenBursts: Boolean): FireBlocker? =
         when {
             !WeaponReach.inRange(entity, entity.eyePosition, target.eyePosition) -> FireBlocker.WEAPON_RANGE
@@ -339,6 +340,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             !blastClear -> FireBlocker.BLAST_SAFETY
             !gun.canShoot() -> FireBlocker.WEAPON_CYCLE
             aimTime < entity.maxAimTime -> FireBlocker.AIMING
+            !ReconRules.mayFire(NativeTactics.holdsFire(entity), entity.distanceTo(target).toDouble()) -> FireBlocker.HELD
             else -> null
         }
 
@@ -361,9 +363,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean) {
         val pausedBetweenBursts = gun.triggerMode == TriggerMode.AUTO && automaticBurst.paused(entity.tickCount)
-        entity.readyToCover = canShootTarget && lineIsClear && blastClear && gun.hasAmmo() &&
-            aimTime >= entity.maxAimTime && SquadTactics.permitsFire(entity, target)
         val blocker = fireBlocker(entity, target, gun, canShootTarget, pausedBetweenBursts)
+        // A man holding his fire covers nobody.
+        entity.readyToCover = canShootTarget && lineIsClear && blastClear && gun.hasAmmo() &&
+            aimTime >= entity.maxAimTime && SquadTactics.permitsFire(entity, target) && blocker != FireBlocker.HELD
         traceFireBlocker(entity, target, blocker)
         if (blocker == null) {
             val rps = gun.roundsPerMinute / 60.0

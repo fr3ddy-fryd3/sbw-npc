@@ -39,12 +39,24 @@ class ReconRulesTest {
     }
 
     @Test fun `the wait lasts while the scouts are on their way and a minute at the post`() {
-        assertTrue(ReconRules.awaitsIntel(3000, null, reconHidden = true, reported = false))
-        assertTrue(ReconRules.awaitsIntel(3000, ReconRules.INTEL_WAIT_TICKS - 1, reconHidden = true, reported = false))
-        assertFalse(ReconRules.awaitsIntel(3000, ReconRules.INTEL_WAIT_TICKS, reconHidden = true, reported = false))
-        assertFalse(ReconRules.awaitsIntel(ReconRules.INTEL_CAP_TICKS, null, reconHidden = true, reported = false))
-        assertFalse(ReconRules.awaitsIntel(0, null, reconHidden = true, reported = true))
-        assertFalse(ReconRules.awaitsIntel(0, null, reconHidden = false, reported = false))
+        assertTrue(ReconRules.awaitsIntel(3000, null, reconHidden = true, reported = false, engaged = false))
+        assertTrue(ReconRules.awaitsIntel(3000, ReconRules.INTEL_WAIT_TICKS - 1, reconHidden = true, reported = false, engaged = false))
+        assertFalse(ReconRules.awaitsIntel(3000, ReconRules.INTEL_WAIT_TICKS, reconHidden = true, reported = false, engaged = false))
+        assertFalse(ReconRules.awaitsIntel(ReconRules.INTEL_CAP_TICKS, null, reconHidden = true, reported = false, engaged = false))
+        assertFalse(ReconRules.awaitsIntel(0, null, reconHidden = true, reported = true, engaged = false))
+        assertFalse(ReconRules.awaitsIntel(0, null, reconHidden = false, reported = false, engaged = false))
+    }
+
+    @Test fun `infantry fired on or losing a man stops waiting for the report`() {
+        assertTrue(ReconRules.awaitsIntel(100, 100, reconHidden = true, reported = false, engaged = false))
+        assertFalse(ReconRules.awaitsIntel(100, 100, reconHidden = true, reported = false, engaged = true))
+        assertFalse(ReconRules.awaitsIntel(100, null, reconHidden = true, reported = false, engaged = true))
+    }
+
+    @Test fun `infantry holding short for the reports holds its fire unless fired on`() {
+        assertTrue(ReconRules.infantryHoldsFire(holdingShort = true, underFire = false))
+        assertFalse(ReconRules.infantryHoldsFire(holdingShort = true, underFire = true))
+        assertFalse(ReconRules.infantryHoldsFire(holdingShort = false, underFire = false))
     }
 
     @Test fun `four wet blocks in a row are water to cross, a puddle is not`() {

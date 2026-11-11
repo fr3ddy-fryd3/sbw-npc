@@ -566,10 +566,14 @@ object TacticalDomain {
                         Condition { if (mission.teams.isEmpty() && (mission.support + mission.air + mission.tanks).isNotEmpty()) Verdict.Allowed else Verdict.Rejected("has_ground_teams") }
                     }, decompose = { mission, facts -> TaskNetwork(children(FireSupport.delegations(mission) + AirSupport.delegations(mission) + TankSupport.delegations(mission)).nodes + listOfNotNull(boarding(mission, facts))) }),
                     // A hidden recon squad stalks to its observation post (#194): its men's stages are
-                    // ordered duties, as a travelling squad's are, and no strategy shapes them.
+                    // ordered duties, as a travelling squad's are, and no strategy shapes them. It
+                    // gives out its seats too, all of them "walk" (owner 10.11): with none given, its
+                    // men looked for a vehicle for 10 s before they set off.
                     Method<SquadMission>("reconnoitre", eligible = { mission ->
                         Condition { facts -> if (mission.teams.isNotEmpty() && facts.value(TacticalFacts.RECONNOITRING) == true) Verdict.Allowed else Verdict.Rejected("not_reconnoitring") }
-                    }, decompose = { mission, _ -> children(mission.teams.map { DelegationTask(it.agent, TEAM.call(it)) }) }),
+                    }, decompose = { mission, facts ->
+                        TaskNetwork(children(mission.teams.map { DelegationTask(it.agent, TEAM.call(it)) }).nodes + listOfNotNull(boarding(mission, facts)))
+                    }),
                     // A squad travelling to its objective (#255) is no squad in a fight: its men make
                     // for the vehicles or the objective as their order says, and no strategy shapes them.
                     Method<SquadMission>("travel", eligible = { mission ->

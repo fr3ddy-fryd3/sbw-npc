@@ -31,9 +31,30 @@ class TacticalPathBudgetTest {
         assertFalse(budget.acquire(abandoned, 0))
         assertFalse(budget.acquire(next, 0))
         assertTrue(budget.acquire(next, 1))
-        // The absent actor was reserved too; new work cannot continually overtake it.
-        assertFalse(budget.acquire(first, 1))
-        assertTrue(budget.acquire(first, 7), "A disappeared requester must not hold the queue forever")
+        // The absent actor's place is kept for him; what is left of the tick is anyone's (#312).
+        assertTrue(budget.acquire(first, 1))
+        assertTrue(budget.acquire(UUID(1, 4), 1))
+        assertFalse(budget.acquire(UUID(1, 5), 1), "New work took the place kept for a waiting actor")
+        assertTrue((6L..9L).all { budget.acquire(UUID(1, it), 8) }, "A disappeared requester must not hold the queue forever")
         assertTrue(TacticalPathBudget().acquire(first, 0), "A second world has an independent budget")
+    }
+
+    @Test fun `paths asked for every fourth tick are not held back by the reserved places`() {
+        // With no player near a man's brain ticks every fourth tick (#312): of four reserved places
+        // about one asked on any tick, and the queue gave out one path a tick of the four it may.
+        val budget = TacticalPathBudget()
+        val actors = (0L..23L).map { UUID(2, it) }
+        val left = actors.associateWith { 3 }.toMutableMap()
+        val finishedAt = HashMap<UUID, Long>()
+        for (tick in 0L..120L) {
+            for ((index, actor) in actors.withIndex()) {
+                if (actor in finishedAt || (tick + index) % 4 != 0L || !budget.acquire(actor, tick)) continue
+                left[actor] = left.getValue(actor) - 1
+                if (left.getValue(actor) == 0) finishedAt[actor] = tick
+            }
+        }
+        assertEquals(actors.toSet(), finishedAt.keys)
+        // 72 paths at four a tick take 18 ticks, each man's own cadence a few more; held back, 39.
+        assertTrue(finishedAt.values.max() <= 26, "the last of 24 path searches finished at tick ${finishedAt.values.max()}")
     }
 }

@@ -177,4 +177,47 @@ class ApproachSectorsTest {
         sectors.restore("flank")
         assertEquals(first, sectors.bearings(objective, groups, contact = true, pinning = "pin").getValue("flank"), 1e-9)
     }
+
+    @Test fun `a refused sector goes to the nearest one left from where the group stands`() {
+        // Forest 10.11 (#312): the flank's arc ran into powder snow; standing nearly head-on, it attacks from there.
+        val sectors = ApproachSectors<String>()
+        sectors.bearings(objective, mapOf("pin" to Point3(70.0, 64.0, 0.0), "flank" to Point3(90.0, 64.0, -10.0)), contact = true)
+        val bearing = sectors.refuse("flank", objective, Point3(80.0, 64.0, -5.0))!!
+        assertEquals(0, Math.round(Math.toDegrees(bearing)).toInt())
+        val later = degrees(sectors.bearings(objective, mapOf("pin" to Point3(70.0, 64.0, 0.0), "flank" to Point3(80.0, 64.0, -5.0)), contact = true))
+        assertEquals(mapOf("pin" to 0, "flank" to 0), later)
+    }
+
+    @Test fun `a group standing round the other side is given the other flank`() {
+        val sectors = ApproachSectors<String>()
+        sectors.bearings(objective, mapOf("pin" to Point3(70.0, 64.0, 0.0), "flank" to Point3(90.0, 64.0, 10.0)), contact = true)
+        val bearing = sectors.refuse("flank", objective, Point3(40.0, 64.0, -60.0))!!
+        assertEquals(-60, Math.round(Math.toDegrees(bearing)).toInt())
+    }
+
+    @Test fun `with both flanks refused a group attacks head on, which is never refused`() {
+        val sectors = ApproachSectors<String>()
+        sectors.bearings(objective, mapOf("pin" to Point3(70.0, 64.0, 0.0), "flank" to Point3(90.0, 64.0, 10.0)), contact = true)
+        sectors.refuse("flank", objective, Point3(40.0, 64.0, -60.0))
+        assertEquals(0, Math.round(Math.toDegrees(sectors.refuse("flank", objective, Point3(40.0, 64.0, -60.0))!!)).toInt())
+        assertEquals(null, sectors.refuse("flank", objective, Point3(40.0, 64.0, -60.0)))
+        assertEquals(null, sectors.refuse("pin", objective, Point3(70.0, 64.0, 0.0)))
+    }
+
+    @Test fun `the manoeuvre does not send a group back onto a sector it could not reach`() {
+        val sectors = ApproachSectors<String>()
+        val groups = mapOf("pin" to Point3(50.0, 64.0, 0.0), "flank" to Point3(30.0, 64.0, 40.0))
+        sectors.bearings(objective, groups, contact = true, pinning = "pin")
+        sectors.steer("flank", -ApproachSectors.FLANK_ANGLE)
+        val refused = sectors.refuse("flank", objective, Point3(45.0, 64.0, 5.0))!!
+        sectors.restore("flank")
+        sectors.steer("flank", ApproachSectors.FLANK_ANGLE)
+        assertEquals(refused, sectors.bearings(objective, groups, contact = true, pinning = "pin").getValue("flank"), 1e-9)
+    }
+
+    @Test fun `the angle still to go round the objective to a sector`() {
+        assertEquals(Math.PI / 2, ApproachSectors.toGo(objective, Point3(0.0, 64.0, 50.0), 0.0), 1e-9)
+        assertEquals(Math.PI / 2, ApproachSectors.toGo(objective, Point3(0.0, 64.0, -50.0), 0.0), 1e-9)
+        assertEquals(0.0, ApproachSectors.toGo(objective, Point3(50.0, 64.0, 0.0), 0.0), 1e-9)
+    }
 }

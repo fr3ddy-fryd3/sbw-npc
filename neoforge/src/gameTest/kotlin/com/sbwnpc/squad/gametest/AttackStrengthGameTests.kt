@@ -4,12 +4,16 @@ import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SidearmKit
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
+import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.squad.GroupOrders
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
+import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.*
 import net.minecraft.world.entity.Entity
@@ -216,4 +220,52 @@ object AttackStrengthGameTests {
     }
 
     private const val NEAR_SUPPLY = 18.0
+
+    /**
+     * A mortar crew sent in with the attack as its support falls back with it when the attack is
+     * called off, away from the objective its shells land on, not onto it (#313, playtest 10.11).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1000, batch = "strength-support")
+    fun calledOffAttackTakesItsMortarSupportBackNotOntoTheObjective(helper: GameTestHelper) {
+        val scene = AttackScene(helper)
+        scene.enemy()
+        val tube = Ports.mortars.create(helper.level, -90f)
+        val at = helper.absoluteVec(Vec3(62.5, 1.0, 61.5))
+        tube.moveTo(at.x, at.y, at.z, -90f, 0f)
+        helper.level.addFreshEntity(tube)
+        SquadTeams.assign(tube, SquadFaction.PIG)
+        val crew = listOf(Vec3(60.5, 1.0, 61.5), Vec3(62.5, 1.0, 63.3)).map { AttackDeploymentGameTests.spawn(helper, it, SquadFaction.PIG, role = NpcClass.MORTAR) }
+        val mortars = scene.manager.create(helper.level, scene.squad.owner, SquadFaction.PIG, crew.map { it.uuid })
+        AmmunitionTacticsGameTests.cleanup(helper) {
+            scene.manager.deleteSquad(helper.level, mortars.id)
+            crew.forEach { MortarClaims.release(it.uuid) }
+            MortarClaims.releaseMortar(tube.uuid)
+            (crew + tube).forEach(Entity::discard)
+        }
+        val goal = scene.objective.bottomCenter
+        GroupOrders.apply(helper.level, scene.manager, listOf(scene.squad.id, mortars.id), SquadOrder.ATTACK, scene.objective.x, scene.objective.z)
+        var calledOff: Map<UUID, Double>? = null
+        helper.onEachTick {
+            when (helper.tick) {
+                40L -> {
+                    helper.assertTrue(scene.squad.attackBase == 4, "The attack was measured at ${scene.squad.attackBase}, not 4")
+                    scene.members.take(3).forEach { it.kill() }
+                }
+
+                else -> Unit
+            }
+            if (calledOff == null && scene.squad.order == SquadOrder.RETREAT) {
+                helper.assertTrue(mortars.order != SquadOrder.ATTACK, "The attack was called off without its mortar support")
+                val objective = mortars.objective
+                helper.assertTrue(objective != null && objective.bottomCenter.subtract(goal).horizontalDistance() > 40.0, "The mortar support fell back to $objective, at the attack's objective $goal")
+                calledOff = crew.associate { it.uuid to it.position().distanceTo(goal) }
+            }
+            val from = calledOff ?: return@onEachTick
+            crew.filter { it.isAlive }.forEach { man ->
+                helper.assertTrue(man.position().distanceTo(goal) >= from.getValue(man.uuid) - 4.0, "A mortarman made for the called-off attack's objective: ${"%.0f".format(from.getValue(man.uuid))} -> ${"%.0f".format(man.position().distanceTo(goal))} blocks")
+            }
+            if (helper.tick >= 900L) helper.succeed()
+        }
+    }
 }
