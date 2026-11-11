@@ -20,6 +20,8 @@ internal object GameTestGroups {
             TreePlatformGameTests::class.java,
         ),
         "orders" to listOf(
+            FlankSectorGameTests::class.java,
+            JourneyHoldGameTests::class.java,
             HtnTacticsGameTests::class.java,
             SquadManoeuvreGameTests::class.java,
             SquadAreaGameTests::class.java,

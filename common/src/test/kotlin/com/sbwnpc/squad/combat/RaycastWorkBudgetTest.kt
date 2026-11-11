@@ -74,8 +74,11 @@ class RaycastWorkBudgetTest {
         for (actor in 0L..32L) budget.take(RaycastWorkBudget.Key(UUID(1, actor), TickBudget.Work.COVER), 0)
         assertFalse(budget.take(active, 0))
         assertTrue(budget.take(active, 1), "Ready work within the reserved group can pass an absent actor")
-        assertFalse(budget.take(active, 2))
-        assertTrue(budget.take(active, 7))
+        // The absent actor's place is kept for him; what is left of the tick is anyone's (#312).
+        val fresh = (200L..231L).map { RaycastWorkBudget.Key(UUID(1, it), TickBudget.Work.POSITIONS) }
+        assertTrue(fresh.take(31).all { budget.take(it, 2) })
+        assertFalse(budget.take(fresh.last(), 2), "New work took the place kept for a waiting actor")
+        assertTrue(fresh.all { budget.take(it, 7) }, "A disappeared actor kept his place")
         assertTrue(RaycastWorkBudget().take(active, 2))
     }
 
@@ -120,7 +123,8 @@ class RaycastWorkBudgetTest {
 
     @Test fun `a search that never ends gives its place up after a bounded number of turns`() {
         val budget = RaycastWorkBudget()
-        val stuck = (0L..7L).map { RaycastWorkBudget.Key(UUID(5, it), TickBudget.Work.POSITIONS) }
+        // As many as a tick grants: the late one waits until a place is given up.
+        val stuck = (0L..31L).map { RaycastWorkBudget.Key(UUID(5, it), TickBudget.Work.POSITIONS) }
         val late = RaycastWorkBudget.Key(UUID(6, 0), TickBudget.Work.POSITIONS)
         var lateTurnAt = -1L
         for (tick in 0L..40L) {
@@ -130,6 +134,33 @@ class RaycastWorkBudgetTest {
             if (tick > 0 && lateTurnAt < 0 && budget.take(late, tick)) lateTurnAt = tick
         }
         assertTrue(lateTurnAt in 2L..14L, "a late search waited behind never-ending ones until $lateTurnAt")
+    }
+
+    @Test fun `searches asked for every fourth tick, as the plan ticks them, are not held back by the reserved places`() {
+        // Replaying the 10.11 forest battle with no player near (brains every fourth tick), 23 men
+        // searched for posts at once: the first eight held the only places that could take a turn,
+        // about two of them asked on any tick, and turns came 28-48 ticks apart (#312).
+        val budget = RaycastWorkBudget()
+        val keys = (0L..23L).map { RaycastWorkBudget.Key(UUID(7, it), TickBudget.Work.POSITIONS) }
+        val turnsLeft = keys.associateWith { 5 }.toMutableMap()
+        val finishedAt = HashMap<RaycastWorkBudget.Key, Long>()
+        for (tick in 0L..200L) {
+            var granted = 0
+            for ((index, key) in keys.withIndex()) {
+                if (key in finishedAt || (tick + index) % 4 != 0L || !budget.acquire(key, tick)) continue
+                granted++
+                repeat(64) { budget.charge(tick) }
+                val left = turnsLeft.getValue(key) - 1
+                turnsLeft[key] = left
+                budget.release(key, unfinished = left > 0)
+                if (left == 0) finishedAt[key] = tick
+            }
+            assertTrue(granted <= 32, "$granted turns in one tick")
+        }
+        assertEquals(keys.toSet(), finishedAt.keys)
+        // Five turns asked for every fourth tick take 17 ticks unhindered; the ray limit lets about
+        // seven 64-ray turns through a tick, so the six askers of a tick all go.
+        assertTrue(finishedAt.values.max() <= 30, "the last of 24 searches finished at tick ${finishedAt.values.max()}")
     }
 }
 

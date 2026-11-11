@@ -144,11 +144,35 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
             } else {
                 (kotlin.math.sqrt(positions.maxOf { it.distToCenterSqr(mob.x, mob.y, mob.z) }) + 8.0).coerceIn(48.0, 80.0).toFloat()
             }
-            return createPath(positions, 8, false, 0, range).also { reached = it?.canReach() == true }
+            return createPath(positions, 8, false, 0, range).also {
+                reached = it?.canReach() == true
+                // The planner's posts and route legs are the only searches a man under its orders makes:
+                // boxed in on a ledge, a scout's every one ended where he stood, and with no march path
+                // the stuck recovery never heard of it (playtest 11.11).
+                reportProgress(positions, it, noPathCounts = false)
+            }
         } finally {
             super.setMaxVisitedNodesMultiplier(saved)
             observer?.invoke(positions.first(), System.nanoTime() - started, reached)
         }
+    }
+
+    /**
+     * Tells the stuck recovery whether a ground search for [targets] leads anywhere: it goes nowhere
+     * when it found no path, or one ending where he stands, while every target is far. A planner's
+     * search for posts finds none for many reasons besides a box round him (every post out of reach,
+     * a sniper's on a tower): only one whose search got no further than his own block counts, so
+     * [noPathCounts] is false for those.
+     */
+    private fun reportProgress(targets: Set<BlockPos>, result: Path?, noPathCounts: Boolean = true) {
+        val npc = mob as? com.sbwnpc.squad.entity.NpcEntity ?: return
+        if (result == null && !noPathCounts) return
+        val here = mob.blockPosition()
+        val end = result?.endNode?.asBlockPos()
+        val stays = result == null || (end != null && end.distManhattan(here) <= 1)
+        val far = targets.all { it.distToCenterSqr(mob.x, mob.y, mob.z) > NOWHERE_MIN_DISTANCE * NOWHERE_MIN_DISTANCE }
+        val toward = targets.minBy { it.distToCenterSqr(mob.x, mob.y, mob.z) }
+        npc.notePathGoesNowhere(toward, far && stays)
     }
 
     override fun createPathFinder(maxVisitedNodes: Int): PathFinder {
@@ -201,17 +225,10 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
             branch = "in the air"
             null
         }
-        (mob as? com.sbwnpc.squad.entity.NpcEntity)?.let { npc ->
-            val far = pos.distToCenterSqr(mob.x, mob.y, mob.z) > NOWHERE_MIN_DISTANCE * NOWHERE_MIN_DISTANCE
-            val end = result?.endNode?.asBlockPos()
-            // A reachable local waypoint can still be the block he already occupies, while the
-            // actual order is far away. Null ground searches also need physical stuck recovery.
-            // Airborne requests say nothing about whether the path can advance.
-            if (canPlan) {
-                val nowhere = far && (result == null || (end != null && end.distManhattan(mob.blockPosition()) <= 1))
-                npc.notePathGoesNowhere(pos, nowhere)
-            }
-        }
+        // A reachable local waypoint can still be the block he already occupies, while the
+        // actual order is far away. Null ground searches also need physical stuck recovery.
+        // Airborne requests say nothing about whether the path can advance.
+        if (canPlan) reportProgress(setOf(pos), result)
         // No path on the ground is rare and is what a caller gives up on — never skipped.
         if (com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) &&
             ((result == null && canPlan) || mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS)

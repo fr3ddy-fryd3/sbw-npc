@@ -63,17 +63,51 @@ class ReconProgressTest {
         assertEquals(null, held.tally(setOf(a), ReconProgress.WATCH_TICKS + ReconProgress.UPDATE_TICKS))
     }
 
-    @Test fun `the first report naming an enemy releases the operation, seeing nobody it takes three`() {
+    @Test fun `the reports release the operation once one finds nobody new after a sighting, or after three`() {
+        val (a, b) = java.util.UUID(1, 1) to java.util.UUID(1, 2)
         val found = ReconProgress(1)
-        found.noteReport(0)
-        assertEquals(false, found.reportsDone)
-        found.noteReport(2)
+        found.noteReport(1, found.record(setOf(a)))
+        assertEquals(false, found.reportsDone, "The first sighting released the operation")
+        found.noteReport(2, found.record(setOf(a, b)))
+        assertEquals(false, found.reportsDone, "A report with a new enemy released the operation")
+        found.noteReport(2, found.record(setOf(a, b)))
         assertEquals(true, found.reportsDone)
+        val busy = ReconProgress(1)
+        (1L..ReconProgress.REPORTS_AWAITED).forEach { busy.noteReport(1, busy.record(setOf(java.util.UUID(2, it)))) }
+        assertEquals(true, busy.reportsDone, "New enemies in every report kept the operation waiting past three")
         val empty = ReconProgress(1)
-        repeat(ReconProgress.REPORTS_AWAITED - 1) { empty.noteReport(0) }
+        repeat(ReconProgress.REPORTS_AWAITED - 1) { empty.noteReport(0, empty.record(emptySet())) }
         assertEquals(false, empty.reportsDone)
-        empty.noteReport(0)
+        empty.noteReport(0, empty.record(emptySet()))
         assertEquals(true, empty.reportsDone)
+    }
+
+    @Test fun `an enemy gone out of view after a sighting is no news and settles the picture`() {
+        val progress = ReconProgress(1)
+        progress.noteReport(1, progress.record(setOf(java.util.UUID(1, 1))))
+        progress.noteReport(0, progress.record(emptySet()))
+        assertEquals(true, progress.reportsDone)
+    }
+
+    @Test fun `the post's running count and the report itself share what was reported`() {
+        val a = java.util.UUID(1, 1)
+        val counted = ReconProgress(1)
+        counted.noteReport(1, counted.record(setOf(a)))
+        counted.noteReport(1, counted.record(setOf(a)))
+        assertEquals(true, counted.reportsDone, "The report named again the enemy the running count had")
+        val more = ReconProgress(1)
+        more.noteReport(1, more.record(setOf(a)))
+        more.noteReport(2, more.record(setOf(a, java.util.UUID(1, 2))))
+        assertEquals(false, more.reportsDone)
+    }
+
+    @Test fun `moving closer counts towards three reports but never settles the picture`() {
+        val progress = ReconProgress(1)
+        progress.noteReport(1, progress.record(setOf(java.util.UUID(1, 1))))
+        progress.noteCloser()
+        assertEquals(false, progress.reportsDone, "Moving closer after a sighting released the operation")
+        progress.noteCloser()
+        assertEquals(true, progress.reportsDone, "Three reports did not release the operation")
     }
 
     @Test fun `in the ring it posts only where it sees the objective, making for the spot with a view`() {

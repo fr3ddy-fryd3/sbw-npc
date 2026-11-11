@@ -880,7 +880,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     private fun refreshAiLod() {
         brainTickInterval = when {
-            inCombatState() -> 1
+            inCombatState() || fullRateBrains -> 1
 
             else -> {
                 val nearest = level().getNearestPlayer(this, -1.0)
@@ -971,6 +971,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         descentRecoveryUntil = tickCount + 100
     }
 
+    /** Withdraws [allowRecoveryDescent] when the deeper drop led nowhere either. */
+    internal fun forbidRecoveryDescent() {
+        descentRecoveryUntil = -1
+    }
+
     /** Ordinary marches avoid damaging drops; a stranded NPC can use a bounded descent. */
     override fun getMaxFallDistance(): Int {
         val normal = super.getMaxFallDistance()
@@ -979,6 +984,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             calculateFallDamage(it, 1f)
         }
     }
+
+    /** See [NpcStuckRecovery.stranded]. */
+    val stranded: Boolean get() = stuckRecovery.stranded
 
     /** See [NpcStuckRecovery.notePathGoesNowhere]; the navigation reports every path it plans. */
     fun notePathGoesNowhere(toward: BlockPos, goesNowhere: Boolean) = stuckRecovery.notePathGoesNowhere(toward, goesNowhere)
@@ -1521,6 +1529,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // AI level-of-detail — see refreshAiLod(). Player distances at which the brain drops to
         // every-2nd / every-4th tick when not in combat.
         private const val LOD_RECHECK_TICKS = 20
+
+        /**
+         * GameTests only: every brain at full rate, as with a player beside the men, for a scene that
+         * replays what a watching player saw. A mock player cannot stand in: SuperbWarfare's login
+         * sync refuses its connection. The scene that sets it resets it when it ends.
+         */
+        @JvmStatic
+        var fullRateBrains = false
 
         private const val DISMOUNT_CLEARANCE = 0.3
         private const val DISMOUNT_SAMPLE_STEP = 0.125

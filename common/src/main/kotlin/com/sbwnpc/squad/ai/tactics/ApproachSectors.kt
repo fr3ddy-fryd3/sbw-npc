@@ -31,6 +31,9 @@ class ApproachSectors<K : Any> {
     // The flank sector each steered group was first given, so the envelop can send it back.
     private val home = HashMap<K, Double>()
 
+    // The sectors each group was found unable to reach: never given to it again.
+    private val refused = HashMap<K, MutableSet<Double>>()
+
     /**
      * Each of [groups] (keyed to its centre) mapped to its bearing in radians, measured from the
      * [objective] towards the group's line. Empty until [contact]: before the defence is met
@@ -41,6 +44,7 @@ class ApproachSectors<K : Any> {
         if (groups.isEmpty()) return emptyMap()
         offsets.keys.retainAll(groups.keys)
         home.keys.retainAll(groups.keys)
+        refused.keys.retainAll(groups.keys)
         if (headOn == null) {
             if (!contact) return emptyMap()
             val first = pinning ?: groups.minBy { distance(it.value, objective) }.key
@@ -69,9 +73,27 @@ class ApproachSectors<K : Any> {
      */
     fun steer(group: K, offset: Double) {
         val current = offsets[group] ?: return
-        if (current == 0.0 || abs(offset) > PI / 2) return
+        if (current == 0.0 || abs(offset) > PI / 2 || group in refused) return
         home.putIfAbsent(group, current)
         offsets[group] = offset
+    }
+
+    /**
+     * Takes [group]'s sector from it, found unreachable (ground its men cannot path across, such as
+     * powder snow), and gives it the sector of those left
+     * that is the least walk from where it stands [at]. Head-on is never refused: the last resort
+     * every group can share. Returns the new bearing, or null when there was nothing to refuse.
+     */
+    fun refuse(group: K, objective: Point3, at: Point3): Double? {
+        val current = offsets[group] ?: return null
+        val head = headOn ?: return null
+        if (current == 0.0) return null
+        val out = refused.getOrPut(group, ::HashSet).apply { add(current) }
+        home.remove(group)
+        val stands = normalize(bearing(objective, at) - head)
+        val next = SECTORS.filter { it !in out }.minBy { abs(normalize(it - stands)) }
+        offsets[group] = next
+        return normalize(head + next)
     }
 
     /** Sends a [steer]ed [group] back to the flank sector it was first given. */
@@ -151,6 +173,9 @@ class ApproachSectors<K : Any> {
          * many: a fire team of three that split sent two of them round a flank and left one to pin the point.
          */
         const val MIN_GROUP = 3
+
+        /** How far round the [objective], in radians, a man at [from] still is from his sector's [bearing]. */
+        fun toGo(objective: Point3, from: Point3, bearing: Double) = abs(normalize(bearing - bearing(objective, from)))
 
         private fun bearing(from: Point3, to: Point3) = atan2(to.z - from.z, to.x - from.x)
 

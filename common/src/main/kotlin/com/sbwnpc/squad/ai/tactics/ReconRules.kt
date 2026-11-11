@@ -56,11 +56,12 @@ object ReconRules {
 
     /**
      * Whether an operation with a recon squad still waits for intelligence: its infantry walks and
-     * stays short of its firing line, its mortars and drones hold their fire. A report, the recon
-     * squad found or gone, [INTEL_WAIT_TICKS] at the post ([sincePost], null before it gets there) or
-     * [INTEL_CAP_TICKS] since the order ends it.
+     * stays short of its firing line, its mortars and drones hold their fire. Its reports done
+     * ([ReconProgress.reportsDone]), the recon squad found or gone, its infantry [engaged] (fired on,
+     * or a man lost: owner 11.11, Echo lost three men waiting for a report), [INTEL_WAIT_TICKS] at the
+     * post ([sincePost], null before it gets there) or [INTEL_CAP_TICKS] since the order ends it.
      */
-    fun awaitsIntel(sinceOrder: Long, sincePost: Long?, reconHidden: Boolean, reported: Boolean): Boolean = reconHidden && !reported && sinceOrder < INTEL_CAP_TICKS && (sincePost ?: 0L) < INTEL_WAIT_TICKS
+    fun awaitsIntel(sinceOrder: Long, sincePost: Long?, reconHidden: Boolean, reported: Boolean, engaged: Boolean): Boolean = reconHidden && !reported && !engaged && sinceOrder < INTEL_CAP_TICKS && (sincePost ?: 0L) < INTEL_WAIT_TICKS
 
     /** Water at least this many blocks long on the way is water to cross; a puddle is not. */
     const val CROSSING_MIN = 4
@@ -77,6 +78,14 @@ object ReconRules {
         }
         return false
     }
+
+    /**
+     * Whether a man of attacking infantry holds his fire (owner 11.11): while his squad is [holdingShort]
+     * of its firing line for the recon's reports, unless he is [underFire]. The infantry waits so it goes
+     * in knowing how many there are: shooting at a scout's first shared sighting gives it away and ends
+     * the wait before the reports are in.
+     */
+    fun infantryHoldsFire(holdingShort: Boolean, underFire: Boolean) = holdingShort && !underFire
 
     /** Whether a man of a squad that [holds] its fire may still shoot at a target [distance] blocks away. */
     fun mayFire(holds: Boolean, distance: Double) = !holds || distance < CLOSE

@@ -22,6 +22,15 @@ class AttackProgressTest {
         assertEquals(AttackPhase.ASSAULT, progress.phase)
     }
 
+    @Test fun `the defence is met by a contact round the objective, not by one far out on the way`() {
+        val progress = AttackProgress(0)
+        progress.update(10, ready = 4, enemies = 0, contact = true, threats = 0)
+        assertFalse(progress.defenceMet)
+        progress.update(20, ready = 4, enemies = 0, contact = true, threats = 2)
+        progress.update(30, ready = 4, enemies = 0, contact = false, threats = 0)
+        assertTrue(progress.defenceMet)
+    }
+
     @Test fun `silence is measured from the start of the engagement until fire arrives`() {
         val progress = AttackProgress(0)
         progress.update(100, ready = 8, enemies = 4)

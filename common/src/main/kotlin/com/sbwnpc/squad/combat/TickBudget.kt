@@ -51,8 +51,11 @@ object TickBudget {
 /** Reserve capacity for the oldest request, while other ready actors can use the remainder. */
 internal class RaycastWorkBudget {
     data class Key(val actor: UUID, val work: TickBudget.Work)
-    private data class Request(var since: Long, var seenAt: Long, var heldTurns: Int = 0)
+    private data class Request(var since: Long, var seenAt: Long, var heldTurns: Int = 0, var every: Long = 1)
     private val waiting = LinkedHashMap<Key, Request>()
+
+    // When each search last asked, kept past its finished turn: its next request asks at its own pace.
+    private val lastAsk = HashMap<Key, Long>()
     private val served = HashSet<Key>()
     private var tick = Long.MIN_VALUE
     private var used = 0
@@ -72,20 +75,40 @@ internal class RaycastWorkBudget {
         turns = 0
         served.clear()
         waiting.entries.removeIf { now - it.value.seenAt > 6 }
-        priority = waiting.keys.firstOrNull()
-        reserved = waiting.keys.take(8).toSet()
+        lastAsk.values.removeIf { now - it > 6 }
+        // Places go to the oldest searches due to ask this tick (#312): a man asks only when his brain
+        // ticks, every fourth tick with no player near, and of eight places held by the oldest about
+        // two asked on any tick while nobody else might take a turn and the queue waited 28-48 ticks.
+        val due = waiting.entries.filter { now - it.value.seenAt >= it.value.every }.map { it.key }
+        priority = due.firstOrNull()
+        reserved = due.take(8).toSet()
+    }
+
+    /** Notes that [key] asked at [now], and so how often it asks. */
+    private fun asked(key: Key, now: Long) {
+        val previous = lastAsk.put(key, now)
+        val request = waiting.getOrPut(key) { Request(now, now) }
+        if (previous != null && previous != now) request.every = now - previous
+        request.seenAt = now
+    }
+
+    /** Whether a turn is left for [key] beyond the places still held for the oldest, a full turn's rays a place. */
+    private fun leftBeyondHeld(key: Key, limit: Int): Boolean {
+        val held = reserved.count { it != key && it !in served }
+        return turns + held < MAX_TURNS && used + held * TURN_RAYS < limit
     }
 
     fun acquire(key: Key, now: Long): Boolean {
         roll(now)
         if (key in served) return false
-        waiting.getOrPut(key) { Request(now, now) }.seenAt = now
+        asked(key, now)
         val reservedTurn = key == priority
-        if (reserved.isNotEmpty() && key !in reserved) return false
+        val limit = if (priority == null) 500 else 436
+        if (key !in reserved && !leftBeyondHeld(key, limit)) return false
         // A synchronous cover scan is indivisible. It may only use the reserved turn,
         // otherwise an early suppressed actor could consume another actor's reservation.
         if (key.work == TickBudget.Work.COVER && priority != null && !reservedTurn) return false
-        if (turns >= 32 || (!reservedTurn && used >= if (priority == null) 500 else 436)) return false
+        if (turns >= MAX_TURNS || (!reservedTurn && used >= limit)) return false
         served += key
         turns++
         turnUsed = 0
@@ -117,11 +140,17 @@ internal class RaycastWorkBudget {
     private companion object {
         /** About two full candidate collections of an ordinary post search. */
         const val HELD_TURNS = 10
+
+        /** Turns one tick grants at most. */
+        const val MAX_TURNS = 32
+
+        /** Rays one turn may use. */
+        const val TURN_RAYS = 64
     }
 
     fun available(now: Long): Boolean {
         roll(now)
-        return turnUsed < 64 && (priorityTurn || used < if (priority == null) 500 else 436)
+        return turnUsed < TURN_RAYS && (priorityTurn || used < if (priority == null) 500 else 436)
     }
 
     // Soft limits finish the current indivisible candidate, then defer the next candidate.

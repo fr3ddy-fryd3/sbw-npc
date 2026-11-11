@@ -50,21 +50,26 @@ object SquadTransit {
     }
 
     /** Whether the loaded living squad is still far from its ordered objective in this dimension. */
-    fun distant(squad: Squad, level: ServerLevel): Boolean {
-        if (squad.objectiveDimension?.let { it != level.dimension() } == true) return false
-        val objective = squad.objective ?: return false
+    fun distant(squad: Squad, level: ServerLevel): Boolean = (objectiveDistance(squad, level) ?: 0.0) > TRANSPORT_DISTANCE
+
+    /** How far the loaded living squad stands from its ordered objective ([medianDistance]), or null with no objective in this dimension or nobody loaded. */
+    fun objectiveDistance(squad: Squad, level: ServerLevel): Double? {
+        if (squad.objectiveDimension?.let { it != level.dimension() } == true) return null
+        val objective = squad.objective ?: return null
         val positions = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }
             .filter { it.isAlive && it.squadId == squad.id }
             .map { it.position() }
-        return distant(positions, Vec3.atBottomCenterOf(objective))
+        return medianDistance(positions, Vec3.atBottomCenterOf(objective))
     }
 
+    internal fun distant(positions: List<Vec3>, objective: Vec3): Boolean = (medianDistance(positions, objective) ?: 0.0) > TRANSPORT_DISTANCE
+
     /** A coordinate-wise median keeps a lone straggler from changing the journey for everyone. */
-    internal fun distant(positions: List<Vec3>, objective: Vec3): Boolean {
-        if (positions.isEmpty()) return false
+    private fun medianDistance(positions: List<Vec3>, objective: Vec3): Double? {
+        if (positions.isEmpty()) return null
         val middle = positions.size / 2
         val center = Vec3(positions.map { it.x }.sorted()[middle], positions.map { it.y }.sorted()[middle], positions.map { it.z }.sorted()[middle])
-        return center.distanceTo(objective) > TRANSPORT_DISTANCE
+        return center.distanceTo(objective)
     }
 
     /**

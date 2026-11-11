@@ -35,8 +35,11 @@ object TacticalBudget {
 
 /** FIFO reservations survive callers' tick order. Abandoned requests expire after six ticks. */
 internal class TacticalPathBudget {
-    private data class Request(val since: Long, var seenAt: Long)
+    private data class Request(val since: Long, var seenAt: Long, var every: Long = 1)
     private val waiting = LinkedHashMap<UUID, Request>()
+
+    // When each actor last asked, kept past his granted path: his next request asks at his own pace.
+    private val lastAsk = HashMap<UUID, Long>()
     private var reserved = mutableSetOf<UUID>()
     private val served = HashSet<UUID>()
     private var tick = Long.MIN_VALUE
@@ -53,17 +56,25 @@ internal class TacticalPathBudget {
             nanos = 0
             served.clear()
             waiting.entries.removeIf { now - it.value.seenAt > 6 }
-            reserved = waiting.keys.take(4).toMutableSet()
+            lastAsk.values.removeIf { now - it > 6 }
+            // Only the oldest due to ask this tick hold a place (#312): a man asks when his brain ticks,
+            // every fourth tick with no player near, and four places held by the oldest gave out about
+            // two paths a tick while nobody else might take one.
+            reserved = waiting.entries.filter { now - it.value.seenAt >= it.value.every }.take(MAX_PATHS).mapTo(HashSet()) { it.key }
         }
     }
 
     fun acquire(id: UUID, now: Long): Boolean {
         roll(now)
         if (id in served) return false
-        waiting.getOrPut(id) { Request(now, now) }.seenAt = now
-        if (paths >= 4 || nanos >= 8_000_000) return false
-        if (reserved.isNotEmpty() && id !in reserved) return false
-        if (reserved.isEmpty() && waiting.keys.first() != id) return false
+        val previous = lastAsk.put(id, now)
+        waiting.getOrPut(id) { Request(now, now) }.let { request ->
+            if (previous != null && previous != now) request.every = now - previous
+            request.seenAt = now
+        }
+        if (paths >= MAX_PATHS || nanos >= 8_000_000) return false
+        // What is left beyond the places still held is anyone's.
+        if (id !in reserved && paths + reserved.size >= MAX_PATHS) return false
         waiting.remove(id)
         reserved.remove(id)
         served += id
@@ -75,5 +86,10 @@ internal class TacticalPathBudget {
     fun charge(now: Long, elapsedNanos: Long) {
         roll(now)
         nanos += elapsedNanos
+    }
+
+    private companion object {
+        /** Paths one tick grants at most. */
+        const val MAX_PATHS = 4
     }
 }
