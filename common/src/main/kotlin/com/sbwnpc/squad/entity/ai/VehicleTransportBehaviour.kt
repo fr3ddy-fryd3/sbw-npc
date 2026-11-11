@@ -70,7 +70,7 @@ import java.util.UUID
 class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // Indefinite by design, same reasoning as every other long-running behaviour in this codebase
-    // (see SeekCoverBehaviour's doc comment for the full ExtendedBehaviour-timeout story).
+    // (see GunAttackBehaviour's init for the full ExtendedBehaviour-timeout story).
     init {
         noTimeout()
     }

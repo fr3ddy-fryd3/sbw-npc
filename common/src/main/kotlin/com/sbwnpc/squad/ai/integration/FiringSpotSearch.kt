@@ -90,8 +90,8 @@ class FiringSpotSearch(private val navigator: CombatNavigator) {
     fun concealmentAt(shot: Shot, pos: Vec3): Double? = concealment(shot, pos, Sightline.vehicleHulls(shot.level, AABB(pos, shot.target.position()).inflate(VEHICLE_LANE_MARGIN), shot.entity, shot.target))
 
     /**
-     * Player-facing visual, per user request — same idiom as SeekCoverBehaviour's own
-     * markCoverChoice. One burst each time a spot is (re-)picked, whether or not it's actually
+     * Player-facing visual, per user request — the same idiom the old cover
+     * behaviour marked its cover choice with. One burst each time a spot is (re-)picked, whether or not it's actually
      * different from the last one, so it's visible even for a squad member that keeps re-confirming
      * its own current position as still the best available. Gated on [DebugFlags.markersEnabled] —
      * one place to toggle these off, since the user expects to do that fairly often (e.g. playing
@@ -246,8 +246,8 @@ class FiringSpotSearch(private val navigator: CombatNavigator) {
         const val STUCK_SEARCH_RADIUS = 14.0
 
         // How far out to look for a better partial-cover firing spot once already in range — a
-        // local shuffle, not a retreat search (contrast SeekCoverBehaviour's much larger MIN/MAX_
-        // RADIUS, which is for fleeing to real cover far from a threat). Widened from 4.0 to 7.0 per
+        // local shuffle, not a retreat search (contrast CoverSearch's much larger radius, which
+        // is for fleeing to real cover far from a threat). Widened from 4.0 to 7.0 per
         // user request; 0 (staying exactly put) is still always in range via the baseline score
         // for his current position, so this only affects how far it's willing to reposition,
         // never whether it's allowed to just hold where it already is.

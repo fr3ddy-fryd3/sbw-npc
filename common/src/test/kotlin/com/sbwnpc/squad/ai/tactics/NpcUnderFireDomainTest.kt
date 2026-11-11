@@ -49,6 +49,51 @@ class NpcUnderFireDomainTest {
         assertNotEquals(Grenades.ACTION, fight(GrenadeReason.NONE))
     }
 
+    @Test fun `a medic's patient comes before cover, his hole and his duty, in every root (#189)`() {
+        val patient = java.util.UUID(7, 7)
+        val treatment = Treatment(actor, patient)
+        assertEquals(treatment, first(facts(underFire = true).observe(MedicalFacts.PATIENT, patient)).parameters)
+        assertEquals(MedicalCare.ACTION, first(facts(underFire = true, digs = 1).observe(MedicalFacts.PATIENT, patient)).key)
+        assertEquals(MedicalCare.ACTION, first(facts(underFire = false).observe(MedicalFacts.PATIENT, patient)).key)
+        assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true)).key)
+        val root = { key: TaskKey<EngageTask>, input: FactSnapshot -> (HtnPlanningSession(TacticalDomain.npc, owner, key.call(EngageTask(actor)), input).advance(40) as? PlanningResult.Ready)?.plan?.tasks?.firstOrNull()?.spec?.action?.key }
+        assertEquals(MedicalCare.ACTION, root(TacticalDomain.FIGHT_TASK, facts(underFire = false).observe(MedicalFacts.PATIENT, patient)))
+        assertEquals(MedicalCare.ACTION, root(TacticalDomain.CARE_TASK, facts(underFire = false).observe(MedicalFacts.PATIENT, patient)))
+        // A squadless medic with no patient fights when in contact, else stands by with nothing to do.
+        assertEquals(null, root(TacticalDomain.CARE_TASK, facts(underFire = false).observe(TacticalFacts.IN_CONTACT, false)))
+        assertNotEquals(MedicalCare.ACTION, root(TacticalDomain.CARE_TASK, facts(underFire = false).observe(TacticalFacts.IN_CONTACT, true)))
+    }
+
+    @Test fun `a wounded man in cover dresses himself first, in every root, above a patient (#189)`() {
+        val due = { input: FactSnapshot -> input.observe(SelfCareFacts.DUE, true) }
+        assertEquals(SelfTreatment(actor), first(due(facts(underFire = true))).parameters)
+        assertEquals(SelfCare.ACTION, first(due(facts(underFire = true, digs = 1))).key)
+        assertEquals(SelfCare.ACTION, first(due(facts(underFire = false).observe(MedicalFacts.PATIENT, UUID(7, 7)))).key)
+        assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true).observe(SelfCareFacts.DUE, false)).key)
+        val root = { key: TaskKey<EngageTask> -> (HtnPlanningSession(TacticalDomain.npc, owner, key.call(EngageTask(actor)), due(facts(underFire = true))).advance(40) as? PlanningResult.Ready)?.plan?.tasks?.firstOrNull()?.spec?.action?.key }
+        assertEquals(SelfCare.ACTION, root(TacticalDomain.FIGHT_TASK))
+        assertEquals(SelfCare.ACTION, root(TacticalDomain.CARE_TASK))
+        val crew = HtnPlanningSession(TacticalDomain.npc, owner, FireSupport.NPC_TASK.call(CrewDuty(actor, CrewWork.OPERATE)), due(facts(underFire = true))).advance(40) as PlanningResult.Ready
+        assertEquals(SelfCare.ACTION, crew.plan.tasks.first().spec.action.key)
+        val alone = HtnPlanningSession(TacticalDomain.npc, owner, DroneStrike.ALONE.call(StrikeCall(actor)), due(facts(underFire = true))).advance(60) as PlanningResult.Ready
+        assertEquals(SelfCare.ACTION, alone.plan.tasks.first().spec.action.key)
+    }
+
+    @Test fun `a trip to a Supply comes after a patient and before his duty, and stands aside under fire (#189)`() {
+        val supply = com.sbwnpc.squad.ai.coordination.Point3(5.0, 64.0, 5.0)
+        assertEquals(Resupply.TRIP_ACTION, first(facts(underFire = false).observe(SupplyFacts.TRIP, supply)).key)
+        assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true).observe(SupplyFacts.TRIP, supply)).key)
+        assertEquals(MedicalCare.ACTION, first(facts(underFire = false).observe(SupplyFacts.TRIP, supply).observe(MedicalFacts.PATIENT, java.util.UUID(7, 7))).key)
+        // In a fight with rounds left he fights on; with an empty gun he goes, or withdraws without a trip.
+        assertNotEquals(Resupply.TRIP_ACTION, first(facts(underFire = false).observe(SupplyFacts.TRIP, supply).observe(TacticalFacts.IN_CONTACT, true)).key)
+        assertEquals(Resupply.TRIP_ACTION, first(facts(underFire = false).observe(SupplyFacts.TRIP, supply).observe(TacticalFacts.IN_CONTACT, true).observe(SupplyFacts.EMPTY, true)).key)
+        assertEquals(Resupply.WITHDRAW_ACTION, first(facts(underFire = false).observe(TacticalFacts.IN_CONTACT, true).observe(SupplyFacts.EMPTY, true)).key)
+        assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true).observe(SupplyFacts.EMPTY, true)).key)
+        val root = { key: TaskKey<EngageTask>, input: FactSnapshot -> (HtnPlanningSession(TacticalDomain.npc, owner, key.call(EngageTask(actor)), input).advance(40) as? PlanningResult.Ready)?.plan?.tasks?.firstOrNull()?.spec?.action?.key }
+        assertEquals(Resupply.TRIP_ACTION, root(TacticalDomain.CARE_TASK, facts(underFire = false).observe(SupplyFacts.TRIP, supply)))
+        assertEquals(Resupply.WITHDRAW_ACTION, root(TacticalDomain.FIGHT_TASK, facts(underFire = false).observe(SupplyFacts.EMPTY, true)))
+    }
+
     @Test fun `under fire with cover left he moves to cover and then dwells and peeks`() {
         val plan = plan(facts(underFire = true))
         assertEquals(listOf(TacticalDomain.COVER_MOVE, TacticalDomain.COVER_CYCLE), plan.tasks.map { it.spec.action.key })

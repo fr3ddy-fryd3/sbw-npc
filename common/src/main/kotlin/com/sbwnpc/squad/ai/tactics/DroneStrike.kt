@@ -230,16 +230,18 @@ object DroneStrike {
                     })
                 },
             ),
-            // A squadless operator has no duty to fall back on: his engage in a fight, else nothing.
+            // A squadless operator has no duty to fall back on: his answer to fire, his drone, his
+            // engage in a fight, else nothing. Under fire he takes cover even with a drone up, as
+            // before (owner 10.11): the drone flies on by itself (keepFlying) while he hides.
             CompoundTask(
                 ALONE,
-                listOf(
-                    Method<StrikeCall>("drone_strike", eligible = { takesOver() }, decompose = { call, _ -> TaskNetwork.sequence(TASK.call(call)) }),
+                listOf(SelfCare.method<StrikeCall> { it.actor }) + FireAnswers.forRoot<StrikeCall> { it.actor } + listOf(
+                    Method<StrikeCall>("drone_strike", eligible = { Condition { facts -> UnderFire.alone(facts) ?: takesOver().evaluate(facts) } }, decompose = { call, _ -> TaskNetwork.sequence(TASK.call(call)) }),
                     Method<StrikeCall>("engage", eligible = {
-                        Condition { facts -> standsAside(facts) ?: Condition.test(TacticalFacts.IN_CONTACT, "no_contact") { it }.evaluate(facts) }
+                        Condition { facts -> UnderFire.alone(facts) ?: standsAside(facts) ?: Condition.test(TacticalFacts.IN_CONTACT, "no_contact") { it }.evaluate(facts) }
                     }, decompose = { call, _ -> engage(call) }),
                     Method<StrikeCall>("stand_by", eligible = {
-                        Condition { facts -> standsAside(facts) ?: if (facts.value(TacticalFacts.IN_CONTACT) == true) Verdict.Rejected("engages") else Verdict.Allowed }
+                        Condition { facts -> UnderFire.alone(facts) ?: standsAside(facts) ?: if (facts.value(TacticalFacts.IN_CONTACT) == true) Verdict.Rejected("engages") else Verdict.Allowed }
                     }, decompose = { _, _ -> TaskNetwork.EMPTY }),
                 ),
             ),

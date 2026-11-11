@@ -48,6 +48,28 @@ object UnderFire {
             }
         }
 
+    /**
+     * Why a method of a root without a position intent stands aside (#189): in his hole, or under
+     * fire from a known sector. Such a root has no order to keep moving for, so he always answers fire,
+     * and has no post to shelter at: a roof is the full root's.
+     */
+    fun alone(facts: FactView): Verdict? =
+        when {
+            facts.digs > 0 -> Verdict.Rejected("in_hole")
+            facts.firing -> Verdict.Rejected("under_fire")
+            else -> null
+        }
+
+    /** [alone]'s answer as a method's own condition: under fire from a known sector, not in a hole. */
+    val firedOnAlone =
+        Condition { facts ->
+            when {
+                facts.digs > 0 -> Verdict.Rejected("in_hole")
+                !facts.firing -> Verdict.Rejected("not_under_fire")
+                else -> Verdict.Allowed
+            }
+        }
+
     /** He is in the hole he dug. */
     fun inHole() = Condition { facts -> if (facts.digs > 0) Verdict.Allowed else Verdict.Rejected("no_hole") }
 

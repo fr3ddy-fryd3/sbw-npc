@@ -29,6 +29,12 @@ enum class EngageMove(val endsOn: FactKey<Boolean>? = null) {
     /** A target he can newly shoot gets an opening burst before he moves. */
     OPEN_FIRE(TacticalFacts.OPENING_DUE),
 
+    /**
+     * His target vanished into foliage: two short bursts where he last saw it, standing (#189).
+     * A guess at a target is the plan's to make; only the reply to fire he takes is a rule.
+     */
+    FOLIAGE_FIRE(TacticalFacts.FOLIAGE_FIRE_DUE),
+
     /** Holding a post, he makes one bounded approach towards a far enemy. */
     ADVANCE_FROM_POST,
 
@@ -74,10 +80,15 @@ object Engage {
 
     private const val IDENTITY = "engage:"
 
-    /** The moves, first wins. */
+    /**
+     * The moves, first wins. [EngageMove.FOLIAGE_FIRE] comes before the lane moves and the opening
+     * burst: his gun stops observing a target hidden in foliage, so their facts stay as they were
+     * when it vanished and would hold the bursts off until the episode ran out.
+     */
     val ORDER = listOf(
         EngageMove.KEEP_AWAY,
         EngageMove.RETURN_TO_AREA,
+        EngageMove.FOLIAGE_FIRE,
         EngageMove.SIDESTEP,
         EngageMove.RESEARCH_SPOT,
         EngageMove.OPEN_FIRE,
@@ -128,6 +139,7 @@ object Engage {
             EngageMove.SIDESTEP -> flag(facts, TacticalFacts.LANE_BLOCKED_ALLY, "lane_clear_of_allies")
             EngageMove.RESEARCH_SPOT -> flag(facts, TacticalFacts.LANE_BLOCKED_HULL, "lane_clear_of_hulls")
             EngageMove.OPEN_FIRE -> flag(facts, TacticalFacts.OPENING_DUE, "opening_over")
+            EngageMove.FOLIAGE_FIRE -> flag(facts, TacticalFacts.FOLIAGE_FIRE_DUE, "no_foliage_fire_due")
             EngageMove.ADVANCE_FROM_POST -> forward(task, facts) { all(flag(facts, TacticalFacts.HOLDING_ORDER, "not_holding"), flag(facts, TacticalFacts.MAY_ADVANCE, "advance_not_allowed")) }
             EngageMove.CLOSE_IN -> forward(task, facts) { all(not(facts, TacticalFacts.HOLDING_ORDER, "holding"), not(facts, TacticalFacts.IN_REACH, "in_reach"), flag(facts, TacticalFacts.CLEAR_SHOT, "no_clear_shot")) }
             EngageMove.JOIN_FIRE -> forward(task, facts) { all(not(facts, TacticalFacts.HOLDING_ORDER, "holding"), not(facts, TacticalFacts.IN_REACH, "in_reach"), not(facts, TacticalFacts.CLEAR_SHOT, "clear_shot")) }
@@ -166,13 +178,19 @@ object Engage {
             }
         }
 
-    /** Every engage unit's maintain: he may move, is still in contact, and is not walking to resupply. */
-    fun maintain() =
-        Condition.all(
-            Condition.test(TacticalFacts.MOVABLE, "higher_priority_action") { it },
+    /**
+     * An engage unit's maintain: still in contact, not walking to resupply, and, for every move but
+     * [EngageMove.FOLIAGE_FIRE], free to move. The bursts take no step: a man whose feet another
+     * claim holds still fires them, as he did before they were planned; the rules that forbid the
+     * fire itself are in their fact.
+     */
+    fun maintain(move: EngageMove): Condition {
+        val fight = Condition.all(
             Condition.test(TacticalFacts.IN_CONTACT, "contact_lost") { it },
             Condition.test(TacticalFacts.RESUPPLYING, "resupplying") { !it },
         )
+        return if (move == EngageMove.FOLIAGE_FIRE) fight else Condition.all(Condition.test(TacticalFacts.MOVABLE, "higher_priority_action") { it }, fight)
+    }
 
     /**
      * [unit] is over once his executor has finished it ([TacticalFacts.ENGAGE_UNITS] past its

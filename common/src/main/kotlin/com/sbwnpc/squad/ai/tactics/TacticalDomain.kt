@@ -430,6 +430,12 @@ object TacticalFacts {
      */
     val OPENING_DUE = FactKey("actor.opening_due", Boolean::class.javaObjectType)
 
+    /**
+     * His target has just gone out of his sight into foliage and the two bursts at where he last
+     * saw it are still to fire ([com.sbwnpc.squad.combat.LastSeenFire]), nothing forbidding them.
+     */
+    val FOLIAGE_FIRE_DUE = FactKey("actor.foliage_fire_due", Boolean::class.javaObjectType)
+
     /** He walks off to resupply or withdraws: the ammunition rules have his feet. */
     val RESUPPLYING = FactKey("actor.resupplying", Boolean::class.javaObjectType)
 
@@ -685,11 +691,11 @@ object TacticalDomain {
     val LEAVE_HOLE = ActionKey("npc.leave_hole", LeaveHole::class.java)
     private val UNDER_FIRE = TaskKey("npc.under_fire", PositionIntent::class.java)
     private val IN_HOLE = TaskKey("npc.in_hole", PositionIntent::class.java)
-    private val COVER_MOVE_TASK = TaskKey("npc.cover_move", CoverMove::class.java)
-    private val COVER_CYCLE_TASK = TaskKey("npc.cover_cycle", CoverCycle::class.java)
-    private val DIG_TASK = TaskKey("npc.dig", DigIn::class.java)
-    private val HOLD_HOLE_TASK = TaskKey("npc.hold_hole", HoldHole::class.java)
-    private val LEAVE_HOLE_TASK = TaskKey("npc.leave_hole", LeaveHole::class.java)
+    internal val COVER_MOVE_TASK = TaskKey("npc.cover_move", CoverMove::class.java)
+    internal val COVER_CYCLE_TASK = TaskKey("npc.cover_cycle", CoverCycle::class.java)
+    internal val DIG_TASK = TaskKey("npc.dig", DigIn::class.java)
+    internal val HOLD_HOLE_TASK = TaskKey("npc.hold_hole", HoldHole::class.java)
+    internal val LEAVE_HOLE_TASK = TaskKey("npc.leave_hole", LeaveHole::class.java)
     private val POST = TaskKey("npc.post", PositionIntent::class.java)
     private val LEG = TaskKey("npc.leg", MemberLeg::class.java)
     private val PAUSE = TaskKey("npc.fire_pause", FirePause::class.java)
@@ -699,6 +705,9 @@ object TacticalDomain {
 
     /** The root of an engage-only agent: a grenade his squad lets him throw, else his engage (#263). */
     val FIGHT_TASK = TaskKey("npc.fight", EngageTask::class.java)
+
+    /** The root of a man no other plan covers: a squadless medic or supply man, or anyone under fire alone (#189). */
+    val CARE_TASK = TaskKey("npc.care", EngageTask::class.java)
 
     /** One unit of the move his engage chose, see [EngageUnit]. */
     val ENGAGE = ActionKey("npc.engage_unit", EngageUnit::class.java)
@@ -722,6 +731,15 @@ object TacticalDomain {
                             Grenades.throws(facts, underFire)
                         }
                     }, decompose = { intent, facts -> TaskNetwork.sequence(Grenades.next(intent.actor, facts)) }),
+                    // His own wound, once he is in cover or at his patient, before anything (#189).
+                    SelfCare.method { it.actor },
+                    // A patient the allocation gave him comes before cover, his hole and his duty, as
+                    // medical help did before (#189): a critical man pulls a medic under fire out of his fight.
+                    Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { intent, facts -> MedicalCare.treat(intent.actor, facts) }),
+                    // His squad's trip to a Supply, or an empty gun with no trip (#189): after a patient,
+                    // before his duty; under fire, in his hole or under a roof he answers that first.
+                    Method("resupply", eligible = { intent -> Resupply.goes(intent) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { intent, facts -> Resupply.trip(intent.actor, facts) }),
+                    Method("ammo_withdraw", eligible = { intent -> Resupply.withdraws(intent) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { intent, _ -> Resupply.withdraw(intent.actor) }),
                     // Under fire, or in the hole he dug, the man answers that first; every method
                     // below stands aside meanwhile (UnderFire.duty), so exactly one family applies.
                     // A drone in the air keeps him at its monitor through all of it (DroneStrike.flying).
@@ -850,40 +868,50 @@ object TacticalDomain {
                     }, decompose = { intent, facts -> engageOrHold(intent, facts, forward = !intent.duty.holdsBack, POST.call(intent.copy(hold = true, holdFeet = intent.duty.commandsMovement, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
                 ),
             ),
-            CompoundTask(
-                UNDER_FIRE,
-                listOf(
-                    Method("take_cover", eligible = { _ -> UnderFire.coverLeft() }, decompose = { intent, facts ->
-                        val sector = facts.value(TacticalFacts.FIRE_SECTOR)!!
-                        TaskNetwork.sequence(COVER_MOVE_TASK.call(CoverMove(intent.actor, sector, fallBack = false, armour = facts.value(ArmourFacts.RELEVANT))), COVER_CYCLE_TASK.call(CoverCycle(intent.actor, facts.value(TacticalFacts.COVER_CYCLES) ?: 0, facts.value(ArmourFacts.RELEVANT))))
-                    }),
-                    Method("dig_in", eligible = { _ -> UnderFire.noCover(dig = true) }, decompose = { intent, facts -> TaskNetwork.sequence(DIG_TASK.call(DigIn(intent.actor, facts.value(TacticalFacts.DIGS) ?: 0))) }),
-                    // Engaged with no cover in reach: his post where he stands, his gun fighting from it.
-                    // In the open under fire he never moves towards the enemy (forward = false).
-                    Method("hold_open", eligible = { _ -> Condition.all(UnderFire.noCover(dig = false), Condition.test(TacticalFacts.ENGAGED, "not_engaged") { it }) }, decompose = { intent, facts -> engageOrHold(intent, facts, forward = false, POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
-                    Method("fall_back", eligible = { _ -> Condition.all(UnderFire.noCover(dig = false), Condition.test(TacticalFacts.ENGAGED, "engaged") { !it }) }, decompose = { intent, facts ->
-                        val sector = facts.value(TacticalFacts.FIRE_SECTOR)!!
-                        TaskNetwork.sequence(COVER_MOVE_TASK.call(CoverMove(intent.actor, sector, fallBack = true, armour = facts.value(ArmourFacts.RELEVANT))), COVER_CYCLE_TASK.call(CoverCycle(intent.actor, facts.value(TacticalFacts.COVER_CYCLES) ?: 0, facts.value(ArmourFacts.RELEVANT))))
-                    }),
-                ),
-            ),
-            CompoundTask(
-                IN_HOLE,
-                listOf(
-                    Method("leave_hole", eligible = { _ -> UnderFire.leaveHole() }, decompose = { intent, _ -> TaskNetwork.sequence(LEAVE_HOLE_TASK.call(LeaveHole(intent.actor))) }),
-                    Method("dig_deeper", eligible = { _ -> UnderFire.digDeeper() }, decompose = { intent, facts -> TaskNetwork.sequence(DIG_TASK.call(DigIn(intent.actor, facts.value(TacticalFacts.DIGS)!!))) }),
-                    Method("hold_in_hole", eligible = { _ -> UnderFire.holdHole() }, decompose = { intent, facts -> TaskNetwork.sequence(HOLD_HOLE_TASK.call(HoldHole(intent.actor, facts.value(TacticalFacts.DIGS)!!))) }),
-                ),
-            ),
+            // Engaged with no cover in reach: his post where he stands, his gun fighting from it.
+            // In the open under fire he never moves towards the enemy (forward = false).
+            CompoundTask(UNDER_FIRE, FireAnswers.cover({ it.actor }) { intent, facts -> engageOrHold(intent, facts, forward = false, POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
+            CompoundTask(IN_HOLE, FireAnswers.hole { it.actor }),
+            // A root without a position intent has no post to hold: his engage fights from where he
+            // stands, never forward, with its own last resort of holding the spot.
+            CompoundTask(FireAnswers.ANSWER_TASK, FireAnswers.cover({ it.actor }) { task, _ -> TaskNetwork.sequence(ENGAGE_TASK.call(task)) }),
+            CompoundTask(FireAnswers.HOLE_TASK, FireAnswers.hole { it.actor }),
             CompoundTask(
                 FIGHT_TASK,
                 listOf(
                     // An engage-only man has no cover or hole of his own in his plan to answer first.
                     Method("grenade", eligible = { _ -> Condition { facts -> Grenades.throws(facts, Verdict.Rejected("no_under_fire_plan")) } }, decompose = { task, facts -> TaskNetwork.sequence(Grenades.next(task.actor, facts)) }),
+                    SelfCare.method { it.actor },
+                    Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { task, facts -> MedicalCare.treat(task.actor, facts) }),
+                    Method("resupply", eligible = { _ -> Resupply.goes(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, facts -> Resupply.trip(task.actor, facts) }),
+                    Method("ammo_withdraw", eligible = { _ -> Resupply.withdraws(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, _ -> Resupply.withdraw(task.actor) }),
                     Method("engage", eligible = { _ -> Condition.ALWAYS }, decompose = { task, _ -> TaskNetwork.sequence(ENGAGE_TASK.call(task)) }),
                 ),
             ),
+            // The root of a man no other plan covers (#189): a squadless medic, a squadless man who
+            // needs a Supply or has an empty gun, and any man on foot under fire or in his hole with no
+            // plan of his own. His patient (a critical one pulls him out of cover, as a squad's medic),
+            // his trip or withdrawal, his answer to fire, his fight, else nothing. Held whether or not
+            // he fights, it stands in for his engage-only agent, as a lone operator's does (#259).
+            CompoundTask(
+                CARE_TASK,
+                listOf<Method<EngageTask>>(
+                    // Suppressed with a grenade due, he throws it before his cover, as a planned man does.
+                    Method("grenade", eligible = { _ -> Condition { facts -> Grenades.throws(facts, UnderFire.firedOnAlone.evaluate(facts)) } }, decompose = { task, facts -> TaskNetwork.sequence(Grenades.next(task.actor, facts)) }),
+                    SelfCare.method { it.actor },
+                    Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { task, facts -> MedicalCare.treat(task.actor, facts) }),
+                    Method("resupply", eligible = { _ -> Resupply.goes(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, facts -> Resupply.trip(task.actor, facts) }),
+                    Method("ammo_withdraw", eligible = { _ -> Resupply.withdraws(null) }, score = { _, _ -> Resupply.PRIORITY }, decompose = { task, _ -> Resupply.withdraw(task.actor) }),
+                ) + FireAnswers.forRoot<EngageTask> { it.actor } + listOf<Method<EngageTask>>(
+                    Method("fight", eligible = { _ -> Condition { facts -> UnderFire.alone(facts) ?: if (facts.value(TacticalFacts.IN_CONTACT) == true) Verdict.Allowed else Verdict.Rejected("no_contact") } }, decompose = { task, _ -> TaskNetwork.sequence(FIGHT_TASK.call(task)) }),
+                    Method("stand_by", eligible = { _ -> Condition { facts -> UnderFire.alone(facts) ?: Verdict.Allowed } }, decompose = { _, _ -> TaskNetwork.EMPTY }),
+                ),
+            ),
             Grenades.task(),
+            MedicalCare.task(),
+            SelfCare.task(),
+            Resupply.tripTask(),
+            Resupply.withdrawTask(),
             CompoundTask(
                 ENGAGE_TASK,
                 Engage.ORDER.map { move ->
@@ -896,7 +924,7 @@ object TacticalDomain {
                 PrimitiveSpec(
                     Engage.identity(unit),
                     ActionSpec(ENGAGE, unit, setOf(ResourceKey(unit.actor, "motion")), timeoutTicks = Engage.UNIT_TIMEOUT),
-                    TaskContract(maintain = Engage.maintain(), completed = Engage.unitOver(unit)),
+                    TaskContract(maintain = Engage.maintain(unit.move), completed = Engage.unitOver(unit)),
                     planning = ownActor(unit.actor),
                 )
             },

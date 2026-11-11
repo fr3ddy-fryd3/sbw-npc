@@ -460,7 +460,7 @@ internal class NativeDig(private val dig: DigIn, npc: NpcEntity, private val sta
         val at = column ?: return ActionUpdate.Failed("no_dig_site")
         val pos = block ?: return ActionUpdate.Failed("no_dig_site")
         val current = npc.blockPosition()
-        // Pushed off the column, the hole would open beside him: see SeekCoverBehaviour's dig.
+        // Pushed off the column, the hole would open beside him and he would never stand in it.
         if (current.x != at.x || current.z != at.z) {
             level.destroyBlockProgress(npc.id, pos, -1)
             return ActionUpdate.Failed("displaced")
@@ -514,6 +514,8 @@ internal class NativeHoldHole(private val npc: NpcEntity, private val state: Cov
 
     override fun resume(now: Long) = Unit
 
+    // The hole outlives a replan: the claim is the hole's, let go by climbing out or, once his plan
+    // ends (a seat taken counts), by the world's sweep at its next refresh.
     override fun cancel(now: Long, reason: String) = Unit
 }
 

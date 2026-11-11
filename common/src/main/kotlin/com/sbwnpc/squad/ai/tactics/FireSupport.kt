@@ -222,13 +222,16 @@ object FireSupport {
         val npc = listOf(
             CompoundTask(
                 NPC_TASK,
-                listOf(
+                // Under fire from a known sector, or in his hole, he answers that first (#189), his
+                // tube left meanwhile; with no cover and no dig he fights from where he stands
+                // rather than serve it (owner 10.11).
+                listOf(SelfCare.method<CrewDuty> { it.actor }) + FireAnswers.forRoot<CrewDuty> { it.actor } + listOf(
                     // An enemy at arm's length: he fights it off through the engage every man has
                     // (#251), never forward, and serves again once it is gone.
-                    Method<CrewDuty>("self_defence", eligible = { flagCondition(CrewFacts.THREATENED, "not_threatened") }, decompose = { duty, _ ->
+                    Method<CrewDuty>("self_defence", eligible = { Condition { facts -> UnderFire.alone(facts) ?: flagCondition(CrewFacts.THREATENED, "not_threatened").evaluate(facts) } }, decompose = { duty, _ ->
                         TaskNetwork.sequence(TacticalDomain.ENGAGE_TASK.call(EngageTask(duty.actor, forward = false)))
                     }),
-                    Method<CrewDuty>("serve", eligible = { Condition.test(CrewFacts.THREATENED, "self_defence") { !it } }, decompose = { duty, _ -> TaskNetwork.sequence(DUTY.call(duty)) }),
+                    Method<CrewDuty>("serve", eligible = { Condition { facts -> UnderFire.alone(facts) ?: Condition.test(CrewFacts.THREATENED, "self_defence") { !it }.evaluate(facts) } }, decompose = { duty, _ -> TaskNetwork.sequence(DUTY.call(duty)) }),
                 ),
             ),
             PrimitiveTask(DUTY) { duty ->

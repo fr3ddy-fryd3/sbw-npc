@@ -12,7 +12,7 @@ import net.minecraft.world.phys.Vec3
 
 /**
  * Single shared raycast primitive for "is there solid terrain between these two points" — both
- * `SeekCoverBehaviour` (a candidate only counts as real cover if EVERY nearby threat is blocked
+ * the cover search ([com.sbwnpc.squad.entity.ai.CoverSearch]: a candidate only counts as real cover if EVERY nearby threat is blocked
  * from it, and a peek point is only used if the target is NOT blocked from it) and
  * `GunAttackBehaviour`'s partial-cover firing-position logic (a candidate's concealment score is how
  * high up a raycast from the target gets blocked) need the exact same block-collider raycast.

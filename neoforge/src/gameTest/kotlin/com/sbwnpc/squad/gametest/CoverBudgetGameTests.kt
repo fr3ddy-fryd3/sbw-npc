@@ -1,10 +1,10 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.CoverPeekSearch
-import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
@@ -40,41 +40,6 @@ object CoverBudgetGameTests {
                 helper.assertTrue(result.point.y == npc.y && result.path.canReach(), "Continuation reused the rejected fence-top route")
                 helper.assertTrue(searches.values.all { it <= 1 } && searches.values.sum() == 2, "Continuation repeated native work: $searches")
                 scene.result("PASS", "rejectedAt=$rejectedAt resumedAt=${helper.tick} native=2 point=${helper.relativeVec(result.point)}")
-                helper.succeed()
-            }
-        }
-    }
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 200, batch = "cover-fallback-budget")
-    fun queuedFallbackPathsObeyNativeBudgetAndAllResume(helper: GameTestHelper) {
-        val scene = CombatIdleGameTests.Scene(helper, "cover-fallback-budget", recordTrace = false)
-        val searches = mutableMapOf<Long, Int>()
-        val tick = SeekCoverBehaviour::class.java.getDeclaredMethod("tick", NpcEntity::class.java).apply { isAccessible = true }
-        val actors = List(16) { i ->
-            val npc = scene.spawn(Vec3(20.5, 1.0, 12.5 + i * 12)).apply { isNoAi = true }
-            val threat = npc.eyePosition.add(96.0, 0.0, 0.0)
-            npc.suppress(threat)
-            val behaviour = SeekCoverBehaviour()
-            val goal = npc.blockPosition().offset(-8, 0, 0)
-            field("pendingFallback").set(behaviour, goal)
-            field("fallbackThreat").set(behaviour, threat)
-            (npc.navigation as VehicleAwareNavigation).pathWorkObserver = { _, _, native -> if (native) searches.merge(helper.tick, 1, Int::plus) }
-            Triple(npc, behaviour, goal)
-        }
-        scene.onClose = { actors.forEach { (npc, _, _) -> (npc.navigation as VehicleAwareNavigation).pathWorkObserver = null } }
-        helper.onEachTick {
-            if (helper.tick < 20) return@onEachTick
-            actors.forEach { (npc, behaviour, goal) ->
-                npc.setOnGround(true)
-                if (field("coverTarget").get(behaviour) != goal) tick.invoke(behaviour, npc)
-            }
-            val assigned = actors.count { (_, behaviour, goal) -> field("coverTarget").get(behaviour) == goal }
-            val maximum = searches.values.maxOrNull() ?: 0
-            helper.assertTrue(maximum <= 4, "Fallback paths exceeded native budget: $searches")
-            if (assigned == actors.size) {
-                helper.assertTrue(searches.values.sum() == 16, "Fallback admission rebuilt or omitted routes: $searches")
-                scene.result("PASS", "assigned=$assigned native=${searches.values.sum()} maximumNativePerTick=$maximum tick=${helper.tick}")
                 helper.succeed()
             }
         }
@@ -150,8 +115,86 @@ object CoverBudgetGameTests {
         }
     }
 
+    /**
+     * Sixteen squadless men suppressed in one tick from a shooter none of them can see, on the open
+     * ground east of the arena where no cover is in reach (as in `noCoverNoTargetFallsBack`): each
+     * plan falls back (#189). Their sixteen fall-back searches queue in the per-tick tactical path
+     * budget, so no tick searches more tactical paths than it allows, all are admitted promptly, and
+     * every man gets away. Only tactical position searches are counted: a walking man's own repath
+     * is the navigation's, which the budget does not cover.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "cover-fallback-budget")
+    fun simultaneousFallBacksObeyNativeBudgetAndAllLeave(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "cover-fallback-budget", recordTrace = false)
+        val searches = mutableMapOf<Long, Int>()
+        val actors = List(16) { i ->
+            val npc = scene.spawn(Vec3(140.5, 1.0, 12.5 + i * 12))
+            (npc.navigation as VehicleAwareNavigation).positionPathObserver = { _, _, _ -> searches.merge(helper.tick, 1, Int::plus) }
+            npc to npc.eyePosition.add(-136.0, 0.0, 0.0)
+        }
+        scene.onClose = { actors.forEach { (npc, _) -> (npc.navigation as VehicleAwareNavigation).positionPathObserver = null } }
+        val start = actors.associate { (npc, threat) -> npc to npc.eyePosition.distanceTo(threat) }
+        val left = mutableSetOf<NpcEntity>()
+        helper.onEachTick {
+            if (helper.tick == SUPPRESSED_AT) actors.forEach { (npc, threat) -> npc.suppress(threat) }
+            if (helper.tick < SUPPRESSED_AT) return@onEachTick
+            val admission = searches.filterKeys { it < SUPPRESSED_AT + ADMISSION_TICKS }
+            val maximum = searches.values.maxOrNull() ?: 0
+            helper.assertTrue(maximum <= TACTICAL_PATHS_PER_TICK, "Tactical paths exceeded the budget: $searches")
+            if (helper.tick == SUPPRESSED_AT + ADMISSION_TICKS) helper.assertTrue(admission.values.sum() >= actors.size, "Not every fall-back was admitted within $ADMISSION_TICKS ticks: $admission")
+            actors.filter { (npc, threat) -> npc.eyePosition.distanceTo(threat) - start.getValue(npc) >= FALL_BACK_GAIN }.forEach { left += it.first }
+            if (helper.tick % 40L == 0L) scene.result("RUNNING", "tick=${helper.tick} left=${left.size}/16 maximumPerTick=$maximum")
+            if (left.size == actors.size) {
+                helper.assertTrue(helper.tick >= SUPPRESSED_AT + ADMISSION_TICKS, "All left before the admission was checked")
+                scene.result("PASS", "tick=${helper.tick} maximumPerTick=$maximum admitted=${admission.values.sum()}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** The tactical path budget's paths per tick (`TacticalPathBudget`). */
+    private const val TACTICAL_PATHS_PER_TICK = 4
+
+    /** Sixteen searches at four a tick, with room for the plans' first refresh window. */
+    private const val ADMISSION_TICKS = 15L
+
+    /** How far from the fire a man has to get to count as having fallen back, as in the planned-cover scene. */
+    private const val FALL_BACK_GAIN = 4.0
+
+    /**
+     * A squadless man in the open with his enemy in sight, suppressed: his answer to fire is a root
+     * of his own (#189), and once the suppression lapses the same refresh hands his agent the fight.
+     * No tick between the two leaves him with a target and no plan; that gap was the throttle window
+     * of the refresh. No wall: behind one he loses his hidden target, and with it the fight to hand over.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "cover-lone-handoff")
+    fun squadlessManKeepsAPlanWhenHisAnswerToFireEnds(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "cover-lone-handoff", recordTrace = false)
+        val npc = scene.spawn(Vec3(20.5, 1.0, 50.5))
+        val enemy = scene.enemy(Vec3(60.5, 1.0, 50.5))
+        npc.target = enemy
+        var rooted = false
+        var endedAt = -1L
+        helper.onEachTick {
+            if (helper.tick == SUPPRESSED_AT) npc.suppress(enemy.eyePosition)
+            if (helper.tick <= SUPPRESSED_AT) return@onEachTick
+            rooted = rooted || NativeTactics.hasAgent(npc)
+            if (!rooted) return@onEachTick
+            if (endedAt < 0 && !npc.isSuppressed()) endedAt = helper.tick
+            if (endedAt < 0 || npc.target == null) return@onEachTick
+            helper.assertTrue(NativeTactics.hasAgent(npc), "No plan at tick ${helper.tick}, ${helper.tick - endedAt} ticks after his suppression ended at $endedAt")
+            if (helper.tick - endedAt >= HANDOFF_WATCH_TICKS) {
+                scene.result("PASS", "suppressionEnded=$endedAt watched=$HANDOFF_WATCH_TICKS")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** How long after his suppression ends the hand-off scene watches him: several refresh windows. */
+    private const val HANDOFF_WATCH_TICKS = 60L
+
     /** The tick every man is suppressed at once, after the scene settles. */
     private const val SUPPRESSED_AT = 20L
-
-    private fun field(name: String) = SeekCoverBehaviour::class.java.getDeclaredField(name).apply { isAccessible = true }
 }

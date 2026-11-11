@@ -35,26 +35,28 @@ enum class NpcActivity(val holds: Set<Cap>) {
     TACTIC(setOf(Cap.FEET)),
 
     /**
-     * Walking to a Supply: [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] and the out-of-ammo
-     * fallback. Feet only: the fallback walks while the NPC keeps firing its last rounds.
+     * Walking to a Supply or out of a fight with an empty gun: the plan's trip and withdrawal
+     * (#189, SupplyCare). Feet only: the fire task's fallback walks a man all but out while he keeps
+     * firing his last rounds.
      */
     RESUPPLY(setOf(Cap.FEET)),
 
-    /** A medic walking to or treating a critically wounded ally: [com.sbwnpc.squad.entity.ai.MedicHealBehaviour]. */
+    /** A medic walking to or treating a critically wounded ally: the plan's treatment, `MedicCare` (#189). */
     HEAL(setOf(Cap.FEET, Cap.FIRE, Cap.LOOK)),
 
-    /** Moving to, holding or leaving cover: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. */
+    /** Moving to, holding or leaving cover: his plan's cover actions ([com.sbwnpc.squad.ai.integration.NativeCoverMove]). */
     COVER(setOf(Cap.FEET, Cap.FIRE)),
 
     /**
-     * Stepping out of cover to return fire ([com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]). The
+     * Stepping out of cover to return fire ([com.sbwnpc.squad.ai.integration.NativeCoverCycle]). The
      * cover claim is let go for the peek, so the rifle is free; the feet belong to the peek.
      */
     PEEK(setOf(Cap.FEET)),
 
     /**
-     * Holding a foxhole it dug: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. The man fights from
-     * the hole, so the trigger stays free.
+     * Holding a foxhole it dug ([com.sbwnpc.squad.ai.integration.NativeDig]), claimed by the hole
+     * itself ([com.sbwnpc.squad.ai.integration.CoverState]) until he climbs out. The man fights
+     * from the hole, so the trigger stays free.
      */
     DUG_IN(setOf(Cap.FEET)),
 

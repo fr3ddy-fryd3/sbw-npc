@@ -48,10 +48,9 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * [NpcEntity.fireObservation] for his plan's facts.
  */
 class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
-    // ExtendedBehaviour defaults to a 60-tick runtime cap (confirmed via javap — see
-    // SeekCoverBehaviour's doc comment for the full story of what this silently broke there); this
-    // behaviour is meant to keep running for as long as ATTACK_TARGET stays set, not get force-
-    // stopped and immediately restarted every 3 seconds regardless of combat state.
+    // ExtendedBehaviour defaults to a 60-tick runtime cap (confirmed via javap), enforced apart from
+    // shouldKeepRunning(); this behaviour is meant to keep running for as long as ATTACK_TARGET
+    // stays set, not get force-stopped and immediately restarted every 3 seconds.
     init {
         noTimeout()
     }
@@ -198,7 +197,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             SquadTactics.repositionForFire(entity)
             entity.firingObstruction.reset()
         }
-        // The CORE blind-fire executor owns the gun and cached aim while vegetation hides the target.
+        // While vegetation hides the target, his plan's foliage bursts (EngageMove.FOLIAGE_FIRE) own the gun and the aim.
         if (foliageHidden) {
             entity.firingObstruction.observe(false)
             return

@@ -162,9 +162,8 @@ object EngageOnlyGameTests {
     }
 
     /**
-     * A squadless man suppressed with a wall nearby: SeekCover, an immediate reaction outside his
-     * plan, takes his feet. While it holds them no engage unit of his runs, so the two never steer
-     * him at once, and he reaches the wall.
+     * A squadless man suppressed with a wall nearby: his engage-only fight has no cover, so a root
+     * of his own answers the fire (#189) and walks him behind the wall, out of the enemy's sight.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-suppressed")
@@ -186,14 +185,12 @@ object EngageOnlyGameTests {
                 if (NativeTactics.hasAgent(man)) coveredWithAgent++
                 if (com.sbwnpc.squad.combat.Sightline.blocked(helper.level, enemy.eyePosition, man.eyePosition, man)) hidden++
                 coverSpot = helper.relativeVec(man.position())
-                helper.assertTrue(!SquadTactics.move(man), "His engage steered him while SeekCover held his feet at tick ${helper.tick}")
             }
             if (helper.tick >= SUPPRESS_UNTIL) {
                 helper.assertTrue(covered > 0, "He never took cover under fire")
                 helper.assertTrue(hidden > 0, "He never got out of the enemy's sight behind the wall; in cover at $coverSpot")
-                // His engage-only agent goes once his gun stops reporting the fight; the check
-                // above only proves something while it still lives.
-                helper.assertTrue(coveredWithAgent > 0, "His agent was gone before he reached cover, so nothing tested the hand-off")
+                // His cover is his plan's: a cover claim held with no agent of his would be some other mover's.
+                helper.assertTrue(coveredWithAgent == covered, "He held cover ${covered - coveredWithAgent} ticks with no plan of his own")
                 scene.result("PASS", "covered=$covered withAgent=$coveredWithAgent hidden=$hidden")
                 helper.succeed()
             }
