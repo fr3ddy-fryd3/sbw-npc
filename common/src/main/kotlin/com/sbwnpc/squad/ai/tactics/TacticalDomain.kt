@@ -727,10 +727,10 @@ object TacticalDomain {
                             Grenades.throws(facts, underFire)
                         }
                     }, decompose = { intent, facts -> TaskNetwork.sequence(Grenades.next(intent.actor, facts)) }),
-                    // A patient the allocation gave him comes before cover, his hole and his duty, as
-                    // medical help did before (#189): a critical man pulls a medic under fire out of his fight.
                     // His own wound, once he is in cover or at his patient, before anything (#189).
                     SelfCare.method { it.actor },
+                    // A patient the allocation gave him comes before cover, his hole and his duty, as
+                    // medical help did before (#189): a critical man pulls a medic under fire out of his fight.
                     Method("treat", eligible = { _ -> MedicalCare.treats }, score = { _, _ -> MedicalCare.PRIORITY }, decompose = { intent, facts -> MedicalCare.treat(intent.actor, facts) }),
                     // His squad's trip to a Supply, or an empty gun with no trip (#189): after a patient,
                     // before his duty; under fire, in his hole or under a roof he answers that first.

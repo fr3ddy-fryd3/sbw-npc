@@ -24,11 +24,12 @@ import java.util.UUID
  * Being in cover, his hole or at a patient is latched: choosing the dressing stops the cover or
  * treatment executor, which drops the claim the gate reads, and without the latch the fact would
  * flip back before the dressing ran and the plan would return to cover and choose it again, forever.
+ * The latch lasts [LATCH_TICKS] only, so a man who has left his cover does not dress in the open.
  * A dressing done waits [COOLDOWN_TICKS] before the next, as the old behaviour's start check did, so
  * a kit that leaves him below the threshold does not drain the rest in a row.
  */
 internal class SelfTreatCare(private val level: ServerLevel) {
-    private val latched = HashSet<UUID>()
+    private val shelteredAt = HashMap<UUID, Long>()
     private val nextAt = HashMap<UUID, Long>()
 
     /** [npc]'s own care fact at [now]. */
@@ -36,23 +37,24 @@ internal class SelfTreatCare(private val level: ServerLevel) {
         val wounded = mayTreat(npc) && now >= (nextAt[npc.uuid] ?: 0L)
         val sheltered = npc.holdsAny(NpcActivity.COVER, NpcActivity.HEAL) || npc.holds(NpcActivity.DUG_IN)
         if (!wounded) {
-            latched -= npc.uuid
+            shelteredAt -= npc.uuid
         } else if (sheltered) {
-            latched += npc.uuid
+            shelteredAt[npc.uuid] = now
         }
-        return facts.observe(SelfCareFacts.DUE, wounded && npc.uuid in latched)
+        val latched = shelteredAt[npc.uuid]?.let { now - it <= LATCH_TICKS } == true
+        return facts.observe(SelfCareFacts.DUE, wounded && latched)
     }
 
     /** The dressing of [npc], run in its first tick. */
     fun action(npc: NpcEntity): ActionExecution = Dressing(npc)
 
     fun keep(alive: (UUID) -> Boolean) {
-        latched.removeIf { !alive(it) }
+        shelteredAt.keys.removeIf { !alive(it) }
         nextAt.keys.removeIf { !alive(it) }
     }
 
     fun clear() {
-        latched.clear()
+        shelteredAt.clear()
         nextAt.clear()
     }
 
@@ -60,7 +62,7 @@ internal class SelfTreatCare(private val level: ServerLevel) {
 
     private inner class Dressing(private val npc: NpcEntity) : ActionExecution {
         override fun start(now: Long): ActionUpdate {
-            latched -= npc.uuid
+            shelteredAt -= npc.uuid
             nextAt[npc.uuid] = now + COOLDOWN_TICKS
             // A grenade or drone that arrived since the plan looked: the next look decides again.
             if (!mayTreat(npc)) return ActionUpdate.Completed(listOf(ActionEvidence("not_needed", now, "${npc.uuid}")))
@@ -71,7 +73,8 @@ internal class SelfTreatCare(private val level: ServerLevel) {
             return ActionUpdate.Completed(listOf(ActionEvidence("self_treated", now, "${npc.uuid}")))
         }
 
-        override fun tick(now: Long) = start(now)
+        // The dressing ends in start; a poll after it never dresses again.
+        override fun tick(now: Long): ActionUpdate = ActionUpdate.Completed(listOf(ActionEvidence("dressed", now, "${npc.uuid}")))
 
         override fun suspend(now: Long, reason: String) = Unit
 
@@ -83,6 +86,9 @@ internal class SelfTreatCare(private val level: ServerLevel) {
     private companion object {
         const val WOUNDED_FRACTION = 0.5f
         const val COOLDOWN_TICKS = 10L
+
+        /** How long being in cover still counts once the dressing's choice has dropped the claim. */
+        const val LATCH_TICKS = 20L
         const val PARTICLES = 12
         const val PARTICLE_SCALE = 1.5f
         const val PARTICLE_SPREAD = 0.3
