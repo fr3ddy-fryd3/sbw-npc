@@ -27,6 +27,7 @@ class NpcEngageDomainTest {
         val openingDue: Boolean = false,
         val foliageDue: Boolean = false,
         val units: Int = 0,
+        val slotLegBlocked: Boolean = false,
     )
 
     private fun facts(s: Situation, now: Long = 1000) =
@@ -37,7 +38,7 @@ class NpcEngageDomainTest {
             .observe(TacticalFacts.OUTSIDE_AREA, s.outside).observe(TacticalFacts.MAY_ADVANCE, s.mayAdvance)
             .observe(TacticalFacts.LANE_BLOCKED_ALLY, s.allyBlocked).observe(TacticalFacts.LANE_BLOCKED_HULL, s.hullBlocked)
             .observe(TacticalFacts.OPENING_DUE, s.openingDue).observe(TacticalFacts.FOLIAGE_FIRE_DUE, s.foliageDue)
-            .observe(TacticalFacts.ENGAGE_UNITS, s.units)
+            .observe(TacticalFacts.ENGAGE_UNITS, s.units).observe(TacticalFacts.SLOT_LEG_BLOCKED, s.slotLegBlocked)
 
     private fun unit(input: FactSnapshot, call: PositionIntent = follower): EngageUnit {
         val plan = (HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(call), input).advance(40) as PlanningResult.Ready).plan
@@ -57,6 +58,11 @@ class NpcEngageDomainTest {
         assertEquals(EngageMove.HOLD_SPOT, move(Situation(inReach = true, clearShot = true)))
         assertEquals(EngageMove.CLOSE_IN, move(Situation(clearShot = true)))
         assertEquals(EngageMove.JOIN_FIRE, move(Situation()))
+    }
+
+    @Test fun `with no leg to his slot and no shot he holds a spot instead of planning the same leg again`() {
+        assertEquals(EngageMove.HOLD_SPOT, move(Situation(slotLegBlocked = true)))
+        assertEquals(EngageMove.CLOSE_IN, move(Situation(slotLegBlocked = true, clearShot = true)))
     }
 
     @Test fun `on a sidearm no move takes him forward`() {

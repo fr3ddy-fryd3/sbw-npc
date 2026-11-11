@@ -76,6 +76,9 @@ internal class EngageState(private val npc: NpcEntity) {
     /** Until when his last search for a spot clear of a hull stands, kept across units like [sidestepRestUntil]. */
     var researchRestUntil = 0
 
+    /** Until when the leg towards his slot is known to lead nowhere ([Engage.SLOT_LEG_REST]), kept across units. */
+    var slotLegRestUntil = 0
+
     /** When a look last found the held spot without a shot, for [LostShotGrace]; a new spot clears it. */
     var lostShotAt: Int? = null
 
@@ -185,6 +188,7 @@ internal object EngageFacts {
             .observe(TacticalFacts.FOLIAGE_FIRE_DUE, foliageFireDue(npc, target, now))
             .observe(TacticalFacts.RESUPPLYING, npc.lowAmmoFallback() != null || npc.retreatPoint() != null)
             .observe(TacticalFacts.ENGAGE_UNITS, state.units)
+            .observe(TacticalFacts.SLOT_LEG_BLOCKED, npc.tickCount < state.slotLegRestUntil)
         val distance = target?.let { CombatGeometry.flat(npc.position(), it.position()) }
         val keepAway = CombatGeometry.keepAway(npc)
         bands.keepAway = keepAway > 0.0 && band(bands.keepAway, distance, keepAway, within = true)
@@ -573,7 +577,10 @@ private class JoinFire(npc: NpcEntity, state: EngageState, sidearm: Boolean) : E
         state.letGo()
         walking = true
         val leg = CombatGeometry.slotStep(npc, target)
-        if (leg == null || !state.navigator.navigate(npc, target, leg) || npc.navigation.isDone) done("no_leg")
+        if (leg == null || !state.navigator.navigate(npc, target, leg) || npc.navigation.isDone) {
+            state.slotLegRestUntil = clock + Engage.SLOT_LEG_REST.toInt()
+            done("no_leg")
+        }
     }
 }
 
