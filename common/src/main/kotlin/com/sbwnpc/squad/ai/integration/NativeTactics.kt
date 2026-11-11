@@ -640,6 +640,9 @@ object NativeTactics {
          */
         private val journeys = HashMap<UUID, Int>()
 
+        /** The squads that fought their attack's defence, by the order stamp: they no longer travel ([SquadJourney]). */
+        private val fought = HashMap<UUID, Int>()
+
         // Recon squads (#194): each one's approach under its order, the squads on it now, and the
         // stalking ones whose men keep crouched and wary.
         private val reconProgress = HashMap<UUID, ReconProgress>()
@@ -1501,6 +1504,7 @@ object NativeTactics {
                 air.roster.collect()
                 tanks.roster.collect()
                 journeys.entries.removeIf { (id, stamp) -> manager.get(id)?.orderStamp != stamp }
+                fought.entries.removeIf { (id, stamp) -> manager.get(id)?.orderStamp != stamp }
                 // Every squad, crews and planned men alike, before anything plans with it.
                 manager.all().forEach(::journey)
                 seatsDue.keys.retainAll(journeys.keys)
@@ -2633,7 +2637,10 @@ object NativeTactics {
             val contacts = onFoot.map(SquadTransit::contact)
             val contact = JourneyContact(contacts.any { it.enemy }, contacts.any { it.mob })
             val travelling = journeys[saved.id] == saved.orderStamp
-            val travels = SquadJourney.travels(SquadTransit.distant(saved, level), contact, travelling)
+            // Noted on every pass the squad is in contact, not only when it stops: this runs before
+            // the attack's own pass, so on the first contact the attack may see its defence only after.
+            if (contact.enemy && saved.order == SquadOrder.ATTACK && operations.operationOf(saved.id)?.let { attacks[it.id]?.defenceMet } == true) fought[saved.id] = saved.orderStamp
+            val travels = SquadJourney.travels(SquadTransit.distant(saved, level), contact, travelling, fought[saved.id] == saved.orderStamp)
             if (travels != travelling) {
                 if (travels) journeys[saved.id] = saved.orderStamp else journeys.remove(saved.id)
                 DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=journey travels={} contact={}", saved.id, travels, contact)
@@ -3092,6 +3099,7 @@ object NativeTactics {
             alarms.clear()
             closeContacts.clear()
             journeys.clear()
+            fought.clear()
             reinforcementPoints.clear()
             rides.clear()
             stations.clear()

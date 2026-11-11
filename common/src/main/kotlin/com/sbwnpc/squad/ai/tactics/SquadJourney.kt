@@ -21,6 +21,10 @@ object SquadJourney {
      * A squad far from its objective ([distant]) travels unless an enemy is close. A mob close by
      * keeps a squad from setting off, but once it is [travelling] a mob closing in does not stop the
      * trip: whoever sees it shoots from where he is. An enemy squad or player close by always does.
+     *
+     * A squad that has [fought] its attack's defence under this order never travels again: the
+     * attack moves it from there. In the forest of 10.11 the defenders dropped in and out of sight,
+     * and each time the squad went back to the march and walked at them with no tactics (#312).
      */
-    fun travels(distant: Boolean, contact: JourneyContact, travelling: Boolean): Boolean = distant && !contact.enemy && (travelling || !contact.mob)
+    fun travels(distant: Boolean, contact: JourneyContact, travelling: Boolean, fought: Boolean): Boolean = !fought && distant && !contact.enemy && (travelling || !contact.mob)
 }
