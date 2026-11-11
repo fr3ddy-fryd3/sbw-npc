@@ -971,6 +971,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         descentRecoveryUntil = tickCount + 100
     }
 
+    /** Withdraws [allowRecoveryDescent] when the deeper drop led nowhere either. */
+    internal fun forbidRecoveryDescent() {
+        descentRecoveryUntil = -1
+    }
+
     /** Ordinary marches avoid damaging drops; a stranded NPC can use a bounded descent. */
     override fun getMaxFallDistance(): Int {
         val normal = super.getMaxFallDistance()

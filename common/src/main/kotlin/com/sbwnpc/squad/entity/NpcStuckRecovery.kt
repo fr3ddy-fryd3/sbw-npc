@@ -125,11 +125,20 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
             DebugFlags.log(LogGroup.STUCK, "{} broke {} at {} to get unstuck", npc.uuid, state.block.descriptionId, pos)
         }
         if (cleared.isEmpty()) navigation?.rejectStuckStep()
-        // Relax descent only to get off a crown. A blocked upward step is no reason to drop
-        // several blocks below the route, and clearing dirt underfoot excavated deeper traps.
-        if (supports.any { WalkingClearance.leaves(level.getBlockState(it)) }) npc.allowRecoveryDescent()
+        // Relax descent to get off a crown, or out of a box with no way out at the usual limit. A
+        // blocked upward step on a route that exists is no reason to drop several blocks below it,
+        // and clearing dirt underfoot excavated deeper traps. Boxed in, a scout stood 90 minutes on a
+        // calcite ledge with drops of 5-6 blocks beside him (playtest 11.11).
+        val offCrown = supports.any { WalkingClearance.leaves(level.getBlockState(it)) }
+        val noWayOut = !walkingInPlace && boxedIn && recoveryAttempts >= BOXED_IN_DESCENT_ATTEMPTS
+        if (offCrown || noWayOut) npc.allowRecoveryDescent()
         npc.navigation.stop()
-        npc.navigation.moveTo(npc.navigation.createPath(destination, 0), 1.0)
+        val replanned = npc.navigation.createPath(destination, 0)
+        // The drop is taken only where it leads somewhere: a box with nothing below costs no health.
+        if (!offCrown && noWayOut && (replanned == null || replanned.endNode?.asBlockPos()?.closerThan(npc.blockPosition(), 2.0) != false)) {
+            npc.forbidRecoveryDescent()
+        }
+        npc.navigation.moveTo(replanned, 1.0)
         DebugFlags.log(
             LogGroup.STUCK,
             "{} replanned from {} toward {} after blocked step {} with fall limit {}",
@@ -168,6 +177,9 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
 
         /** Stood still this long with a path before it clears the way. */
         const val STUCK_BREAK_TICKS = 30
+
+        /** Boxed in, this many replans at the usual fall limit fail before a deeper drop is allowed. */
+        const val BOXED_IN_DESCENT_ATTEMPTS = 2
 
         /** A path that goes nowhere counts only while they keep coming. */
         const val NOWHERE_FRESH_TICKS = 40

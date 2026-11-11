@@ -1,16 +1,19 @@
 package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.ai.integration.NativeTactics
+import com.sbwnpc.squad.ai.tactics.ReconStage
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.GroupOrders
 import com.sbwnpc.squad.squad.SquadOrder
+import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.gametest.framework.GameTestInfo
 import net.minecraft.gametest.framework.GameTestListener
 import net.minecraft.gametest.framework.GameTestRunner
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
@@ -81,6 +84,25 @@ object SavedForestAttackGameTests {
         }
     }
 
+    /**
+     * Playtest 11.11, the owner's save after it (fixture `forest-stuck-1111`, Gabriel put back on his ledge): Charlie's scout Gabriel
+     * Anderson had retreated onto a one-block calcite ledge, walls on two sides and drops of 5-6 blocks
+     * on the others, and stood there for 90 minutes with a fall limit of 3. Aaron Anderson reached the
+     * staging point, but the stage counted Gabriel too: Charlie never stalked and Echo waited for
+     * reports that could not come. Boxed in, Gabriel takes the bounded drop off the ledge.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 3200, batch = "saved-stranded-scout", skyAccess = true)
+    fun savedStrandedScoutDropsOffHisLedge(helper: GameTestHelper) = strandedScout(helper, walledIn = false)
+
+    /**
+     * The same save with Gabriel's ledge walled in, so no drop frees him: Charlie stalks on Aaron's
+     * position alone.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 3200, batch = "saved-stranded-scout-walled", skyAccess = true)
+    fun savedStrandedScoutDoesNotHoldHisSquad(helper: GameTestHelper) = strandedScout(helper, walledIn = true)
+
     private val RECON = UUID.fromString("3da81287-a7eb-4679-9c60-0107acfd58a7")
     private val MORTAR = UUID.fromString("fea9177c-5496-498f-84b9-64a222f9d3ff")
     private val INFANTRY = UUID.fromString("fa4340dd-3352-43bb-87da-073f84c61414")
@@ -113,10 +135,50 @@ object SavedForestAttackGameTests {
         }
     }
 
+    private fun strandedScout(helper: GameTestHelper, walledIn: Boolean) {
+        val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
+        Files.createDirectories(report)
+        val replay = SavedBattleReplay(helper.level, Path.of(System.getProperty("sbwnpc.gameTestReplay")))
+        restoreOnEnd(helper, replay)
+        replay.restore()
+        helper.assertTrue(ATTACKERS.all { replay.manager.get(it) != null }, "The fixture lacks Charlie, Delta or Echo")
+        // The save is from after the owner dug Gabriel out at 13:13: the two calcite blocks he broke go
+        // back, and both scouts stand where they stood at 13:06.
+        LEDGE_WALL.forEach { helper.level.setBlockAndUpdate(it, Blocks.CALCITE.defaultBlockState()) }
+        val gabriel = replay.npcs.first { it.uuid == STRANDED_SCOUT }
+        gabriel.teleportTo(-66.7, 99.0, 150.3)
+        replay.npcs.first { it.uuid == STAGED_SCOUT }.teleportTo(16.3, 101.0, 76.6)
+        val ledge = gabriel.position()
+        if (walledIn) {
+            val feet = gabriel.blockPosition()
+            for (dx in -1..1) for (dz in -1..1) for (dy in 0..2) {
+                val pos = feet.offset(dx, dy, dz)
+                if ((dx != 0 || dz != 0 || dy == 2) && helper.level.getBlockState(pos).isAir) helper.level.setBlockAndUpdate(pos, Blocks.BARRIER.defaultBlockState())
+            }
+        }
+        NpcEntity.fullRateBrains = true
+        val trace = report.resolve(if (walledIn) "stranded-walled.csv" else "stranded.csv")
+        Files.writeString(trace, "tick,squad,npc,order,x,y,z,job\n")
+        var stalked: Long? = null
+        var offLedge: Long? = null
+        helper.onEachTick {
+            if (helper.tick == ORDER_TICK) GroupOrders.apply(helper.level, replay.manager, ATTACKERS, SquadOrder.ATTACK, 31, -11)
+            if (helper.tick % 20L == 0L) Files.writeString(trace, rows(helper, replay), APPEND)
+            val stage = NativeTactics.reconStage(helper.level, RECON)
+            if (stalked == null && helper.tick > ORDER_TICK && stage != null && stage != ReconStage.STAGING) stalked = helper.tick
+            if (offLedge == null && gabriel.position().distanceTo(ledge) > OFF_LEDGE_DISTANCE) offLedge = helper.tick
+            if (helper.tick == ORDER_TICK + STRANDED_TICKS) {
+                if (!walledIn) helper.assertTrue(offLedge != null, "Gabriel still on his ledge at ${gabriel.blockPosition()}")
+                helper.assertTrue(stalked != null, "Charlie still in $stage, Gabriel at ${gabriel.blockPosition()}")
+            }
+            if (helper.tick >= STRANDED_END_TICK) helper.succeed()
+        }
+    }
+
     /** Puts the log groups, brain rate and replayed world back however the scene ends. */
     private fun restoreOnEnd(helper: GameTestHelper, replay: SavedBattleReplay, also: () -> Unit = {}) {
         val previousGroups = DebugFlags.enabledGroups
-        DebugFlags.enabledGroups = previousGroups + setOf(LogGroup.ORDER, LogGroup.FIRE_SUPPORT, LogGroup.PATH, LogGroup.VEHICLE, LogGroup.HEARING, LogGroup.SPOTTING)
+        DebugFlags.enabledGroups = previousGroups + setOf(LogGroup.ORDER, LogGroup.FIRE_SUPPORT, LogGroup.PATH, LogGroup.VEHICLE, LogGroup.HEARING, LogGroup.SPOTTING, LogGroup.STUCK)
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
             override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
@@ -198,6 +260,20 @@ object SavedForestAttackGameTests {
             val squad = replay.manager.get(npc.squadId!!)
             "${helper.tick},${squad?.name},${npc.uuid.toString().take(8)},${squad?.order},${"%.1f".format(npc.x)},${"%.1f".format(npc.y)},${"%.1f".format(npc.z)},${NativeTactics.assignment(npc)?.job}\n"
         }
+
+    /** Charlie's scout on the ledge at -67,99,150. */
+    private val STRANDED_SCOUT = UUID.fromString("c570027c-eda4-4b38-ab3d-30521bed4efa")
+
+    /** Aaron Anderson, Charlie's scout at the staging point. */
+    private val STAGED_SCOUT = UUID.fromString("a54a15f5-2201-4511-8ecd-56b57ccf4b8a")
+    private val LEDGE_WALL = listOf(BlockPos(-67, 100, 149), BlockPos(-67, 101, 149))
+    private const val OFF_LEDGE_DISTANCE = 4.0
+
+    /** 30 s: six recoveries take some 15 s, the drop and the stage's next pass the rest. */
+    private const val STRANDED_TICKS = 600L
+
+    /** The attack runs on for its trace. */
+    private const val STRANDED_END_TICK = 3000L
 
     private const val ORDER_TICK = 20L
 
