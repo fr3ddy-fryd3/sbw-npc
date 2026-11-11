@@ -258,6 +258,9 @@ object NativeTactics {
     /** Whether [npc]'s plan holds him settled at his place at the rally point, firing from round it. */
     fun settledAtRally(npc: NpcEntity): Boolean = worlds[npc.level()]?.dutyRule(npc.uuid) == MemberDuties.RETREAT_SETTLED_RULE
 
+    /** The rule that set [npc]'s duty on the last pass (`flank_march`, `recon_watch`, ...), or null. */
+    fun dutyRule(npc: NpcEntity): String? = worlds[npc.level()]?.dutyRule(npc.uuid)
+
     /** Whether [npc] has an NPC agent of either kind, full or engage-only: what ticks it. */
     fun hasAgent(npc: NpcEntity): Boolean = worlds[npc.level()]?.agents?.containsKey(AgentId(AgentLevel.NPC, npc.uuid)) == true
 
