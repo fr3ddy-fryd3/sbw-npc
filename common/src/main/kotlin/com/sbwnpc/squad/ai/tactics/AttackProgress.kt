@@ -56,8 +56,8 @@ class AttackProgress(now: Long) {
 
     /**
      * Whether the attack has seen a contact round its objective (`threatsNearby` in [observe]):
-     * from then on its squads fight their way in and do not go back to the march
-     * when the defence drops out of sight (#312). A skirmish far out on the way does not count.
+     * from then on its squads stopped by an enemy fight their way in and do not go back to the
+     * march when the defence drops out of sight (#312).
      */
     var defenceMet = false
         private set

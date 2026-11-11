@@ -27,11 +27,26 @@ object JourneyHoldGameTests {
     /** Once its attack has met the defence, the squad does not go back to the march when the enemy hides. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 800, batch = "journey-hold")
-    fun attackThatMetTheDefenceDoesNotMarchAgain(helper: GameTestHelper) {
+    fun attackThatMetTheDefenceDoesNotMarchAgain(helper: GameTestHelper) = hideEnemy(helper, objectiveX = 130, holds = true)
+
+    /**
+     * Stopped by an enemy beyond the attack's reach of its objective, the squad sets off again once the
+     * enemy hides: a skirmish on the way is not the defence, even of an attack that has seen it there.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 800, batch = "journey-skirmish")
+    fun squadStoppedFarOutMarchesOnPastASkirmish(helper: GameTestHelper) = hideEnemy(helper, objectiveX = 152, holds = false)
+
+    /**
+     * Orders an attack on a point [objectiveX] along the arena, hides the enemy that stopped the squad
+     * on its way and checks whether the squad [holds] off the march or travels again.
+     */
+    private fun hideEnemy(helper: GameTestHelper, objectiveX: Int, holds: Boolean) {
         AmmunitionTacticsGameTests.floor(helper)
         val manager = SquadManager.get(helper.level)
         val men = (0 until 4).map { AttackDeploymentGameTests.spawn(helper, Vec3(8.5, 1.0, 60.5 + it * 2), SquadFaction.PIG) }
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+        // About 37 blocks from the squad, and inside the attack's reach of either objective, where it counts its defence.
         val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(45.5, 1.0, 64.5), SquadFaction.COW).apply {
             isNoAi = true
             getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 10000.0
@@ -44,7 +59,8 @@ object JourneyHoldGameTests {
             manager.deleteSquad(helper.level, squad.id)
             (men + enemy).forEach(NpcEntity::discard)
         }
-        val objective = helper.absolutePos(BlockPos(152, 1, 64))
+        // 122 blocks out the squad's stop counts as meeting the defence; 144 out, beyond that reach, it does not.
+        val objective = helper.absolutePos(BlockPos(objectiveX, 1, 64))
         GroupOrders.apply(helper.level, manager, listOf(squad.id), SquadOrder.ATTACK, objective.x, objective.z)
         val goal = Vec3.atBottomCenterOf(objective)
         var engaged = false
@@ -53,14 +69,18 @@ object JourneyHoldGameTests {
             if (helper.tick < HIDDEN_AT && living.any { it.target == enemy }) engaged = true
             if (helper.tick == HIDDEN_AT) {
                 helper.assertTrue(engaged, "The squad never engaged the enemy on its way in")
+                helper.assertTrue(living.none(NativeTactics::travelling), "The squad was still marching when the enemy hid; the scene needs it stopped first")
                 val median = living.map { it.position().distanceTo(goal) }.sorted()[living.size / 2]
                 helper.assertTrue(median > FAR, "The squad was only ${"%.0f".format(median)} blocks out when the enemy hid; the scene needs it far")
                 enemy.discard()
             }
-            if (helper.tick > HIDDEN_AT) {
+            if (helper.tick > HIDDEN_AT && holds) {
                 helper.assertTrue(living.none(NativeTactics::travelling), "The squad went back to its march once the enemy it had fought hid")
             }
-            if (helper.tick == HIDDEN_AT + WATCH) helper.succeed()
+            if (helper.tick > HIDDEN_AT && !holds && living.any(NativeTactics::travelling)) helper.succeed()
+            if (helper.tick == HIDDEN_AT + WATCH) {
+                if (holds) helper.succeed() else helper.fail("The squad stopped by a skirmish far out never set off again")
+            }
         }
     }
 

@@ -643,6 +643,9 @@ object NativeTactics {
         /** The squads that fought their attack's defence, by the order stamp: they no longer travel ([SquadJourney]). */
         private val fought = HashMap<UUID, Int>()
 
+        /** The squads an enemy close by stopped since they last travelled, by the order stamp ([meetsDefence]). */
+        private val contactStops = HashMap<UUID, Int>()
+
         // Recon squads (#194): each one's approach under its order, the squads on it now, and the
         // stalking ones whose men keep crouched and wary.
         private val reconProgress = HashMap<UUID, ReconProgress>()
@@ -1505,6 +1508,7 @@ object NativeTactics {
                 tanks.roster.collect()
                 journeys.entries.removeIf { (id, stamp) -> manager.get(id)?.orderStamp != stamp }
                 fought.entries.removeIf { (id, stamp) -> manager.get(id)?.orderStamp != stamp }
+                contactStops.entries.removeIf { (id, stamp) -> manager.get(id)?.orderStamp != stamp }
                 // Every squad, crews and planned men alike, before anything plans with it.
                 manager.all().forEach(::journey)
                 seatsDue.keys.retainAll(journeys.keys)
@@ -2637,15 +2641,29 @@ object NativeTactics {
             val contacts = onFoot.map(SquadTransit::contact)
             val contact = JourneyContact(contacts.any { it.enemy }, contacts.any { it.mob })
             val travelling = journeys[saved.id] == saved.orderStamp
-            // Noted on every pass the squad is in contact, not only when it stops: this runs before
-            // the attack's own pass, so on the first contact the attack may see its defence only after.
-            if (contact.enemy && saved.order == SquadOrder.ATTACK && operations.operationOf(saved.id)?.let { attacks[it.id]?.defenceMet } == true) fought[saved.id] = saved.orderStamp
+            if (contact.enemy) contactStops[saved.id] = saved.orderStamp
+            if (meetsDefence(saved)) fought[saved.id] = saved.orderStamp
             val travels = SquadJourney.travels(SquadTransit.distant(saved, level), contact, travelling, fought[saved.id] == saved.orderStamp)
+            if (travels) contactStops.remove(saved.id)
             if (travels != travelling) {
                 if (travels) journeys[saved.id] = saved.orderStamp else journeys.remove(saved.id)
                 DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=journey travels={} contact={}", saved.id, travels, contact)
                 DecisionTrace.group(saved.id, level.gameTime, "squad", "journey", if (travels) "travels to its objective" else "stays to fight or arrives, contact=$contact")
             }
+        }
+
+        /**
+         * Whether [saved], stopped by an enemy close by, has met its attack's defence ([AttackProgress.defenceMet])
+         * and fights its way in from here. The stop counts until the squad travels again, not only
+         * while the enemy is in sight: this runs before the attack's own pass, so on the first contact
+         * the attack sees its defence only after it, and by the next pass the enemy may have dropped
+         * out of sight. Only within [AREA_THREAT_RADIUS] of the objective, where the attack counts its
+         * defence: a squad sent to join an attack that met it still travels from afar past a skirmish.
+         */
+        private fun meetsDefence(saved: Squad): Boolean {
+            if (saved.order != SquadOrder.ATTACK || contactStops[saved.id] != saved.orderStamp) return false
+            if (operations.operationOf(saved.id)?.let { attacks[it.id]?.defenceMet } != true) return false
+            return (SquadTransit.objectiveDistance(saved, level) ?: return false) <= AREA_THREAT_RADIUS
         }
 
         /**
@@ -3100,6 +3118,7 @@ object NativeTactics {
             closeContacts.clear()
             journeys.clear()
             fought.clear()
+            contactStops.clear()
             reinforcementPoints.clear()
             rides.clear()
             stations.clear()
