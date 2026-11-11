@@ -718,6 +718,16 @@ object NativeTactics {
         }
 
         /**
+         * Where the recon squad of [view] stands, for its stage and posts: its men who can move. A
+         * scout stranded on a ledge 120 blocks back held his squad at its staging point for the whole
+         * attack, and the infantry waited on its reports (playtest 11.11). All stranded, all count.
+         */
+        private fun reconCentre(view: TacticalSnapshot): Vec3 {
+            val free = view.members.filterNot { it.stranded }
+            return if (free.isEmpty() || free.size == view.members.size) view.center else TacticalSnapshotCollector.medianCenter(free.map { it.position })
+        }
+
+        /**
          * Whether [saved] may take its post where it stands (owner 09.11): one of its men sees the
          * objective. Stalking into a new ring it first searches that ring for a spot with a view; none
          * there, it posts at the ring as before rather than walk on blind.
@@ -2452,7 +2462,7 @@ object NativeTactics {
                 // its report keep off: their points fell on the water and the near bank, and nobody crossed
                 // (playtest 08.11). The attack's own posts swim across.
                 val wet = crossings.crossing(saved, view.center, now)
-                val reconnoitre = reconStage(saved, view.center.point(), now)?.takeUnless { wet }
+                val reconnoitre = reconStage(saved, reconCentre(view).point(), now)?.takeUnless { wet }
                 // Waiting for the recon report, infantry stops short of its firing line unless it is fired on.
                 // An enemy merely seen far off does not end it: in the playtest of 08.11 a sighting at
                 // the objective sent the infantry on past the scouts before they reported.

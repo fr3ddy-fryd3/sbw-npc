@@ -985,6 +985,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
     }
 
+    /** See [NpcStuckRecovery.stranded]. */
+    val stranded: Boolean get() = stuckRecovery.stranded
+
     /** See [NpcStuckRecovery.notePathGoesNowhere]; the navigation reports every path it plans. */
     fun notePathGoesNowhere(toward: BlockPos, goesNowhere: Boolean) = stuckRecovery.notePathGoesNowhere(toward, goesNowhere)
 

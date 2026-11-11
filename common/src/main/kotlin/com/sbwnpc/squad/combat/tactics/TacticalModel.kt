@@ -41,6 +41,8 @@ data class TacticalMember(
     val grounded: Boolean = true,
     val primaryAmmo: Boolean = true,
     val sidearmOnly: Boolean = false,
+    /** Stuck where no recovery gets him out: see NpcStuckRecovery.stranded. */
+    val stranded: Boolean = false,
 )
 data class TacticalContact(
     val id: UUID,

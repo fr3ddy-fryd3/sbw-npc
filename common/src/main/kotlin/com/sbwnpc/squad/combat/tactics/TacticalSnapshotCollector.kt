@@ -85,6 +85,7 @@ internal object TacticalSnapshotCollector {
             grounded = npc.onGround() || VersionCompat.isInLiquid(npc),
             primaryAmmo = SidearmKit.hasPrimaryAmmo(npc),
             sidearmOnly = npc.usingSidearm,
+            stranded = npc.stranded,
         )
     }
 
@@ -103,8 +104,8 @@ internal object TacticalSnapshotCollector {
             npc.sensing.hasLineOfSight(target)
         }
 
-    // Coordinate-wise upper median keeps distant stragglers from pulling the squad center away.
-    private fun medianCenter(points: List<Vec3>): Vec3 {
+    /** Coordinate-wise upper median keeps distant stragglers from pulling the squad center away. */
+    internal fun medianCenter(points: List<Vec3>): Vec3 {
         val middle = points.size / 2
         return Vec3(points.map { it.x }.sorted()[middle], points.map { it.y }.sorted()[middle], points.map { it.z }.sorted()[middle])
     }

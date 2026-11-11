@@ -11,6 +11,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -30,6 +31,9 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
     private var nowhereSinceTick = -1
     private var nowhereLastTick = -1
     private var recoveryAttempts = 0
+
+    /** Whether he has failed [STRANDED_ATTEMPTS] recoveries in a row without moving; the first step clears it. */
+    val stranded: Boolean get() = recoveryAttempts >= STRANDED_ATTEMPTS
     private var lastWarningTick = -600
     private var wasInPowderSnow = false
 
@@ -135,9 +139,7 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         npc.navigation.stop()
         val replanned = npc.navigation.createPath(destination, 0)
         // The drop is taken only where it leads somewhere: a box with nothing below costs no health.
-        if (!offCrown && noWayOut && (replanned == null || replanned.endNode?.asBlockPos()?.closerThan(npc.blockPosition(), 2.0) != false)) {
-            npc.forbidRecoveryDescent()
-        }
+        if (!offCrown && noWayOut && staysPut(replanned)) npc.forbidRecoveryDescent()
         npc.navigation.moveTo(replanned, 1.0)
         DebugFlags.log(
             LogGroup.STUCK,
@@ -149,7 +151,7 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
             npc.maxFallDistance,
         )
         recoveryAttempts++
-        if (recoveryAttempts >= 6 && tick - lastWarningTick >= 600) {
+        if (stranded && tick - lastWarningTick >= 600) {
             lastWarningTick = tick
             ModIdentity.LOGGER.warn(
                 "NPC {} ({}) still stuck at {} toward {} after {} recoveries; fall limit {}, colliders {}",
@@ -163,6 +165,8 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
             )
         }
     }
+
+    private fun staysPut(path: Path?): Boolean = path?.endNode?.asBlockPos()?.closerThan(npc.blockPosition(), 2.0) != false
 
     private fun clearable(level: ServerLevel, pos: BlockPos): Boolean {
         val state = level.getBlockState(pos)
@@ -180,6 +184,9 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
 
         /** Boxed in, this many replans at the usual fall limit fail before a deeper drop is allowed. */
         const val BOXED_IN_DESCENT_ATTEMPTS = 2
+
+        /** Failed recoveries in a row that make him stranded, and his squad warned of it in the log. */
+        const val STRANDED_ATTEMPTS = 6
 
         /** A path that goes nowhere counts only while they keep coming. */
         const val NOWHERE_FRESH_TICKS = 40
