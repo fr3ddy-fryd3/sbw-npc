@@ -280,6 +280,12 @@ object HelicopterOrbitGameTests {
     /** Short of the pilot's 80-block retirement, for the turn and the descent. */
     private const val RETIRED_DISTANCE = 60.0
 
+    /** How far a gunship's hover keeps from an enemy it is not laid on: most of its standoff, with room for drift. */
+    private const val OTHER_CLEARANCE = 16.0
+
+    /** Blocks a tick below which a gunship counts as hovering on its station. */
+    private const val HOVER_SPEED = 0.06
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 40, batch = "helicopter-deployment")
     fun bothHelicopterPresetsDeployWithPilotAndFaction(helper: GameTestHelper) {
@@ -570,7 +576,7 @@ object HelicopterOrbitGameTests {
 
     /**
      * The Mi-28 has one target, its gunner's (#261): with two enemies about, the pilot holds the
-     * standoff ring around the man the turret is laid on.
+     * standoff ring around the man the turret is laid on, and not over the other one (#285).
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "gunship-one-target")
@@ -595,16 +601,19 @@ object HelicopterOrbitGameTests {
             }
             val target = laid
             val ring = target?.let { scene.heli.position().subtract(it.position()).horizontalDistance() }
-            held = if (scene.airborne && ring != null && ring in 12.0..30.0) held + 1 else 0
+            // Counted only once it hovers: on its way round to a new station it may pass over anyone.
+            val hovering = scene.heli.deltaMovement.horizontalDistance() < HOVER_SPEED
+            val onRing = ring != null && ring in 12.0..30.0
+            held = if (scene.airborne && hovering && onRing) held + 1 else 0
             if (held == 0) track.clear() else track += scene.heli.position()
-            if (held >= 100) {
-                // The two men stand 25 apart, so a ring round the other one can pass for this one's:
-                // the middle of the flight must lie nearer the laid man.
+            if (held >= 60) {
+                // The two men stand 25 apart: a hover at the standoff from the laid man on the side
+                // the other stands sits right over him (#285). Where it hovers keeps clear of both.
                 val centre = track.reduce(Vec3::add).scale(1.0 / track.size)
                 val other = listOfNotNull(scene.enemy, second).first { it !== target }
                 val toLaid = centre.subtract(target!!.position()).horizontalDistance()
                 val toOther = centre.subtract(other.position()).horizontalDistance()
-                helper.assertTrue(toLaid < toOther, "The gunship circled the other man: centre ${"%.0f".format(toLaid)} from the laid one, ${"%.0f".format(toOther)} from the other")
+                helper.assertTrue(toOther >= OTHER_CLEARANCE, "The gunship hovered over the other man: ${"%.0f".format(toLaid)} from the laid one ${target.name.string}, ${"%.0f".format(toOther)} from the other ${other.name.string}")
                 scene.result("target=${target.uuid} ring=$ring centreToLaid=$toLaid centreToOther=$toOther")
                 helper.succeed()
             }
