@@ -13,9 +13,9 @@ object TacticalClearance {
 
     fun permitsPosition(role: NpcClass, origin: Vec3, point: Vec3, view: TacticalSnapshot): Boolean = permitsPosition(CombatPositionSafety.clearance(role), origin, point, view)
 
-    fun permitsPosition(clearance: Double, origin: Vec3, point: Vec3, view: TacticalSnapshot): Boolean = threats(view).all { CombatPositionSafety.permits(origin, point, it, clearance) }
+    fun permitsPosition(clearance: Double, origin: Vec3, point: Vec3, view: TacticalSnapshot, step: Double = 0.0): Boolean = threats(view).all { CombatPositionSafety.permits(origin, point, it, clearance, step) }
 
     fun permitsPath(role: NpcClass, origin: Vec3, path: Path, view: TacticalSnapshot): Boolean = permitsPath(CombatPositionSafety.clearance(role), origin, path, view)
 
-    fun permitsPath(clearance: Double, origin: Vec3, path: Path, view: TacticalSnapshot): Boolean = CombatPositionSafety.permitsPath(origin, path, threats(view), clearance)
+    fun permitsPath(clearance: Double, origin: Vec3, path: Path, view: TacticalSnapshot, step: Double = 0.0): Boolean = CombatPositionSafety.permitsPath(origin, path, threats(view), clearance, step)
 }

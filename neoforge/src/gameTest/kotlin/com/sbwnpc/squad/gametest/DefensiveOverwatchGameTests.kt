@@ -58,6 +58,75 @@ object DefensiveOverwatchGameTests {
     fun supportsChooseGroundCoverWhenTowerIsUnreachable(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, ladder = false)
 
     /**
+     * A sentry on an open lookout, the enemy already inside his clearance, takes the parapet on
+     * its near edge, 3 blocks nearer the enemy (#265). Before, that step counted as an approach
+     * and was refused, and he fought from the open far edge.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "near-parapet")
+    fun sentryStepsTowardTheEnemyToTheParapetOfHisLookout(helper: GameTestHelper) {
+        buildLookout(helper)
+        val sentry = AttackDeploymentGameTests.spawn(helper, Vec3(9.5, 7.0, 64.5), SquadFaction.PIG, randomSeed = 265L, role = NpcClass.MACHINE_GUNNER)
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(sentry.uuid))
+        manager.setOrder(squad.id, SquadOrder.DEFEND)
+        manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(11, 1, 64)))
+        // On a pillar, so the far edge sees him over the parapet: the open spot is a real firing post.
+        for (y in 1..3) helper.setBlock(BlockPos(48, y, 64), Blocks.STONE)
+        val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(48.5, 4.0, 64.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 10000.0
+            health = maxHealth
+        }
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() {
+                enemy.discard()
+                manager.disband(helper.level, squad.id)
+                FiringSpots.release(sentry.uuid)
+                sentry.discard()
+            }
+        })
+        sentry.yRot = -90f
+        sentry.yHeadRot = -90f
+        // Held still until he has the enemy: the step must be taken in contact, not before it.
+        val speed = sentry.getAttribute(Attributes.MOVEMENT_SPEED)!!
+        val pace = speed.baseValue
+        speed.baseValue = 0.0
+        var heldSince: Long? = null
+        helper.onEachTick {
+            if (speed.baseValue == 0.0) {
+                if (sentry.target == null) return@onEachTick
+                speed.baseValue = pace
+            }
+            val at = helper.relativeVec(sentry.position())
+            helper.assertTrue(at.x <= 14.0 && at.y >= 6.5, "Sentry left his lookout: $at")
+            if (at.x < 12.0 || !shelteredOnOverwatch(sentry)) {
+                heldSince = null
+                return@onEachTick
+            }
+            if (heldSince == null) heldSince = helper.tick
+            if (helper.tick - heldSince!! >= 60) helper.succeed()
+        }
+    }
+
+    /** An open 7x7 lookout 6 high with a parapet along its east (near) edge and its two near corners. */
+    private fun buildLookout(helper: GameTestHelper) {
+        for (x in 0..80) for (z in 40..90) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        for (x in 8..14) for (z in 61..67) helper.setBlock(BlockPos(x, 6, z), Blocks.STONE)
+        for (z in 61..67) helper.setBlock(BlockPos(14, 7, z), Blocks.STONE)
+        for (x in 12..13) for (z in listOf(61, 67)) helper.setBlock(BlockPos(x, 7, z), Blocks.STONE)
+    }
+
+    private fun shelteredOnOverwatch(npc: NpcEntity): Boolean {
+        val assignment = NativeTactics.assignment(npc) ?: return false
+        return assignment.job == TacticalJob.OVERWATCH && TacticalPositions.protected(npc, assignment.task(), npc.position())
+    }
+
+    /**
      * The legacy [TacticalTask] shape of an HTN [NativeAssignment], so the existing shelter and
      * firing-lane checks judge the post the runtime actually holds.
      */

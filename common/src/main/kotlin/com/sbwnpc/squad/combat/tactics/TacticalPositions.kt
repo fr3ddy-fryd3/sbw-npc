@@ -235,7 +235,7 @@ object TacticalPositions {
             return
         }
         if (!context.policy.candidate(context.view, task, candidate, context.localAnchor)) return
-        if (!safeDistance(entity, context.view, candidate, context.policy.clearance(entity.npcClass))) {
+        if (!safeDistance(entity, context.view, candidate, context.policy.clearance(entity.npcClass), context.policy.coverStep(context.task))) {
             search.reject("close_enemy")
             return
         }
@@ -352,7 +352,7 @@ object TacticalPositions {
                 search.skipRejectedRoutes()
                 continue
             }
-            if (FiringPostArrival.reached(entity.position(), candidate) && safeDistance(entity, context.view, candidate, context.policy.clearance(entity.npcClass))) {
+            if (FiringPostArrival.reached(entity.position(), candidate) && safeDistance(entity, context.view, candidate, context.policy.clearance(entity.npcClass), context.policy.coverStep(context.task))) {
                 entity.navigation.stop()
                 task.navigationPath = null
                 FiringSpots.claim(entity.uuid, entity.position(), context.claimOwner)
@@ -474,7 +474,7 @@ object TacticalPositions {
         }
 
     private fun safeRoute(context: SearchContext, path: Path): Boolean {
-        if (!safePath(context.entity, context.view, path, context.policy.clearance(context.entity.npcClass))) return false
+        if (!safePath(context.entity, context.view, path, context.policy.clearance(context.entity.npcClass), context.policy.coverStep(context.task))) return false
         return (path.nextNodeIndex until path.nodeCount).none { index ->
             val node = path.getNode(index)
             val foot = Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5)
@@ -483,10 +483,10 @@ object TacticalPositions {
         }
     }
 
-    fun safeDistance(entity: NpcEntity, view: TacticalSnapshot, point: Vec3, clearance: Double = CombatPositionSafety.clearance(entity.npcClass)): Boolean = TacticalClearance.permitsPosition(clearance, entity.position(), point, view)
+    fun safeDistance(entity: NpcEntity, view: TacticalSnapshot, point: Vec3, clearance: Double = CombatPositionSafety.clearance(entity.npcClass), step: Double = 0.0): Boolean = TacticalClearance.permitsPosition(clearance, entity.position(), point, view, step)
 
     /** Repaths and already-running paths must respect newly reported or approaching enemies too. */
-    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path, clearance: Double = CombatPositionSafety.clearance(entity.npcClass)): Boolean = TacticalClearance.permitsPath(clearance, entity.position(), path, view)
+    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path, clearance: Double = CombatPositionSafety.clearance(entity.npcClass), step: Double = 0.0): Boolean = TacticalClearance.permitsPath(clearance, entity.position(), path, view, step)
 
     internal fun reaches(path: Path?, candidate: Vec3): Boolean =
         path?.canReach() == true && path.endNode?.let {
