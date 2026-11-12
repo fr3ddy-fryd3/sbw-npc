@@ -1172,12 +1172,15 @@ object NativeTactics {
                             val npc = requireNotNull(level.getEntity(intent.actor.id) as? NpcEntity)
                             actions[intent.actor.id]?.overwatchPost?.let { heldPosts[intent.actor.id] = it }
                             NativePositionAction(intent, npc, { npc.squadId?.let(::combatView) }, heldPost = heldPosts[intent.actor.id], exhausted = { failed, rejections, searched ->
-                                val previous = failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }
+                                // A roof post is the shelter method's own: failed under its roof, it must read as failed
+                                // there, or the method took the same roof again every tick (#321).
+                                val anchor = if (failed.roofed) failed.anchor else original.anchor
+                                val previous = failures[failed.actor.id]?.takeIf { it.anchor == anchor }
                                 // A failed spread keeps the round's count: it must not restart the post chain (#299).
                                 failures[failed.actor.id] = if (failed.spread && previous != null) {
                                     previous.copy(failedAt = level.gameTime, spreadTried = true)
                                 } else {
-                                    LocalPositionFailure(original.anchor, level.gameTime, (previous?.attempts ?: 0) + 1, rejections.toMap(), previous?.spreadTried == true)
+                                    LocalPositionFailure(anchor, level.gameTime, (previous?.attempts ?: 0) + 1, rejections.toMap(), previous?.spreadTried == true)
                                 }
                                 // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
                                 // The planned anchor is put on the ground before the search; searched is where it looked.
@@ -1408,10 +1411,12 @@ object NativeTactics {
             return contacts.none { it.knownArmourTo(npc, level, level.gameTime) && !armourShelter(npc, it.eye, it.id, feet) }
         }
 
-        private fun roofFor(npc: NpcEntity, underFire: Boolean, sector: FireSector?, digs: Int, now: Long): Point3? {
+        private fun roofFor(npc: NpcEntity, sector: FireSector?, digs: Int, now: Long): Point3? {
             // Under his roof already, he stays while shells still fall anywhere he hears them, not only
             // within 24: the barrage walking off a little sent men out between rounds (owner 09.11).
-            val shelling = npc.shelled() || underFire || (npc.shellingHeard() && roofs.sheltering(npc))
+            // Bullets alone send no one under a roof, which stops none of them (owner 12.11, #321):
+            // suppressed by rifle fire he takes cover from its bearing like any other man.
+            val shelling = npc.shelled() || (npc.shellingHeard() && roofs.sheltering(npc))
             // A target shared from 80+ blocks that he neither sees nor reaches is no fight (owner 09.11:
             // gunners and snipers on their posts ignored every shell with no contact at all).
             val fighting = shelling && npc.target?.let { com.sbwnpc.squad.combat.FiringOpportunity.assess(npc, it) == com.sbwnpc.squad.combat.tactics.TacticalTargetSelection.Opportunity.SHOOTABLE } == true
@@ -1443,7 +1448,7 @@ object NativeTactics {
                 .observe(TacticalFacts.CROWDED, crowded(npc, now))
             sector?.let { result = result.observe(TacticalFacts.FIRE_SECTOR, it) }
             // Shelled or suppressed with no sector and nothing in sight: a roof near him, if any.
-            roofFor(npc, underFire, sector, digs, now)?.let { result = result.observe(TacticalFacts.ROOF, it) }
+            roofFor(npc, sector, digs, now)?.let { result = result.observe(TacticalFacts.ROOF, it) }
             state?.failure?.let { result = result.observe(TacticalFacts.COVER_FAILURE, it, observedAt = it.failedAt, expiresAt = it.failedAt + FAILURE_MEMORY_TICKS) }
             // Only the answers to no cover and the hole read these, and a man peeking from cover
             // sees his target and loses it again: observed always, they would replan him each time.
