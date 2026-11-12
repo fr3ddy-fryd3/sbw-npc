@@ -111,7 +111,10 @@ class ReconProgress(val stamp: Int) {
                 if (spot != null && now - spotSince > SPOT_TICKS) spot = null
                 // Seeing the enemy already, it has its view: it posts where it stands (owner 09.11, a
                 // sentry 63 blocks out kept every spot nearer the ring out of bounds and it stood blind).
-                val inView = distance <= postDistance && (sees || spot == null)
+                // At its spot it has arrived, wherever the ring falls: the spot lies on the ring itself, and
+                // the men round it put their centre a block or two outside, so it waited out SPOT_TICKS there
+                // (playtest 12.11).
+                val inView = arrived(distance, postDistance, spot?.takeIf { spotRing == postDistance }, centre) && (sees || spot == null)
                 if (enemySeen || inView) arrive(now, centre) else ReconStage.STALK
             }
 
@@ -240,3 +243,6 @@ class ReconProgress(val stamp: Int) {
         }
     }
 }
+
+/** Inside the [ring], or within [ReconProgress.ARRIVAL] of the [spot] it searched there. */
+private fun arrived(distance: Double, ring: Double, spot: Point3?, centre: Point3?): Boolean = distance <= ring || (spot != null && centre != null && kotlin.math.hypot(centre.x - spot.x, centre.z - spot.z) <= ReconProgress.ARRIVAL)
