@@ -152,7 +152,7 @@ class NpcUnderFireDomainTest {
         assertFalse(before.inputUnchanged(facts(underFire = true, cycles = 1)))
     }
 
-    @Test fun `shelled or suppressed with no sector he takes a roof near him, with a sector he answers the fire (owner 0811)`() {
+    @Test fun `shelled with no sector he takes a roof near him, with a sector he answers the fire (owner 0811)`() {
         val roof = Point3(12.0, 1.0, 4.0)
         // Suppressed by fire whose source he does not know: no sector.
         val unseen = FactSnapshot(actor, 1).observe(TacticalFacts.MOVABLE, true).observe(TacticalFacts.COVER, true)
@@ -167,8 +167,16 @@ class NpcUnderFireDomainTest {
         assertEquals(TacticalDomain.POSITION, first(unseen).key)
         assertNotEquals(true, (first(unseen).parameters as PositionIntent).roofed)
         // His post search under that roof failed: he no longer heads for it.
-        val failed = unseen.observe(TacticalFacts.ROOF, roof).observe(TacticalFacts.POST_FAILURE, LocalPositionFailure(Point3(12.5, 1.0, 4.5), 1, 1, emptyMap()))
+        val failed = unseen.observe(TacticalFacts.ROOF, roof).observe(TacticalFacts.ROOF_FAILURE, Point3(12.5, 1.0, 4.5))
         assertNotEquals(true, (first(failed).parameters as? PositionIntent)?.roofed)
+        // A sentry's tower floor does not follow him under a lower roof.
+        val sentry = Shelter.post(intent.copy(minimumHeight = 9.0, elevationWeight = 1.0, inspection = roof), roof)
+        assertEquals(null, sentry.minimumHeight)
+        assertEquals(0.0, sentry.elevationWeight)
+        assertEquals(null, sentry.inspection)
+        // An ordinary post failure there is his post chain's, not the roof's: the roof still applies.
+        val chain = unseen.observe(TacticalFacts.ROOF, roof).observe(TacticalFacts.POST_FAILURE, LocalPositionFailure(Point3(12.5, 1.0, 4.5), 1, 1, emptyMap()))
+        assertEquals(true, (first(chain).parameters as? PositionIntent)?.roofed)
         // A known sector wins over the roof.
         assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true).observe(TacticalFacts.ROOF, roof)).key)
         // A man moving for an assault keeps moving.
