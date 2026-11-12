@@ -63,6 +63,7 @@ internal object GameTestGroups {
         ),
         "perception" to listOf(
             NoticingGameTests::class.java,
+            HelicopterSpottingGameTests::class.java,
             SightRangeGameTests::class.java,
             HearingGameTests::class.java,
         ),

@@ -107,6 +107,7 @@ object ForgeEvents {
         com.sbwnpc.squad.combat.tactics.SquadTactics.clearAll()
         com.sbwnpc.squad.squad.SquadReports.clearAll()
         com.sbwnpc.squad.combat.Hearing.clearAll()
+        com.sbwnpc.squad.combat.RotorNoise.clearAll()
         DeathSites.clearAll()
         MortarClaims.clearAll()
         DroneLinks.clearAll()

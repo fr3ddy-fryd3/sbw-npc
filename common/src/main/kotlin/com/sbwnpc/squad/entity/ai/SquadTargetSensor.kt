@@ -7,6 +7,7 @@ import com.sbwnpc.squad.combat.FireAllocation
 import com.sbwnpc.squad.combat.FiringOpportunity
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.Noticing
+import com.sbwnpc.squad.combat.SpottingTime
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.VehicleTargeting
@@ -51,6 +52,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
     /** How far this NPC has got at noticing each enemy in view. */
     private val noticing = Noticing("sight")
+
+    /** Noticing aircraft, apart from men on the ground: its own size, and its own scan to drain. */
+    private val airNoticing = Noticing("air", size = SpottingTime.Size.HELICOPTER)
 
     /** A turret gunner's own: what the ground scan drains is not what he has been watching. */
     private val gunnerNoticing = Noticing("turret gunner", LogGroup.VEHICLE)
@@ -231,8 +235,18 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         if (!armedSeat) return null
         // SBW aims at the vehicle when its passenger is the gunner's target.
         return VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, NpcEntity.DETECTION_RANGE) { VehicleTargeting.weaponPermits(mob, it) }
-            ?: VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE) { VehicleTargeting.weaponPermits(mob, it) }
+            ?: noticedAircrew(mob, level) { VehicleTargeting.weaponPermits(mob, it) }
     }
+
+    /**
+     * The nearest enemy aircrew in sight that this man has noticed (#246): a helicopter takes its
+     * time to spot like anyone else, at night only close, rather than being known the tick it
+     * comes into a line of sight. Aircraft are all round him, so the off-axis is the gunner's.
+     */
+    private fun noticedAircrew(mob: NpcEntity, level: ServerLevel, accept: (LivingEntity) -> Boolean = { true }): LivingEntity? =
+        VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE) {
+            accept(it) && airNoticing.noticed(mob, level, it, GUNNER_OFF_AXIS)
+        }.also { airNoticing.endScan(level.gameTime) }
 
     private fun retainedDefensiveTarget(mob: NpcEntity): LivingEntity? {
         if (!CombatPosition.holdsPosition(mob.currentSquad()?.order)) return null
@@ -326,10 +340,10 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     //    raycasts instead of one per hostile in range (dozens, in a big fight, per NPC per scan).
     private fun nearestDirectTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val ground = nearestGroundTarget(mob, level)
-        val seenAir = VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)
+        val seenAir = noticedAircrew(mob, level)
         if (seenAir != null) SquadTactics.observe(mob, seenAir)
         val air = if (seenAir != null && !VehicleTargeting.weaponPermits(mob, seenAir)) {
-            VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE) { VehicleTargeting.weaponPermits(mob, it) }
+            noticedAircrew(mob, level) { VehicleTargeting.weaponPermits(mob, it) }
         } else {
             seenAir
         }
