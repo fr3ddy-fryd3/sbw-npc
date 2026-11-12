@@ -241,11 +241,12 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     /**
      * The nearest enemy aircrew in sight that this man has noticed (#246): a helicopter takes its
      * time to spot like anyone else, at night only close, rather than being known the tick it
-     * comes into a line of sight. Aircraft are all round him, so the off-axis is the gunner's.
+     * comes into a line of sight. Aircrew and gunners look all round; a man on foot by his head.
      */
     private fun noticedAircrew(mob: NpcEntity, level: ServerLevel, accept: (LivingEntity) -> Boolean = { true }): LivingEntity? =
         VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE) {
-            accept(it) && airNoticing.noticed(mob, level, it, GUNNER_OFF_AXIS)
+            val allRound = VehicleTargeting.isAircrew(mob) || mob.vehicle?.let { v -> Ports.vehicles.hasWeaponAt(v, mob) } == true
+            accept(it) && airNoticing.noticed(mob, level, it, if (allRound) GUNNER_OFF_AXIS else Vision.offAxis(mob.position(), mob.yHeadRot, it.position()))
         }.also { airNoticing.endScan(level.gameTime) }
 
     private fun retainedDefensiveTarget(mob: NpcEntity): LivingEntity? {

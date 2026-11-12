@@ -55,7 +55,7 @@ object SpottingTime {
 
         /**
          * A helicopter (#246): a big, loud shape on the sky, noticed in a second or two at 150 blocks
-         * by day and seen out to 256; at night or in fog the same factor leaves it to 64 blocks.
+         * by day, out to the 192 blocks aircraft are searched in; at night, in the black band, to 64.
          */
         HELICOPTER(timeFactor = 0.6, reachFactor = 2.0),
     }

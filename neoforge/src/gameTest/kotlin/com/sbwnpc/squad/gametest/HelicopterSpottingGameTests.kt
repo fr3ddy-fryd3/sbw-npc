@@ -2,6 +2,7 @@ package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.RotorNoise
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.NpcClass
@@ -124,6 +125,35 @@ object HelicopterSpottingGameTests {
                 scene.result("PASS", "not taken in $NEVER_TICKS ticks")
                 helper.succeed()
             }
+        }
+    }
+
+    /**
+     * A rotor is heard 96 blocks off in a straight line (#246): a man 80 blocks from the aircraft
+     * turns wary towards it, one 110 off does not, and neither takes it as a target from the noise.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "heli-rotor-heard")
+    fun rotorTurnsMenWithinItsReachWaryWithoutATarget(helper: GameTestHelper) {
+        StructureUtils.removeBarriers(helper.bounds, helper.level)
+        val scene = CombatIdleGameTests.Scene(helper, "heli-rotor-heard")
+        val near = scene.spawn(Vec3(60.5, 1.0, 60.5))
+        val far = scene.spawn(Vec3(30.5, 1.0, 60.5))
+        val heli = Ports.vehicles.create(helper.level, HelicopterModel.AH_6)!!
+        val at = helper.absoluteVec(Vec3(140.5, 1.0, 60.5))
+        heli.moveTo(at.x, at.y, at.z, 90f, 0f)
+        helper.level.addFreshEntity(heli)
+        SquadTeams.assign(heli, SquadFaction.COW)
+        val pilot = scene.enemy(Vec3(140.5, 1.0, 62.5))
+        helper.assertTrue(pilot.startRiding(heli, true), "The enemy pilot did not take his seat")
+        scene.onClose = { heli.discard() }
+        helper.runAtTickTime(5) {
+            RotorNoise.heard(helper.level, heli, pilot)
+            helper.assertTrue(near.waryToward() != null, "A man 80 blocks from the rotor did not hear it")
+            helper.assertTrue(far.waryToward() == null, "A man 110 blocks from the rotor heard it")
+            helper.assertTrue(near.target == null && far.target == null, "The noise gave a target")
+            scene.result("PASS", "near wary, far not")
+            helper.succeed()
         }
     }
 }

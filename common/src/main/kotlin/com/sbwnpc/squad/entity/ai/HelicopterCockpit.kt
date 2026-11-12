@@ -5,6 +5,7 @@ import com.sbwnpc.squad.ai.tactics.FlightMode
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.RotorNoise
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
@@ -194,7 +195,7 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
         // over the terrain decides that, never onGround().
         val height = heli.y - groundY(level, heli.x, heli.z)
         val airborne = height >= MIN_TRANSLATE_HEIGHT
-        if (airborne) com.sbwnpc.squad.combat.RotorNoise.heard(level, heli, entity)
+        if (airborne) RotorNoise.heard(level, heli, entity)
 
         // Stuck on the ground with the enemy about: a sitting aircraft is a coffin, so get out and
         // fight on foot. VehicleCrewBehaviour keeps the pilot from climbing back in until the

@@ -33,7 +33,9 @@ class Noticing(
      */
     fun noticed(observer: NpcEntity, level: ServerLevel, candidate: Entity, offAxis: Double, grassBlocks: Int = 0): Boolean {
         val now = level.gameTime
-        val gaveAway = candidate is NpcEntity && candidate.firedRecently(GIVEAWAY_TICKS)
+        // Any man aboard firing gives an aircraft away, not only the one it is sighted through.
+        val gaveAway = (listOf(candidate) + (candidate.vehicle?.passengers ?: emptyList()))
+            .any { it is NpcEntity && it.firedRecently(GIVEAWAY_TICKS) }
         val knownToSquad = squadKnows(observer, candidate, now)
         val alreadyNoticed = candidate === observer.target || gaveAway || knownToSquad
         if (alreadyNoticed) {

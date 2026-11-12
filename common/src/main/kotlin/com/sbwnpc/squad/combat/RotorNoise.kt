@@ -32,7 +32,8 @@ object RotorNoise {
         NpcRegistry.forEachWithin(level, at, RADIUS, exclude = pilot) { npc ->
             if (!npc.isAlive || npc.vehicle === heli || !SquadTeams.isHostile(npc, pilot)) return@forEachWithin
             hearers++
-            npc.hear(at, goLook = false)
+            // Wary only, not hear(): a heard spot goes on the squad's alarm list, and its scouts were
+            // sent to search a point in the sky.
             if (npc.target == null) npc.becomeWary(at)
         }
         if (hearers > 0) DebugFlags.log(LogGroup.HEARING, "rotor of {} heard by {} within {}", heli.uuid, hearers, RADIUS)
