@@ -116,7 +116,10 @@ object TacticalPositions {
         val policy: TacticalPositionPolicy,
         val aim: TacticalAim?,
         val claimOwner: java.util.UUID?,
-    )
+    ) {
+        /** Men on a raised overwatch post stand closer than elsewhere, see [FiringSpots.HEIGHT_POST_SPACING]. */
+        fun spacing(point: Vec3) = FiringSpots.spacing(point.y, task.anchor.y.takeIf { overwatch })
+    }
 
     private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, clearance: Double): Vec3? {
         if (task.job !in TacticalJob.FIRE_SUPPORT) return null
@@ -245,7 +248,7 @@ object TacticalPositions {
             return
         }
         val body = entity.getDimensions(entity.pose).makeBoundingBox(candidate)
-        if (!safeBody(entity, candidate, body, context.hulls, context.taken)) {
+        if (!safeBody(context, candidate, body)) {
             search.reject("occupied_or_hazard")
             return
         }
@@ -326,7 +329,7 @@ object TacticalPositions {
                 continue
             }
             val body = entity.getDimensions(entity.pose).makeBoundingBox(candidate)
-            if (!safeBody(entity, candidate, body, context.hulls, context.taken)) {
+            if (!safeBody(context, candidate, body)) {
                 search.routeValidation = null
                 search.reject("occupied_on_review")
                 search.rejectedRoutes += candidate
@@ -447,7 +450,7 @@ object TacticalPositions {
             }
             if (!TickBudget.hasRaycasts(context.level)) break
             val body = context.entity.getDimensions(context.entity.pose).makeBoundingBox(point)
-            val valid = safeBody(context.entity, point, body, context.hulls, context.taken) &&
+            val valid = safeBody(context, point, body) &&
                 (!requiresFiringLane(context, point) || firingReady(context.entity, context.task, point)) &&
                 (!context.overwatch || protected(context.entity, context.task, point, context.hulls))
             if (valid) {
@@ -553,9 +556,11 @@ object TacticalPositions {
         return level.getBlockState(deck).`is`(Blocks.SCAFFOLDING) && level.getBlockState(deck.below()).`is`(Blocks.SCAFFOLDING)
     }
 
-    private fun safeBody(entity: NpcEntity, point: Vec3, body: AABB, hulls: List<AABB>, taken: List<Vec3>): Boolean =
-        entity.level().getFluidState(BlockPos.containing(point)).isEmpty && entity.level().noCollision(entity, body) &&
-            hulls.none { it.intersects(body) } && !GrenadeHazard.threatens(entity.level() as ServerLevel, point) && !FiringSpots.crowded(point, taken)
+    private fun safeBody(context: SearchContext, point: Vec3, body: AABB): Boolean {
+        val level = context.level
+        return level.getFluidState(BlockPos.containing(point)).isEmpty && level.noCollision(context.entity, body) &&
+            context.hulls.none { it.intersects(body) } && !GrenadeHazard.threatens(level, point) && !FiringSpots.crowded(point, context.taken, context.spacing(point))
+    }
     private fun friendlyLane(entity: NpcEntity, eye: Vec3, targetEye: Vec3?): Boolean = targetEye == null || FriendlyFireGuard.assess(entity, SquadTactics.firingLaneEnd(entity, targetEye, eye), entity.spread, targetEye, 0.0, eye).lineClear
 
     /** Physical post suitability only; personal visibility must still authorize aimed fire at the weapon. */

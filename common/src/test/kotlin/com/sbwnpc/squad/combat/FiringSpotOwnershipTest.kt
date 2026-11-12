@@ -22,4 +22,12 @@ class FiringSpotOwnershipTest {
             FiringSpots.release(npc)
         }
     }
+
+    @Test fun `two men may share a side of a 5x5 lookout, not a ground post`() {
+        val mate = Vec3(0.5, 72.0, 0.5)
+        val beside = Vec3(2.5, 72.0, 0.5)
+        assertTrue(FiringSpots.crowded(beside, listOf(mate)))
+        assertFalse(FiringSpots.crowded(beside, listOf(mate), FiringSpots.HEIGHT_POST_SPACING))
+        assertTrue(FiringSpots.crowded(Vec3(1.5, 72.0, 0.5), listOf(mate), FiringSpots.HEIGHT_POST_SPACING))
+    }
 }

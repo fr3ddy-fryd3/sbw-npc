@@ -217,6 +217,10 @@ object NativeTactics {
 
     /** Holds [npc]'s aircraft in a hover on a tick his plan did not fly it (#260). */
     fun keepAloft(npc: NpcEntity) = world(npc).keepAloft(npc)
+
+    /** How far apart [npc] keeps from friendly men where he stands, see [FiringSpots.spacing]. */
+    fun spacing(npc: NpcEntity) = world(npc).spacing(npc)
+
     fun assignment(npc: NpcEntity): NativeAssignment? {
         if (!planned(npc)) return null
         refresh(npc)
@@ -1487,7 +1491,7 @@ object NativeTactics {
         private fun crowded(npc: NpcEntity, now: Long): Boolean {
             crowding[npc.uuid]?.takeIf { now - it.first < CROWDING_CHECK_TICKS }?.let { return it.second }
             val was = crowding[npc.uuid]?.second == true
-            val reach = FiringSpots.MIN_SPACING + if (was) CROWDING_RELEASE else 0.0
+            val reach = spacing(npc) + if (was) CROWDING_RELEASE else 0.0
             var near = false
             if (npc.npcClass != NpcClass.MEDIC && npc.vehicle == null) {
                 NpcRegistry.forEachWithin(npc.level() as ServerLevel, npc.position(), reach, exclude = npc) {
@@ -1497,6 +1501,9 @@ object NativeTactics {
             crowding[npc.uuid] = now to near
             return near
         }
+
+        /** A man on a raised overwatch post keeps the closer spacing his search gave him, see [FiringSpots.spacing]. */
+        fun spacing(npc: NpcEntity): Double = FiringSpots.spacing(npc.y, actions[npc.uuid]?.assignment?.takeIf { it.job == TacticalJob.OVERWATCH }?.anchor?.y)
 
         /**
          * Whether [other] is a friendly man on foot whose post must keep its distance from [npc]'s:

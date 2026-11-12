@@ -423,7 +423,7 @@ private class HoldSpot(npc: NpcEntity, state: EngageState, sidearm: Boolean, pri
         // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer
         // "still has a shot", and keeping it had defenders standing behind a hull, never firing.
         val score = state.search.concealmentAt(FiringSpotSearch.Shot(level, npc, target, state.bounds()), held)
-        val clear = !FiringSpots.crowded(held, FiringSpots.nearbyWithBodies(level, npc, FiringSpotSearch.STUCK_SEARCH_RADIUS)) &&
+        val clear = !FiringSpots.crowded(held, FiringSpots.nearbyWithBodies(level, npc, FiringSpotSearch.STUCK_SEARCH_RADIUS), NativeTactics.spacing(npc)) &&
             FriendlyFireGuard.assess(npc, target.eyePosition, npc.spread, target.position(), 0.0).lineClear
         return when {
             !clear -> Verdict.UNSAFE
