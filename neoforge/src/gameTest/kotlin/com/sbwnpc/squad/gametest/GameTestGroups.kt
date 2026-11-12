@@ -83,6 +83,7 @@ internal object GameTestGroups {
         ),
         "fire-support" to listOf(
             MortarCrewGameTests::class.java,
+            MortarSelfDefenceGameTests::class.java,
             FireSupportGameTests::class.java,
         ),
         "logistics" to listOf(

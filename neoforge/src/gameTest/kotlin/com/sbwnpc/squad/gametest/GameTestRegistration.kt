@@ -83,5 +83,5 @@ object GameTestRegistration {
             HostileMobCombatGameTests::class.java,
             SquadManoeuvreGameTests::class.java,
             TreePlatformGameTests::class.java,
-        ) + listOf(ArmourLauncherGameTests::class.java, FlankSectorGameTests::class.java, JourneyHoldGameTests::class.java)
+        ) + listOf(ArmourLauncherGameTests::class.java, FlankSectorGameTests::class.java, JourneyHoldGameTests::class.java, MortarSelfDefenceGameTests::class.java)
 }

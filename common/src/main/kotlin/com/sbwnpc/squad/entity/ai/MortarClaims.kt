@@ -38,8 +38,35 @@ object MortarClaims {
         npc.npcClass == com.sbwnpc.squad.npc.NpcClass.MORTAR && npc.isAlive && !npc.isRemoved && !npc.isPassenger && !npc.holds(NpcActivity.VEHICLE) &&
             !npc.holds(NpcActivity.DUG_IN) && !npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)
 
-    /** The one self-defence rule: his target alive within [FireSupport.SELF_DEFENCE_RANGE] of him. */
-    fun threatened(npc: NpcEntity): Boolean = npc.target?.let { it.isAlive && npc.distanceTo(it) <= FireSupport.SELF_DEFENCE_RANGE } == true
+    /** Whom each man last had at arm's length, and until when that still counts ([threatened]). */
+    private val defending = HashMap<UUID, Pair<UUID, Long>>()
+
+    /**
+     * The one self-defence rule: his target alive within [FireSupport.SELF_DEFENCE_RANGE] of him or
+     * of the other man at his tube, or, once it was that close, within [FireSupport.SELF_DEFENCE_RELEASE]
+     * of him for [FireSupport.SELF_DEFENCE_MEMORY_TICKS] after (#286). An enemy that came within 4
+     * blocks of the operator stood 6.3 from the loader, who saw him and served on; and when the crew
+     * changed posts it was left 6.3 to 7.5 from both, who went back to the tube beside him.
+     */
+    fun threatened(npc: NpcEntity): Boolean {
+        val target = npc.target?.takeIf { it.isAlive } ?: return false
+        val distance = npc.distanceTo(target)
+        val now = npc.level().gameTime
+        if (distance <= FireSupport.SELF_DEFENCE_RANGE || mateAtArmsLength(npc, target)) {
+            defending[npc.uuid] = target.uuid to now + FireSupport.SELF_DEFENCE_MEMORY_TICKS
+            return true
+        }
+        val (enemy, until) = defending[npc.uuid] ?: return false
+        if (now > until) defending.remove(npc.uuid)
+        return enemy == target.uuid && now <= until && distance <= FireSupport.SELF_DEFENCE_RELEASE
+    }
+
+    private fun mateAtArmsLength(npc: NpcEntity, enemy: Entity): Boolean {
+        val tube = npc.assignedMortarId ?: return false
+        val mate = listOfNotNull(operators[tube], loaders[tube]).firstOrNull { it != npc.uuid } ?: return false
+        val man = (npc.level() as? ServerLevel)?.getEntity(mate) ?: return false
+        return man.distanceTo(enemy) <= FireSupport.SELF_DEFENCE_RANGE
+    }
 
     fun refresh(level: ServerLevel) {
         for (map in listOf(operators, loaders)) {
@@ -103,6 +130,7 @@ object MortarClaims {
     fun clearAll() {
         operators.clear()
         loaders.clear()
+        defending.clear()
     }
     private fun trace(mortar: Entity, npc: NpcEntity, role: Role, reason: String) {
         DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar={} npc={} event=crew_assignment role={} reason={}", mortar.uuid, npc.uuid, role, reason)
