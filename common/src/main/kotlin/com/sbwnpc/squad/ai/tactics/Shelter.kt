@@ -49,6 +49,10 @@ object Shelter {
 
     private const val FAILED_NEAR = 3.0
 
-    /** His post under the roof: kept back, with no lane, on a roofed spot near the one found. */
-    fun post(intent: PositionIntent, roof: Point3) = intent.copy(duty = CombatDuty.TAKE_COVER, anchor = roof, hold = false, holdFeet = false, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet(), spread = false, roofed = true)
+    /**
+     * His post under the roof: kept back, with no lane, on a roofed spot near the one found. A
+     * sentry's post floor is dropped with his duty: kept, it refused every spot under a roof lower
+     * than his tower, and sentries stood on their towers through the shelling.
+     */
+    fun post(intent: PositionIntent, roof: Point3) = intent.copy(duty = CombatDuty.TAKE_COVER, anchor = roof, hold = false, holdFeet = false, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet(), spread = false, roofed = true, minimumHeight = null, elevationWeight = 0.0, inspection = null)
 }

@@ -169,6 +169,11 @@ class NpcUnderFireDomainTest {
         // His post search under that roof failed: he no longer heads for it.
         val failed = unseen.observe(TacticalFacts.ROOF, roof).observe(TacticalFacts.ROOF_FAILURE, Point3(12.5, 1.0, 4.5))
         assertNotEquals(true, (first(failed).parameters as? PositionIntent)?.roofed)
+        // A sentry's tower floor does not follow him under a lower roof.
+        val sentry = Shelter.post(intent.copy(minimumHeight = 9.0, elevationWeight = 1.0, inspection = roof), roof)
+        assertEquals(null, sentry.minimumHeight)
+        assertEquals(0.0, sentry.elevationWeight)
+        assertEquals(null, sentry.inspection)
         // An ordinary post failure there is his post chain's, not the roof's: the roof still applies.
         val chain = unseen.observe(TacticalFacts.ROOF, roof).observe(TacticalFacts.POST_FAILURE, LocalPositionFailure(Point3(12.5, 1.0, 4.5), 1, 1, emptyMap()))
         assertEquals(true, (first(chain).parameters as? PositionIntent)?.roofed)
