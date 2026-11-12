@@ -49,7 +49,11 @@ object MortarClaims {
      * changed posts it was left 6.3 to 7.5 from both, who went back to the tube beside him.
      */
     fun threatened(npc: NpcEntity): Boolean {
-        val target = npc.target?.takeIf { it.isAlive } ?: return false
+        val target = npc.target?.takeIf { it.isAlive }
+        if (target == null) {
+            defending.remove(npc.uuid)
+            return false
+        }
         val distance = npc.distanceTo(target)
         val now = npc.level().gameTime
         if (distance <= FireSupport.SELF_DEFENCE_RANGE || mateAtArmsLength(npc, target)) {
@@ -61,12 +65,24 @@ object MortarClaims {
         return enemy == target.uuid && now <= until && distance <= FireSupport.SELF_DEFENCE_RELEASE
     }
 
+    /**
+     * Another man of his tube, standing at it, within arm's length of [enemy]. Found by his tube id
+     * rather than the claim maps: [refresh] drops a threatened man's claim, and his mate then lost
+     * the rule and went back to the tube beside the enemy. A man away on an errand or far from the
+     * tube does not count, so an old crew's id cannot pull this one off.
+     */
     private fun mateAtArmsLength(npc: NpcEntity, enemy: Entity): Boolean {
-        val tube = npc.assignedMortarId ?: return false
-        val mate = listOfNotNull(operators[tube], loaders[tube]).firstOrNull { it != npc.uuid } ?: return false
-        val man = (npc.level() as? ServerLevel)?.getEntity(mate) ?: return false
-        return man.distanceTo(enemy) <= FireSupport.SELF_DEFENCE_RANGE
+        val tubeId = npc.assignedMortarId ?: return false
+        val level = npc.level() as? ServerLevel ?: return false
+        val tube = level.getEntity(tubeId) ?: return false
+        return level.getEntitiesOfClass(NpcEntity::class.java, enemy.boundingBox.inflate(FireSupport.SELF_DEFENCE_RANGE)) { man ->
+            man !== npc && man.isAlive && man.assignedMortarId == tubeId && !man.holds(NpcActivity.MORTAR_ERRAND) &&
+                man.distanceTo(tube) <= MATE_AT_TUBE && man.distanceTo(enemy) <= FireSupport.SELF_DEFENCE_RANGE
+        }.isNotEmpty()
     }
+
+    /** How near his tube a mate must stand to count as its crew. */
+    private const val MATE_AT_TUBE = 8.0
 
     fun refresh(level: ServerLevel) {
         for (map in listOf(operators, loaders)) {
@@ -120,6 +136,7 @@ object MortarClaims {
     }
 
     fun release(npc: UUID) {
+        defending.remove(npc)
         operators.entries.removeIf { it.value == npc }
         loaders.entries.removeIf { it.value == npc }
     }
