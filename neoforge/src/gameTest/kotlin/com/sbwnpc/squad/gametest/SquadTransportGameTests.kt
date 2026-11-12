@@ -2,6 +2,7 @@ package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.ai.coordination.Point3
 import com.sbwnpc.squad.ai.integration.NativeTactics
+import com.sbwnpc.squad.combat.HostileMobs
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
@@ -18,6 +19,11 @@ import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.EquipmentSlot
+import net.minecraft.world.entity.ai.attributes.Attributes
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import net.tslat.smartbrainlib.util.BrainUtils
@@ -95,6 +101,49 @@ object SquadTransportGameTests {
                 assertTransportDriver(helper, lav)
                 helper.assertTrue(!remoteContact || retainedContactTicks >= 5, "The remote contact was cleared instead of retained during boarding")
                 scene.result("PASS", "tick=${helper.tick} aboard=${men.size} retainedContactTicks=$retainedContactTicks")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * A zombie going for the squad from beyond [HostileMobs.CLOSE_RANGE] does not hold it back: the
+     * squad boards and leaves, and whoever sees the zombie fires from where he is (owner 28.10, #231).
+     * The zombie cannot walk, so it stays out there however long the boarding takes, and wears a
+     * helmet so the daylight does not burn it.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "transport-far-mob")
+    fun squadLeavesPastAZombieBeyondHalfItsEngageRange(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "transport-far-mob")
+        val manager = SquadManager.get(helper.level)
+        val men = listOf(32.5, 35.5, 38.5, 41.5).map { scene.spawn(Vec3(it, 1.0, 20.5)) }
+        val lav = park(helper, Vec3(45.5, 1.0, 20.5))
+        val zombie = requireNotNull(EntityType.ZOMBIE.create(helper.level)).also {
+            val at = helper.absoluteVec(Vec3(32.5 - HostileMobs.CLOSE_RANGE - 4.0, 1.0, 20.5))
+            it.moveTo(at.x, at.y, at.z, -90f, 0f)
+            it.setItemSlot(EquipmentSlot.HEAD, ItemStack(Items.IRON_HELMET))
+            it.getAttribute(Attributes.MOVEMENT_SPEED)?.baseValue = 0.0
+            helper.level.addFreshEntity(it)
+            it.target = men.first()
+        }
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            lav.discard()
+            zombie.discard()
+        }
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(150, 1, 20)))
+        var sighted = false
+        helper.onEachTick {
+            // Seen from the start: noticing a zombie behind them took longer than boarding.
+            if (zombie.isAlive) men.filter { it.vehicle == null }.forEach { BrainUtils.setTargetOfEntity(it, zombie) }
+            if (men.any { it.target === zombie }) sighted = true
+            helper.assertTrue(men.none { it.distanceTo(zombie) <= HostileMobs.CLOSE_RANGE }, "The zombie came within half its engage range: the scene no longer tests a far mob")
+            if (men.all { it.vehicle === lav }) {
+                helper.assertTrue(sighted, "Nobody had the zombie as a target, so it was no contact for the journey")
+                assertTransportDriver(helper, lav)
+                scene.result("PASS", "tick=${helper.tick} zombieAlive=${zombie.isAlive}")
                 helper.succeed()
             }
         }
