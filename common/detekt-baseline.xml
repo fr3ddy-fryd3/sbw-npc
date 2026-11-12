@@ -96,7 +96,7 @@
     <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$override fun readAdditionalSaveData(compound: CompoundTag)</ID>
     <ID>CyclomaticComplexMethod:NpcPosture.kt$NpcPosture$fun tick()</ID>
     <ID>CyclomaticComplexMethod:NpcStuckRecovery.kt$NpcStuckRecovery$fun tick()</ID>
-    <ID>CyclomaticComplexMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap(), approach: Double? = null): Map&lt;UUID, FrontProposal&gt;</ID>
+    <ID>CyclomaticComplexMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap(), sector: FrontSector? = null): Map&lt;UUID, FrontProposal&gt;</ID>
     <ID>CyclomaticComplexMethod:Operations.kt$OperationRegistry$fun command(batch: CommandBatch): OperationCommandResult</ID>
     <ID>CyclomaticComplexMethod:OrderArrival.kt$OrderArrival$fun tick(server: MinecraftServer)</ID>
     <ID>CyclomaticComplexMethod:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$override fun tick(entity: NpcEntity)</ID>
@@ -166,7 +166,7 @@
     <ID>LongMethod:NativeTactics.kt$NativeTactics.World$private fun observeArea(task: AreaControlTask, squads: List&lt;Squad&gt;, now: Long)</ID>
     <ID>LongMethod:NpcEntity.kt$NpcEntity$override fun readAdditionalSaveData(compound: CompoundTag)</ID>
     <ID>LongMethod:NpcStuckRecovery.kt$NpcStuckRecovery$fun tick()</ID>
-    <ID>LongMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap(), approach: Double? = null): Map&lt;UUID, FrontProposal&gt;</ID>
+    <ID>LongMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap(), sector: FrontSector? = null): Map&lt;UUID, FrontProposal&gt;</ID>
     <ID>LongMethod:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>LongMethod:RecruitScreen.kt$RecruitScreen$override fun init()</ID>
     <ID>LongMethod:ServerPayloadHandlers.kt$ServerPayloadHandlers$fun onSquadCmd(p: SquadCmdPayload, ctx: PayloadContext)</ID>

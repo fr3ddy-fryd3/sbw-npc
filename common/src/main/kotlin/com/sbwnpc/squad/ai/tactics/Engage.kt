@@ -108,6 +108,14 @@ object Engage {
      */
     const val OPENING_WINDOW = 100L
 
+    /**
+     * Ticks a leg towards his slot that found no ground or path keeps [EngageMove.JOIN_FIRE] off,
+     * 5 s. A man at the enemy clearance with no shot planned the leg again every tick, got none,
+     * and stood blind with no task for 25 s (#291); meanwhile [EngageMove.HOLD_SPOT] looks for a
+     * spot with a line from round where he stands.
+     */
+    const val SLOT_LEG_REST = 100L
+
     /** Rounds of an opening burst from an automatic weapon; a semi-automatic one fires one. */
     const val OPENING_ROUNDS_AUTOMATIC = 4
 
@@ -142,7 +150,7 @@ object Engage {
             EngageMove.FOLIAGE_FIRE -> flag(facts, TacticalFacts.FOLIAGE_FIRE_DUE, "no_foliage_fire_due")
             EngageMove.ADVANCE_FROM_POST -> forward(task, facts) { all(flag(facts, TacticalFacts.HOLDING_ORDER, "not_holding"), flag(facts, TacticalFacts.MAY_ADVANCE, "advance_not_allowed")) }
             EngageMove.CLOSE_IN -> forward(task, facts) { all(not(facts, TacticalFacts.HOLDING_ORDER, "holding"), not(facts, TacticalFacts.IN_REACH, "in_reach"), flag(facts, TacticalFacts.CLEAR_SHOT, "no_clear_shot")) }
-            EngageMove.JOIN_FIRE -> forward(task, facts) { all(not(facts, TacticalFacts.HOLDING_ORDER, "holding"), not(facts, TacticalFacts.IN_REACH, "in_reach"), not(facts, TacticalFacts.CLEAR_SHOT, "clear_shot")) }
+            EngageMove.JOIN_FIRE -> forward(task, facts) { all(not(facts, TacticalFacts.HOLDING_ORDER, "holding"), not(facts, TacticalFacts.IN_REACH, "in_reach"), not(facts, TacticalFacts.CLEAR_SHOT, "clear_shot"), not(facts, TacticalFacts.SLOT_LEG_BLOCKED, "no_slot_leg")) }
             EngageMove.HOLD_SPOT -> Verdict.Allowed
         }
 

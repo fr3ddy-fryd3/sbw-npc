@@ -317,7 +317,7 @@ object SquadMarch {
     }
 
     /**
-     * [npc]'s place in its squad's marching formation — a wedge on the attack — laid round the
+     * [npc]'s place in its squad's marching formation — a column of twos — laid round the
      * route rather than on it: the formation's point is [LOOKAHEAD] nodes ahead of the squad's lead
      * man, turned along the way the route runs there. Walking the route itself had the whole squad
      * strung out one behind the other. Null where that place is no good — no ground to stand on
@@ -335,7 +335,7 @@ object SquadMarch {
         val lead = (level.getEntity(squad.members.first()) as? NpcEntity)
             ?.takeIf { it.isAlive && distanceTo(march, it) <= JOIN * 2 }
         val leadAt = lead?.let { march.progress.index(it.uuid, it.position()) } ?: here
-        // The rear of a large wedge can be 48 blocks behind its anchor. Sixteen nodes ahead
+        // The rear of a large column can be 50 blocks and more behind its anchor. Sixteen nodes ahead
         // minus that depth put its slot behind the walker, which then stood there indefinitely.
         val a = formationAnchorIndex(route, leadAt, here, local.z)
         val anchor = route[a]

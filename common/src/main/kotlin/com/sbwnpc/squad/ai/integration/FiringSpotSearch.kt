@@ -17,6 +17,9 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * One man's search for a firing spot near him that keeps a clear shot on his target while hiding
@@ -122,7 +125,7 @@ class FiringSpotSearch(private val navigator: CombatNavigator) {
 
         // Resume the wider search directly; restarting the small grid would discard its queue.
         val resumed = pending
-        if (resumed != null && resumed.matches(shot.entity, shot.target) && resumed.radius == STUCK_SEARCH_RADIUS) {
+        if (resumed != null && resumed.matches(shot.entity, shot.target, grid.hulls) && resumed.radius == STUCK_SEARCH_RADIUS) {
             return sweep(grid, STUCK_SEARCH_RADIUS, STUCK_GRID_STEP, baseline)
         }
 
@@ -161,22 +164,35 @@ class FiringSpotSearch(private val navigator: CombatNavigator) {
         val aim: Vec3,
         val radius: Double,
         step: Int,
+        extra: List<Vec3>,
     ) {
+        /** Whether a hull was near his lane when the search began; see [matches]. */
+        var hulled = false
         val probes = (-radius.toInt()..radius.toInt() step step).flatMap { dx ->
             (-radius.toInt()..radius.toInt() step step).filter { dz -> dx * dx + dz * dz <= radius * radius }.map { dz -> origin.add(dx.toDouble(), 0.0, dz.toDouble()) }
-        }
+        } + extra
         var probeIndex = 0
         var sorted = false
         val remaining = ArrayList<Candidate>()
 
-        /** He has not moved off the search's origin, and his target is the same and where it was. */
-        fun matches(entity: NpcEntity, enemy: LivingEntity): Boolean = origin.distanceToSqr(entity.position()) <= RESUME_DRIFT * RESUME_DRIFT && target == enemy.uuid && aim.distanceToSqr(enemy.eyePosition) <= RESUME_AIM_DRIFT * RESUME_AIM_DRIFT
+        /**
+         * He has not moved off the search's origin, his target is the same and where it was, and a
+         * hull is still, or still not, near the lane: one parked since needs the sidesteps.
+         */
+        fun matches(entity: NpcEntity, enemy: LivingEntity, hulls: List<AABB>): Boolean = hulled == hulls.isNotEmpty() && origin.distanceToSqr(entity.position()) <= RESUME_DRIFT * RESUME_DRIFT && target == enemy.uuid && aim.distanceToSqr(enemy.eyePosition) <= RESUME_AIM_DRIFT * RESUME_AIM_DRIFT
     }
 
     private fun sweep(grid: Grid, radius: Double, step: Int, startingScore: Double): Vec3? {
         val shot = grid.shot
-        val resumed = pending?.takeIf { it.radius == radius && it.matches(shot.entity, shot.target) }
-        val search = resumed ?: Pending(grid.origin, shot.target.uuid, shot.target.eyePosition, radius, step).also { pending = it }
+        val resumed = pending?.takeIf { it.radius == radius && it.matches(shot.entity, shot.target, grid.hulls) }
+        val search = resumed ?: run {
+            // Only a hull on the lane is cleared well to the side; open ground has the grid.
+            val sidesteps = if (radius == STUCK_SEARCH_RADIUS && grid.hulls.isNotEmpty()) sidesteps(grid.origin, shot.target.position()) else emptyList()
+            Pending(grid.origin, shot.target.uuid, shot.target.eyePosition, radius, step, sidesteps).also {
+                it.hulled = grid.hulls.isNotEmpty()
+                pending = it
+            }
+        }
         if (!collect(search, grid, startingScore)) {
             deferred = true
             return null
@@ -284,3 +300,35 @@ class FiringSpotSearch(private val navigator: CombatNavigator) {
         private val FIRING_POSITION_COLOR = org.joml.Vector3f(0.3f, 0.6f, 1.0f)
     }
 }
+
+/**
+ * Spots to either side of [origin]'s bearing from [centre] that a straight walk reaches without
+ * coming any nearer it (#287): at an angle θ off his bearing, a spot at his distance over cos θ
+ * keeps the whole straight line at his distance or more. A hull parked between him and a near
+ * enemy is cleared only well to the side; the square grid, coarse at that range, has few spots
+ * there, and those on his own circle need a path that cuts inside it, which the enemy clearance
+ * forbids.
+ */
+internal fun sidesteps(origin: Vec3, centre: Vec3): List<Vec3> {
+    val away = origin.subtract(centre)
+    val distance = away.horizontalDistance()
+    if (distance < 1.0) return emptyList()
+    val bearing = atan2(away.z, away.x)
+    return SIDESTEP_ANGLES.flatMap { listOf(it, -it) }.map { degrees ->
+        val angle = Math.toRadians(degrees)
+        val reach = distance / cos(angle) + SIDESTEP_MARGIN
+        Vec3(centre.x + reach * cos(bearing + angle), origin.y, centre.z + reach * sin(bearing + angle))
+    }.filter { it.distanceToSqr(origin) <= SIDESTEP_REACH * SIDESTEP_REACH }
+}
+
+/** Degrees off his bearing from the target of the [sidesteps] probes, nearest first. */
+private const val SIDESTEP_FIRST_ANGLE = 20
+private const val SIDESTEP_LAST_ANGLE = 60
+private const val SIDESTEP_ANGLE_STEP = 10
+private val SIDESTEP_ANGLES = (SIDESTEP_FIRST_ANGLE..SIDESTEP_LAST_ANGLE step SIDESTEP_ANGLE_STEP).map { it.toDouble() }
+
+/** Blocks past the no-nearer curve, for path nodes on block centres. */
+private const val SIDESTEP_MARGIN = 1.0
+
+/** How far from him a sidestep may lie: a little past the wide grid. */
+private const val SIDESTEP_REACH = 20.0

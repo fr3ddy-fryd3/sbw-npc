@@ -54,7 +54,20 @@ class SquadMarchTest {
         val local = SquadFormation.transitOffset(SquadOrder.PATROL, 2, 32)
         val anchor = SquadMarch.formationAnchorIndex(longRoute, 100, 80, local.z)
         assertEquals(116, anchor)
-        assertEquals(113.0, longRoute[anchor].x + local.z)
+        // Slot 2 walks in the second pair, one pair gap behind the lead's.
+        assertEquals(112.5, longRoute[anchor].x + local.z)
+    }
+
+    @Test
+    fun `out of contact a squad marches in a column of twos`() {
+        for (order in listOf(SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.PATROL)) {
+            val slots = (0 until 8).map { SquadFormation.transitOffset(order, it, 8) }
+            slots.chunked(2).forEachIndexed { pair, (left, right) ->
+                assertEquals(left.z, right.z, "$order pair $pair")
+                assertTrue(left.x < 0.0 && right.x > 0.0, "$order pair $pair: $left $right")
+                if (pair > 0) assertTrue(slots[pair * 2 - 2].z - left.z in 3.0..4.0, "$order pair $pair gap")
+            }
+        }
     }
 
     @Test

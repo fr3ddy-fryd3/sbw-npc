@@ -32,6 +32,23 @@ class OperationFrontTest {
         assertEquals(wide, OperationFront.propose(actors.reversed(), listOf(Point3(120.0, 1.0, -64.0), Point3(120.0, 1.0, 128.0)), focus))
     }
 
+    @Test fun `two sectors of one attack split the front a compact enemy needs and keep a rear guard`() {
+        // Two sectors of 32: half of a 32-man front each, 10 in support, the rest at the rear.
+        val sectors = actors.groupBy { it.squad }.values.toList()
+        sectors.forEachIndexed { index, sector ->
+            val proposals = OperationFront.propose(sector, listOf(focus), focus, sector = FrontSector(Math.PI + (index - 0.5), 0.5))
+            assertTrue(proposals.values.count { it.duty == CombatDuty.REAR_GUARD } >= 6, "sector $index: ${proposals.values.groupingBy { it.duty }.eachCount()}")
+            assertTrue(proposals.values.any { it.duty == CombatDuty.MOVE } && proposals.values.any { it.duty == CombatDuty.FIRE })
+        }
+    }
+
+    @Test fun `a sector facing a wide enemy still mans its whole front`() {
+        val wide = listOf(Point3(120.0, 1.0, -64.0), Point3(120.0, 1.0, 128.0))
+        val sector = actors.take(32)
+        fun movers(share: Double) = OperationFront.propose(sector, wide, focus, sector = FrontSector(Math.PI, share)).values.count { it.duty == CombatDuty.MOVE }
+        assertEquals(movers(1.0), movers(0.5))
+    }
+
     @Test fun `of men with one reach the ones nearest the front row take it`() {
         // Front row 56 short of the focus, at x=64: three men stand on it, three far back at x=0,
         // the far ones listed first, so neither lateral place nor listing order picks them.
@@ -51,7 +68,7 @@ class OperationFrontTest {
         val squad = UUID(1, 9)
         val onLine = (0 until 3).map { FormationActor(UUID(3, it.toLong()), squad, Point3(204.0, 1.0, 30.0 + it * 2)) }
         val byFocus = (0 until 3).map { FormationActor(UUID(2, it.toLong()), squad, Point3(140.0, 1.0, 30.0 + it * 2)) }
-        val proposals = OperationFront.propose(byFocus + onLine, listOf(Point3(150.0, 1.0, 32.0)), focus, approach = 0.0)
+        val proposals = OperationFront.propose(byFocus + onLine, listOf(Point3(150.0, 1.0, 32.0)), focus, sector = FrontSector(0.0))
         assertTrue(onLine.all { proposals.getValue(it.id).duty == CombatDuty.MOVE }, proposals.toString())
     }
 
@@ -103,7 +120,7 @@ class OperationFrontTest {
     @Test fun `a front on an approach bearing faces the objective from it and stays out of every enemy's reach`() {
         val objective = Point3(0.0, 1.0, 0.0)
         val enemies = listOf(objective, Point3(30.0, 1.0, 40.0), Point3(-20.0, 1.0, 10.0))
-        val proposals = OperationFront.propose(actors.take(16), enemies, objective, approach = Math.PI / 2)
+        val proposals = OperationFront.propose(actors.take(16), enemies, objective, sector = FrontSector(Math.PI / 2))
         proposals.values.filter { it.duty == CombatDuty.MOVE || it.duty == CombatDuty.FIRE }.forEach { proposal ->
             // Bearing 90 degrees: the line stands on +z of the objective.
             assertTrue(proposal.anchor.z > 40.0 + 56.0 - 1e-6, "${proposal.anchor}")

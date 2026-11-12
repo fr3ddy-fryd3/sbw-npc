@@ -126,7 +126,7 @@ object TacticalPositions {
         val post = task.localFirePost ?: task.anchor
         if (!TacticalFirePosts.withinPost(post, point, task.localFireRecovery)) return null
         if (task.expandedFireSearch && FiringSpots.crowded(point, FiringSpots.nearbyWithBodies(level, entity, 64.0))) return null
-        if (!TacticalRules.withinOrder(view, point, homeRadius) || GrenadeHazard.threatens(level, point)) return null
+        if (!TacticalRules.withinOrder(view, point, homeRadius, entity.position()) || GrenadeHazard.threatens(level, point)) return null
         if (!safeDistance(entity, view, point, clearance) || !TickBudget.hasRaycasts(level)) return null
         val aim = TacticalAim.resolve(entity, task) ?: return null
         val sheltered = DefensiveOverwatch.nearbyCover(point, aim.eye) { from, to -> Sightline.blocked(level, from, to, entity) }
@@ -224,7 +224,7 @@ object TacticalPositions {
             return
         }
         // A scout is sent past the defended ring on purpose, to a noise his squad chose within its reach (#254).
-        if (task.job != TacticalJob.SEARCH && !TacticalRules.withinOrder(context.view, candidate, context.homeRadius)) {
+        if (task.job != TacticalJob.SEARCH && !TacticalRules.withinOrder(context.view, candidate, context.homeRadius, context.search.origin)) {
             search.reject("order")
             return
         }
@@ -478,7 +478,7 @@ object TacticalPositions {
         return (path.nextNodeIndex until path.nodeCount).none { index ->
             val node = path.getNode(index)
             val foot = Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5)
-            !TacticalRules.withinOrder(context.view, foot, context.homeRadius) || GrenadeHazard.threatens(context.level, foot) ||
+            !TacticalRules.withinOrder(context.view, foot, context.homeRadius, context.search.origin) || GrenadeHazard.threatens(context.level, foot) ||
                 !context.policy.route(context.view, context.task, context.search.origin, foot)
         }
     }

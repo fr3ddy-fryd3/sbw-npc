@@ -415,6 +415,9 @@ object TacticalFacts {
     /** A defender stands outside his area, with a band of [Engage.BAND] on the way back in. */
     val OUTSIDE_AREA = FactKey("actor.outside_area", Boolean::class.javaObjectType)
 
+    /** His last leg towards his slot in the firing area found no ground or path, within [Engage.SLOT_LEG_REST]. */
+    val SLOT_LEG_BLOCKED = FactKey("actor.slot_leg_blocked", Boolean::class.javaObjectType)
+
     /** Holding, his target is far enough off for one bounded approach, and he has not made it yet from this post. */
     val MAY_ADVANCE = FactKey("actor.may_advance", Boolean::class.javaObjectType)
 
