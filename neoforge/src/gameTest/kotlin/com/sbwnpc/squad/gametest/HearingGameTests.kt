@@ -10,6 +10,7 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.SquadManager
@@ -171,6 +172,52 @@ object HearingGameTests {
             helper.assertTrue(most <= MAX_ROOF_FAILURES, "Post searches under a roof another holds failed $most times in a row")
             if (helper.tick == 380L) helper.succeed()
         }
+    }
+
+    /**
+     * A machine gunner holds a 3-block tower with no enemy in sight, a shed stands on the ground 10
+     * blocks off, and shells fall near (#321). He climbs down and takes the shed: his tower's post
+     * floor followed him into the shelter search and refused every spot under it (playtest 12.11).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 800, batch = "shelter")
+    fun shelledSentryLeavesHisTowerForAShed(helper: GameTestHelper) {
+        buildLookoutAndShed(helper)
+        val man = AttackDeploymentGameTests.spawn(helper, Vec3(21.5, 4.0, 20.5), SquadFaction.PIG, role = NpcClass.MACHINE_GUNNER)
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, helper.absolutePos(BlockPos(21, 4, 20)))
+        cleanup(helper) {
+            manager.deleteSquad(helper.level, squad.id)
+            man.discard()
+        }
+        helper.onEachTick {
+            if (helper.tick in 120L..760L && helper.tick % 40L == 0L) Hearing.explosion(helper.level, helper.absoluteVec(Vec3(14.5, 1.0, 14.5)), 4.0f, null)
+            val at = helper.relativeVec(man.position())
+            // Up on his lookout until the first shell: he leaves it for the shelling, not for a post below.
+            if (helper.tick == 119L) helper.assertTrue(at.y >= 3.0, "The sentry was off his lookout at $at before any shell")
+            val underTheShed = at.y < 2.0 && at.x in 31.0..36.0 && at.z in 18.0..23.0
+            if (helper.tick > 120 && underTheShed) helper.succeed()
+            if (helper.tick == 790L) helper.fail("The sentry stayed at $at through the shelling")
+        }
+    }
+
+    /** A lookout three blocks up behind a parapet with steps down its east side, and a shed ten blocks east. */
+    private fun buildLookoutAndShed(helper: GameTestHelper) {
+        val fill = { xs: IntRange, ys: IntRange, zs: IntRange, block: net.minecraft.world.level.block.Block ->
+            for (x in xs) for (y in ys) for (z in zs) helper.setBlock(BlockPos(x, y, z), block)
+        }
+        fill(0..79, 0..0, 0..47, Blocks.STONE)
+        fill(19..23, 1..4, 18..22, Blocks.STONE)
+        // His floor inside the parapet, and its gap where the steps come up.
+        fill(20..22, 4..4, 19..21, Blocks.AIR)
+        fill(23..23, 4..4, 20..20, Blocks.AIR)
+        fill(24..24, 1..2, 20..20, Blocks.STONE)
+        fill(25..25, 1..1, 20..20, Blocks.STONE)
+        // The arena's barrier ceiling stands within five blocks of the lookout and the shed top: a roof to the search.
+        fill(10..40, 9..9, 10..30, Blocks.AIR)
+        fill(31..35, 4..4, 18..22, Blocks.OAK_PLANKS)
+        for ((x, z) in listOf(31 to 18, 35 to 18, 31 to 22, 35 to 22)) fill(x..x, 1..3, z..z, Blocks.OAK_LOG)
     }
 
     /** A failure or two while the roof is tried and its failure is remembered; one per tick was the loop. */

@@ -40,7 +40,7 @@ internal class RoofSearch {
             }
         }
         // Where he stands counts too: under a roof already, he stays.
-        val roofed = (listOf(origin) + columns.sortedBy { it.distSqr(origin) }).take(MAX_COLUMNS).mapNotNull { standing(level, it) }.filter { roofed(level, it) }
+        val roofed = (listOf(origin) + columns.sortedBy { it.distSqr(origin) }).take(MAX_COLUMNS).mapNotNull { column -> standing(level, column).firstOrNull { roofed(level, it) } }
         val spot = roofed.take(ROUTE_CHECKS).firstOrNull { it == origin || npc.navigation.createPath(it, 0)?.canReach() == true }
         val point = spot?.let { Point3(it.x + HALF, it.y.toDouble(), it.z + HALF) }
         found[npc.uuid] = now to point
@@ -69,9 +69,13 @@ internal class RoofSearch {
         private const val HALF = 0.5
         private const val STAGGER = 20
 
-        /** The standing spot in [column] within [STEP] blocks of its height: ground below, room for him. */
-        private fun standing(level: Level, column: BlockPos): BlockPos? =
-            (0..STEP).flatMap { listOf(it, -it) }.distinct().map { column.above(it) }.firstOrNull { feet ->
+        /**
+         * The standing spots in [column] within [STEP] blocks of its height, nearest first: ground
+         * below, room for him. All of them, not the nearest alone: from a tower the nearest floor in a
+         * shed's column is its roof top, and no sentry found the floor under it.
+         */
+        private fun standing(level: Level, column: BlockPos): Sequence<BlockPos> =
+            (0..STEP).asSequence().flatMap { sequenceOf(it, -it) }.distinct().map { column.above(it) }.filter { feet ->
                 level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), net.minecraft.core.Direction.UP) &&
                     level.getBlockState(feet).getCollisionShape(level, feet).isEmpty &&
                     level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty
