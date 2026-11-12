@@ -15,11 +15,18 @@ class StandoffStationTest {
         assertEquals(100.0, point.z, 1e-6)
     }
 
-    @Test fun `it goes round the target to the side farthest from another enemy`() {
+    @Test fun `it goes the shorter way round the target to a point well clear of another enemy`() {
         val other = Vec3(76.0, 0.0, 100.0)
         val point = StandoffStation.point(heli, target, listOf(other), 20.0)
-        assertTrue(Vec3(point.x - other.x, 0.0, point.z - other.z).length() >= 40.0, "Hovers $point near the other enemy")
+        assertTrue(Vec3(point.x - other.x, 0.0, point.z - other.z).length() >= 26.0, "Hovers $point near the other enemy")
         assertEquals(20.0, Vec3(point.x - target.x, 0.0, point.z - target.z).length(), 1e-6)
+    }
+
+    @Test fun `a point already clear of the other enemy is kept rather than swung across the target`() {
+        val other = Vec3(76.0, 0.0, 100.0)
+        val previous = Vec3(100.0, 0.0, 80.0)
+        val point = StandoffStation.point(heli, target, listOf(other), 20.0, previous)
+        assertEquals(previous, point)
     }
 
     @Test fun `the target itself among the contacts does not push the point`() {

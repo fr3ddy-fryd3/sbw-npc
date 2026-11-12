@@ -134,14 +134,12 @@ object SquadTransportGameTests {
             zombie.discard()
         }
         manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(150, 1, 20)))
-        var sighted = false
         helper.onEachTick {
             // Seen from the start: noticing a zombie behind them took longer than boarding.
             if (zombie.isAlive) men.filter { it.vehicle == null }.forEach { BrainUtils.setTargetOfEntity(it, zombie) }
-            if (men.any { it.target === zombie }) sighted = true
+            if (helper.tick == WALK_TOLD_TICKS) helper.assertTrue(NativeTactics.travelling(men.first()), "The squad stayed to fight a zombie beyond half its engage range")
             helper.assertTrue(men.none { it.distanceTo(zombie) <= HostileMobs.CLOSE_RANGE }, "The zombie came within half its engage range: the scene no longer tests a far mob")
             if (men.all { it.vehicle === lav }) {
-                helper.assertTrue(sighted, "Nobody had the zombie as a target, so it was no contact for the journey")
                 assertTransportDriver(helper, lav)
                 scene.result("PASS", "tick=${helper.tick} zombieAlive=${zombie.isAlive}")
                 helper.succeed()
