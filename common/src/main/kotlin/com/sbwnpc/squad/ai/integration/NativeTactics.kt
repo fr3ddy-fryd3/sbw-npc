@@ -1478,7 +1478,7 @@ object NativeTactics {
         }
 
         /**
-         * Whether a squadmate's body stands within [FiringSpots.MIN_SPACING] of him, checked every
+         * Whether a friendly man's body stands within [FiringSpots.MIN_SPACING] of him, checked every
          * [CROWDING_CHECK_TICKS]. Claims are not bodies, so [FiringSpots.nearbyWithBodies] is not used.
          * Once crowded he stays so until the nearest is half a block further, or the fact flickered
          * at the edge and replanned him. Medics walk up to the wounded on purpose and are left out;
@@ -1498,8 +1498,12 @@ object NativeTactics {
             return near
         }
 
-        /** Whether [other] is a squadmate on foot whose post must keep its distance from [npc]'s. */
-        private fun spacedFrom(npc: NpcEntity, other: NpcEntity) = other.isAlive && other.vehicle == null && other.npcClass != NpcClass.MEDIC && other.squadId == npc.squadId
+        /**
+         * Whether [other] is a friendly man on foot whose post must keep its distance from [npc]'s:
+         * of any squad, not only his own. The squads of one attack share their anchors, and men of
+         * several whose searches failed stood ten to a block beside a landed helicopter (#128).
+         */
+        private fun spacedFrom(npc: NpcEntity, other: NpcEntity) = other.isAlive && other.vehicle == null && other.npcClass != NpcClass.MEDIC && other.squadId != null && !SquadTeams.isHostile(npc, other)
 
         /**
          * A live target he sees, or one not shooting at him now: the cover behaviour's test for
