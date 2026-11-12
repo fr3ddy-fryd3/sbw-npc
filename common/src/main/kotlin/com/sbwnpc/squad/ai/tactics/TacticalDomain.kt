@@ -293,6 +293,9 @@ data class LocalPositionFailure(val anchor: Point3, val failedAt: Long, val atte
 
 object TacticalFacts {
     val POST_FAILURE = FactKey("post.local_failure", LocalPositionFailure::class.java)
+
+    /** Where his post search under a roof last failed, kept apart from [POST_FAILURE]'s post chain (#321). */
+    val ROOF_FAILURE = FactKey("post.roof_failure", Point3::class.java)
     val AREA_SECURED = FactKey("operation.area_secured", Boolean::class.javaObjectType)
 
     /** A squadmate stands within [com.sbwnpc.squad.combat.FiringSpots.MIN_SPACING] of him (#299). */

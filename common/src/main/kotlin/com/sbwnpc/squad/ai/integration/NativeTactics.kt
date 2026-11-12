@@ -954,6 +954,9 @@ object NativeTactics {
         private val closeDuties = HashMap<UUID, Long>()
         private val failures = HashMap<UUID, LocalPositionFailure>()
 
+        /** Where and when each man's post search under a roof last failed, for [TacticalFacts.ROOF_FAILURE]. */
+        private val roofFailures = HashMap<UUID, Pair<Point3, Long>>()
+
         // Legs each mover has finished of an advance by legs, see [TacticalFacts.LEGS_DONE].
         private val legs = HashMap<UUID, Int>()
         private var nextObservation = Long.MIN_VALUE
@@ -1172,16 +1175,7 @@ object NativeTactics {
                             val npc = requireNotNull(level.getEntity(intent.actor.id) as? NpcEntity)
                             actions[intent.actor.id]?.overwatchPost?.let { heldPosts[intent.actor.id] = it }
                             NativePositionAction(intent, npc, { npc.squadId?.let(::combatView) }, heldPost = heldPosts[intent.actor.id], exhausted = { failed, rejections, searched ->
-                                // A roof post is the shelter method's own: failed under its roof, it must read as failed
-                                // there, or the method took the same roof again every tick (#321).
-                                val anchor = if (failed.roofed) failed.anchor else original.anchor
-                                val previous = failures[failed.actor.id]?.takeIf { it.anchor == anchor }
-                                // A failed spread keeps the round's count: it must not restart the post chain (#299).
-                                failures[failed.actor.id] = if (failed.spread && previous != null) {
-                                    previous.copy(failedAt = level.gameTime, spreadTried = true)
-                                } else {
-                                    LocalPositionFailure(anchor, level.gameTime, (previous?.attempts ?: 0) + 1, rejections.toMap(), previous?.spreadTried == true)
-                                }
+                                recordFailure(failed, original, rejections)
                                 // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
                                 // The planned anchor is put on the ground before the search; searched is where it looked.
                                 val ground = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, net.minecraft.util.Mth.floor(searched.x), net.minecraft.util.Mth.floor(searched.z))
@@ -1424,6 +1418,24 @@ object NativeTactics {
             return if (unseen && digs == 0) roofs.near(npc, now) else null
         }
 
+        /**
+         * Remembers a failed post search of [failed], planned for the goal [original]. A roof post is
+         * the shelter method's own, apart from his post chain: in the chain's slot it reset the chain,
+         * and the next ordinary failure hid the roof's again, so the method took the same roof every
+         * tick or two (#321).
+         */
+        private fun recordFailure(failed: PositionIntent, original: PositionIntent, rejections: Map<String, Int>) {
+            val previous = failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }
+            if (failed.roofed) {
+                roofFailures[failed.actor.id] = failed.anchor to level.gameTime
+            } else if (failed.spread && previous != null) {
+                // A failed spread keeps the round's count: it must not restart the post chain (#299).
+                failures[failed.actor.id] = previous.copy(failedAt = level.gameTime, spreadTried = true)
+            } else {
+                failures[failed.actor.id] = LocalPositionFailure(original.anchor, level.gameTime, (previous?.attempts ?: 0) + 1, rejections.toMap(), previous?.spreadTried == true)
+            }
+        }
+
         private fun coverOf(npc: NpcEntity) = cover.getOrPut(npc.uuid, ::CoverState)
 
         /**
@@ -1447,7 +1459,7 @@ object NativeTactics {
                 .observe(TacticalFacts.SHELTERED, state?.sheltered(npc, sector) == true)
                 .observe(TacticalFacts.CROWDED, crowded(npc, now))
             sector?.let { result = result.observe(TacticalFacts.FIRE_SECTOR, it) }
-            // Shelled or suppressed with no sector and nothing in sight: a roof near him, if any.
+            // Shelled with no sector and nothing in sight: a roof near him, if any.
             roofFor(npc, sector, digs, now)?.let { result = result.observe(TacticalFacts.ROOF, it) }
             state?.failure?.let { result = result.observe(TacticalFacts.COVER_FAILURE, it, observedAt = it.failedAt, expiresAt = it.failedAt + FAILURE_MEMORY_TICKS) }
             // Only the answers to no cover and the hole read these, and a man peeking from cover
@@ -1515,6 +1527,7 @@ object NativeTactics {
                 .observe(TacticalFacts.LEGS_DONE, legs[id.id] ?: 0)
                 .observe(TacticalFacts.SUPPORT_FIRING, supportFiring(id, now), expiresAt = now + 11)
             failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
+            roofFailures[id.id]?.let { (roof, at) -> result = result.observe(TacticalFacts.ROOF_FAILURE, roof, observedAt = at, expiresAt = at + FAILURE_MEMORY_TICKS) }
             result = coverFacts(result, npc, now)
             result = armourFacts(result, npc)
             return if (npc != null) manFacts(result, id, npc, now) else result
@@ -1799,6 +1812,7 @@ object NativeTactics {
                 drones.sweep()
                 children.keys.removeIf { it !in desiredAgents }
                 failures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                roofFailures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 // A man leaving the plan keeps no foxhole claim nobody would release.
                 armour.entries.removeIf { (id, state) ->
                     (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) FiringSpots.release(id, state.reservation) }
@@ -3217,6 +3231,7 @@ object NativeTactics {
             armour.clear()
             cover.clear()
             roofs.clear()
+            roofFailures.clear()
             crowding.clear()
             supportWaits.clear()
             coverStalls.clear()
