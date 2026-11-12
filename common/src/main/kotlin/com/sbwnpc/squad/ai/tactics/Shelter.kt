@@ -47,7 +47,8 @@ object Shelter {
     // His post search under this roof failed lately: another method answers until the failure expires.
     private fun failedAt(failed: Point3?, roof: Point3) = failed != null && hypot(failed.x - roof.x, failed.z - roof.z) <= FAILED_NEAR
 
-    private const val FAILED_NEAR = 3.0
+    /** How near a failed roof post another roof counts as the same roof. */
+    const val FAILED_NEAR = 3.0
 
     /**
      * His post under the roof: kept back, with no lane, on a roofed spot near the one found. A

@@ -3,12 +3,16 @@ package com.sbwnpc.squad.ai.integration
 import com.sbwnpc.squad.ai.coordination.Point3
 import com.sbwnpc.squad.ai.tactics.Shelter
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.core.BlockPos
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.tags.BlockTags
 import net.minecraft.world.level.Level
+import net.minecraft.world.phys.Vec3
 import java.util.UUID
+import kotlin.math.hypot
 
 /**
  * Finds a spot under a roof near a shelled man (owner 08.11, [Shelter]). Budgeted: at most [MAX_COLUMNS]
@@ -19,16 +23,18 @@ import java.util.UUID
 internal class RoofSearch {
     private val found = HashMap<UUID, Pair<Long, Point3?>>()
 
-    fun near(npc: NpcEntity, now: Long): Point3? {
+    fun near(npc: NpcEntity, now: Long, failed: Point3? = null): Point3? {
         val last = found[npc.uuid]
-        last?.takeIf { now - it.first < REFRESH_TICKS + npc.uuid.hashCode().mod(STAGGER) }?.let { return it.second }
+        last?.takeIf { now - it.first < REFRESH_TICKS + npc.uuid.hashCode().mod(STAGGER) && !near(it.second, failed) }?.let { return it.second }
         val level = npc.level()
         val origin = npc.blockPosition()
+        val taken by lazy { taken(npc, now) }
+        val free = { feet: BlockPos -> !FiringSpots.crowded(Vec3.atBottomCenterOf(feet), taken) && !near(Point3(feet.x + HALF, feet.y.toDouble(), feet.z + HALF), failed) }
         // The spot already found stands while it is still roofed and near: a new nearest one each
         // refresh moved his post as he walked.
         last?.second?.let { kept ->
             val pos = BlockPos.containing(kept.x, kept.y, kept.z)
-            if (pos.distSqr(origin) <= Shelter.RADIUS * Shelter.RADIUS && roofed(level, pos)) {
+            if (keeps(npc, pos, origin) && (sheltering(npc) || free(pos))) {
                 found[npc.uuid] = now to kept
                 return kept
             }
@@ -40,7 +46,7 @@ internal class RoofSearch {
             }
         }
         // Where he stands counts too: under a roof already, he stays.
-        val roofed = (listOf(origin) + columns.sortedBy { it.distSqr(origin) }).take(MAX_COLUMNS).mapNotNull { column -> standing(level, column).firstOrNull { roofed(level, it) } }
+        val roofed = (listOf(origin) + columns.sortedBy { it.distSqr(origin) }).take(MAX_COLUMNS).mapNotNull { column -> standing(level, column).firstOrNull { roofed(level, it) } }.filter { it == origin || free(it) }
         val spot = roofed.take(ROUTE_CHECKS).firstOrNull { it == origin || npc.navigation.createPath(it, 0)?.canReach() == true }
         val point = spot?.let { Point3(it.x + HALF, it.y.toDouble(), it.z + HALF) }
         found[npc.uuid] = now to point
@@ -53,6 +59,24 @@ internal class RoofSearch {
         val spot = found[npc.uuid]?.second ?: return false
         return npc.position().distanceToSqr(spot.x, spot.y, spot.z) <= AT_SPOT * AT_SPOT
     }
+
+    /**
+     * Where others stand, hold a post or are headed under a roof. The post search under a roof keeps
+     * the same spacing, so a spot offered here past it would only fail there.
+     */
+    private fun taken(npc: NpcEntity, now: Long): List<Vec3> {
+        val result = ArrayList(FiringSpots.nearbyWithBodies(npc.level() as ServerLevel, npc, Shelter.RADIUS.toDouble()))
+        for ((id, pick) in found) {
+            val spot = pick.second
+            if (id != npc.uuid && spot != null && now - pick.first < HELD_TICKS) result += Vec3(spot.x, spot.y, spot.z)
+        }
+        return result
+    }
+
+    // Still near him and still roofed; under it already, a squadmate passing by does not take it from him.
+    private fun keeps(npc: NpcEntity, pos: BlockPos, origin: BlockPos) = pos.distSqr(origin) <= Shelter.RADIUS * Shelter.RADIUS && roofed(npc.level(), pos)
+
+    private fun near(spot: Point3?, failed: Point3?) = spot != null && failed != null && hypot(spot.x - failed.x, spot.z - failed.z) <= Shelter.FAILED_NEAR
 
     fun keep(wanted: (UUID) -> Boolean) {
         found.keys.retainAll(wanted)
@@ -68,6 +92,9 @@ internal class RoofSearch {
         private const val STEP = 3
         private const val HALF = 0.5
         private const val STAGGER = 20
+
+        // Another man's roof pick counts as his for this long, while he walks there and claims it.
+        private const val HELD_TICKS = 200L
 
         /**
          * The standing spots in [column] within [STEP] blocks of its height, nearest first: ground

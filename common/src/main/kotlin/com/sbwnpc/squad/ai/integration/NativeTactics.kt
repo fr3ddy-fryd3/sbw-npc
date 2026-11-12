@@ -1415,7 +1415,9 @@ object NativeTactics {
             // gunners and snipers on their posts ignored every shell with no contact at all).
             val fighting = shelling && npc.target?.let { com.sbwnpc.squad.combat.FiringOpportunity.assess(npc, it) == com.sbwnpc.squad.combat.tactics.TacticalTargetSelection.Opportunity.SHOOTABLE } == true
             val unseen = shelling && sector == null && !fighting && npc.vehicle == null
-            return if (unseen && digs == 0) roofs.near(npc, now) else null
+            // A roof whose post search just failed is passed over for the next free one.
+            val failed = roofFailures[npc.uuid]?.takeIf { now - it.second < FAILURE_MEMORY_TICKS }?.first
+            return if (unseen && digs == 0) roofs.near(npc, now, failed) else null
         }
 
         /**

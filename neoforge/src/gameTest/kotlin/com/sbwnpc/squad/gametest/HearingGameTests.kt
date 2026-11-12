@@ -150,13 +150,15 @@ object HearingGameTests {
      * Four shelled men and a roof over one spot only (#321). The first takes it; the post searches
      * of the others under it fail, and the shelter method must then stand aside for each of them.
      * It took the same roof again every tick or two: in a playtest (12.11) 28 men stood in the open
-     * failing one small roof for a minute.
+     * failing one small roof for a minute. A second one-spot roof stands further off: the search
+     * offers it to the next man rather than the one already taken.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400, batch = "shelter")
     fun shelledMenGiveUpARoofTakenByAnother(helper: GameTestHelper) {
         for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         helper.setBlock(BlockPos(33, 4, 20), Blocks.OAK_PLANKS)
+        helper.setBlock(BlockPos(33, 4, 28), Blocks.OAK_PLANKS)
         val men = List(4) { AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 17.5 + it * 2), SquadFaction.PIG) }
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
@@ -170,6 +172,8 @@ object HearingGameTests {
             if (helper.tick in 40L..360L && helper.tick % 40L == 0L) Hearing.explosion(helper.level, helper.absoluteVec(Vec3(14.5, 1.0, 14.5)), 4.0f, null)
             most = maxOf(most, men.maxOf { com.sbwnpc.squad.ai.integration.NativeTactics.postFailures(it) })
             helper.assertTrue(most <= MAX_ROOF_FAILURES, "Post searches under a roof another holds failed $most times in a row")
+            val sheltered = men.count { man -> listOf(20, 28).any { z -> man.position().distanceTo(helper.absoluteVec(Vec3(33.5, 1.0, z + 0.5))) < 1.0 } }
+            if (helper.tick == 380L) helper.assertTrue(sheltered == 2, "$sheltered men under the two roofs")
             if (helper.tick == 380L) helper.succeed()
         }
     }
