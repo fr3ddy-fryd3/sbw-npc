@@ -52,7 +52,18 @@ object RealTerrainBattleGameTests {
     private val LOGGER = LogUtils.getLogger()
 
     /** Thresholds a scenario may override under `expect`. */
-    private data class Expect(val maxFriendlyShare: Double, val maxChurnPerManMinute: Double, val assault: Boolean, val taken: Boolean)
+    /**
+     * A scenario's thresholds. [minAssaultTick]: the assault starts no earlier (the pressure phase, #331);
+     * [minAttackersAlive]: the attack ends with at least this many men. Null leaves either unchecked.
+     */
+    private data class Expect(
+        val maxFriendlyShare: Double,
+        val maxChurnPerManMinute: Double,
+        val assault: Boolean,
+        val taken: Boolean,
+        val minAssaultTick: Long? = null,
+        val minAttackersAlive: Int? = null,
+    )
 
     /** A defender group with [patrol] holds its own ground on a PATROL without a route instead of defending the objective. */
     private data class Group(val preset: SquadPreset, val x: Int, val z: Int, val afterTicks: Int, val patrol: Boolean)
@@ -101,6 +112,8 @@ object RealTerrainBattleGameTests {
                     expect.get("maxChurnPerManMinute")?.asDouble ?: 3.5,
                     expect.get("assault")?.asBoolean ?: true,
                     expect.get("taken")?.asBoolean ?: true,
+                    expect.get("minAssaultTick")?.asLong,
+                    expect.get("minAttackersAlive")?.asInt,
                 ),
                 json.get("dayTime")?.asLong,
                 json.getAsJsonArray("logGroups")?.map { LogGroup.valueOf(it.asString) }?.toSet().orEmpty(),
@@ -352,6 +365,8 @@ object RealTerrainBattleGameTests {
         helper.assertTrue(churn <= expect.maxChurnPerManMinute, "Movers ran between posts: ${"%.2f".format(churn)} intermediate posts per man per minute; see summary.txt")
         helper.assertTrue(!expect.assault || phases.containsKey(AttackPhase.ASSAULT), "The attack never assaulted; see timeline.csv")
         helper.assertTrue(!expect.taken || taken, "The objective was not taken; see timeline.csv")
+        expect.minAssaultTick?.let { min -> phases[AttackPhase.ASSAULT]?.let { helper.assertTrue(it >= min, "The assault started at tick $it, before $min; see timeline.csv") } }
+        expect.minAttackersAlive?.let { min -> helper.assertTrue(attackers.count { it.isAlive } >= min, "Only ${attackers.count { it.isAlive }} attackers alive, fewer than $min; see summary.txt") }
         helper.succeed()
     }
 

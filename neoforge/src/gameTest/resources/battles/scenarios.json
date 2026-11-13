@@ -71,11 +71,10 @@
       { "preset": "SIXTEEN", "at": [-576, 50], "order": "PATROL" }
     ],
     "expect": {
-      "note": "Observation run: 26 against 32, thresholds to be set from what the first runs show.",
-      "maxFriendlyShare": 1.0,
-      "maxChurnPerManMinute": 99.0,
-      "assault": false,
-      "taken": false
+      "assault": true,
+      "taken": true,
+      "minAssaultTick": 1600,
+      "minAttackersAlive": 18
     }
   },
   "hill-74-recon-mortars-night": {
@@ -97,11 +96,10 @@
       { "preset": "SIXTEEN", "at": [-576, 50], "order": "PATROL" }
     ],
     "expect": {
-      "note": "Observation run: 26 against 32, thresholds to be set from what the first runs show.",
-      "maxFriendlyShare": 1.0,
-      "maxChurnPerManMinute": 99.0,
-      "assault": false,
-      "taken": false
+      "assault": true,
+      "taken": true,
+      "minAssaultTick": 1200,
+      "minAttackersAlive": 18
     }
   }
 }
