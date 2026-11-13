@@ -56,7 +56,7 @@
     "about": "Owner's world 13.11, by day: two squads of 16 patrol freely on Hill 74, ten blocks above an open plain. One operation attacks it from 175 blocks out: a squad of 16 across the plain, two recon teams from the north-west and south-west and two mortar crews in the rear, so the mortars work on what the scouts find.",
     "world": "Hill 74 (13.11)",
     "objective": [-588, 74, 18],
-    "ticks": 7200,
+    "ticks": 14400,
     "dayTime": 1000,
     "logGroups": ["SPOTTING", "FIRE_SUPPORT", "RETREAT"],
     "attackers": [
@@ -82,7 +82,7 @@
     "about": "Owner's world 13.11, at night: two squads of 16 patrol freely on Hill 74, ten blocks above an open plain. One operation attacks it from 175 blocks out: a squad of 16 across the plain, two recon teams from the north-west and south-west and two mortar crews in the rear, so the mortars work on what the scouts find.",
     "world": "Hill 74 (13.11)",
     "objective": [-588, 74, 18],
-    "ticks": 7200,
+    "ticks": 14400,
     "dayTime": 14000,
     "logGroups": ["SPOTTING", "FIRE_SUPPORT", "RETREAT"],
     "attackers": [
