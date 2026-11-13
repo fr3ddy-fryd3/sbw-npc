@@ -98,8 +98,9 @@ internal class NativePositionAction(
     // The search takes a block-centred spot within 4 of the anchor as arrived at it, but once he stands
     // on that spot it hands back his own position, a few tenths off and so just over 4: taken for a step
     // passed, the post was dropped and found again next tick, a thousand times in a night clearing on
-    // Hill 74. A post found at his feet is his arrival.
-    private fun atFeet(post: Vec3) = foundAt?.let { post.distanceTo(it) < PROGRESS } == true
+    // Hill 74. A post found at his feet that close to the anchor is his arrival; further out it is only a
+    // step reached on the way, and the next search there finds the step after it.
+    private fun atFeet(post: Vec3) = foundAt?.let { post.distanceTo(it) < PROGRESS } == true && post.distanceTo(task.anchor) <= AT_ANCHOR + ANCHOR_SLACK
     private var pendingStart = true
     private var released = false
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
@@ -423,6 +424,9 @@ internal class NativePositionAction(
 
         /** A MOVE or SEARCH post this near its anchor is the anchor itself, as in [reached]. */
         private const val AT_ANCHOR = 4.0
+
+        // How far his own position may lie past [AT_ANCHOR] from the block-centred spot the search accepted.
+        private const val ANCHOR_SLACK = 1.0
 
         /** How far an assault post's enemy may have moved since the post was planned and still be him. */
         private const val ENEMY_MOVED = 8.0
