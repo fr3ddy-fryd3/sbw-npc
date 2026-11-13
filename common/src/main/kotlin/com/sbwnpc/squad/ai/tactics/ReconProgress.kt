@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
+import com.sbwnpc.squad.combat.ReconReach
 import kotlin.math.hypot
 
 /** Where a recon squad is in its approach to an objective it was ordered to attack (#194). */
@@ -83,7 +84,7 @@ class ReconProgress(val stamp: Int) {
      * it back and forth. The staging line moves out with the first post, so the stalk still starts
      * short of it.
      */
-    var reach: com.sbwnpc.squad.combat.ReconReach? = null
+    var reach: ReconReach? = null
         set(value) {
             if (field != null || value == null || stage != ReconStage.STAGING) return
             field = value

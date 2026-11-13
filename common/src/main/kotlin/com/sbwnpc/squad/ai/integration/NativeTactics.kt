@@ -26,6 +26,7 @@ import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.core.SectionPos
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.Vec3
@@ -339,10 +340,10 @@ object NativeTactics {
      * identified (#331). The deliberate concession is the muzzle flash: the shooter is counted,
      * never located or aimed at, which [com.sbwnpc.squad.combat.IncomingFire] keeps to a bearing.
      */
-    fun shotBy(npc: NpcEntity, shooter: net.minecraft.world.entity.Entity?) {
+    fun shotBy(npc: NpcEntity, shooter: Entity?) {
         // Only an attack reads them; other squads would only pile them up.
         val squad = npc.currentSquad()?.takeIf { it.order == SquadOrder.ATTACK } ?: return
-        if (shooter is LivingEntity) world(npc).shooters.getOrPut(squad.id, ::HashSet) += shooter.uuid
+        if (shooter is LivingEntity && SquadTeams.isHostile(npc, shooter)) world(npc).shooters.getOrPut(squad.id, ::HashSet) += shooter.uuid
     }
 
     /** [hunter] took [target] as his target: a scout so taken has been seen, and a scout who takes one has seen an enemy (#194). */
@@ -761,13 +762,13 @@ object NativeTactics {
          * is loaded, since an unloaded one reads as pitch dark. Not loaded by the time the stalk
          * starts, the fixed distances stay.
          */
-        private fun reconReach(saved: Squad, progress: ReconProgress, objective: Point3): com.sbwnpc.squad.combat.ReconReach? {
+        private fun reconReach(saved: Squad, progress: ReconProgress, objective: Point3): ReconReach? {
             if (progress.reach != null || progress.stage != ReconStage.STAGING) return null
-            val at = net.minecraft.core.BlockPos.containing(objective.x, objective.y + 1, objective.z)
+            val at = BlockPos.containing(objective.x, objective.y + 1, objective.z)
             if (!level.hasChunkAt(at)) return null
             val rank = saved.members.mapNotNull { (level.getEntity(it) as? NpcEntity)?.npcRank }.minByOrNull { it.ordinal } ?: return null
             val light = level.getMaxLocalRawBrightness(at)
-            return com.sbwnpc.squad.combat.ReconReach.of(light, com.sbwnpc.squad.combat.Noticing.weatherAt(level, at), rank).also {
+            return ReconReach.of(light, Noticing.weatherAt(level, at), rank).also {
                 DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=reach light={} rank={} start={} floor={} step={}", saved.id, light, rank, it.start, it.floor, it.step)
             }
         }

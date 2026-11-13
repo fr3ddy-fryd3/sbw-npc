@@ -311,10 +311,13 @@ class AttackProgressTest {
         val (a, b, shooter) = ids(3)
         progress.defenders(0, mapOf(a to objective, b to objective)) { true }
         // Out of sight for minutes, they are still there; the man who hit us counts too.
-        assertEquals(0, progress.defenders(5000, emptyMap(), setOf(shooter)) { true }.size)
+        assertEquals(0, progress.defenders(3000, emptyMap(), setOf(shooter)) { true }.size)
         assertEquals(3, progress.identified)
-        progress.defenders(5100, emptyMap()) { it != b }
+        progress.defenders(3100, emptyMap()) { it != b }
         assertEquals(2, progress.identified)
+        // Neither seen nor heard from for three minutes, they have left.
+        progress.defenders(3000 + AttackProgress.IDENTIFIED_MEMORY_TICKS + 1, emptyMap()) { true }
+        assertEquals(0, progress.identified)
     }
 
     @Test fun `the estimate and whether the defence fired reach the phase`() {
