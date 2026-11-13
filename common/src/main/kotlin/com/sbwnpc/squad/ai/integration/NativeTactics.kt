@@ -229,6 +229,10 @@ object NativeTactics {
 
     /** Holds [npc]'s aircraft in a hover on a tick his plan did not fly it (#260). */
     fun keepAloft(npc: NpcEntity) = world(npc).keepAloft(npc)
+
+    /** How far apart [npc] keeps from friendly men where he stands, see [FiringSpots.spacing]. */
+    fun spacing(npc: NpcEntity) = world(npc).spacing(npc)
+
     fun assignment(npc: NpcEntity): NativeAssignment? {
         if (!planned(npc)) return null
         refresh(npc)
@@ -1553,7 +1557,7 @@ object NativeTactics {
         }
 
         /**
-         * Whether a squadmate's body stands within [FiringSpots.MIN_SPACING] of him, checked every
+         * Whether a friendly man's body stands within [FiringSpots.MIN_SPACING] of him, checked every
          * [CROWDING_CHECK_TICKS]. Claims are not bodies, so [FiringSpots.nearbyWithBodies] is not used.
          * Once crowded he stays so until the nearest is half a block further, or the fact flickered
          * at the edge and replanned him. Medics walk up to the wounded on purpose and are left out;
@@ -1562,7 +1566,7 @@ object NativeTactics {
         private fun crowded(npc: NpcEntity, now: Long): Boolean {
             crowding[npc.uuid]?.takeIf { now - it.first < CROWDING_CHECK_TICKS }?.let { return it.second }
             val was = crowding[npc.uuid]?.second == true
-            val reach = FiringSpots.MIN_SPACING + if (was) CROWDING_RELEASE else 0.0
+            val reach = spacing(npc) + if (was) CROWDING_RELEASE else 0.0
             var near = false
             if (npc.npcClass != NpcClass.MEDIC && npc.vehicle == null) {
                 NpcRegistry.forEachWithin(npc.level() as ServerLevel, npc.position(), reach, exclude = npc) {
@@ -1573,8 +1577,15 @@ object NativeTactics {
             return near
         }
 
-        /** Whether [other] is a squadmate on foot whose post must keep its distance from [npc]'s. */
-        private fun spacedFrom(npc: NpcEntity, other: NpcEntity) = other.isAlive && other.vehicle == null && other.npcClass != NpcClass.MEDIC && other.squadId == npc.squadId
+        /** A man on a raised overwatch post keeps the closer spacing his search gave him, see [FiringSpots.spacing]. */
+        fun spacing(npc: NpcEntity): Double = FiringSpots.spacing(npc.y, actions[npc.uuid]?.assignment?.takeIf { it.job == TacticalJob.OVERWATCH }?.anchor?.y)
+
+        /**
+         * Whether [other] is a friendly man on foot whose post must keep its distance from [npc]'s:
+         * of any squad, not only his own. The squads of one attack share their anchors, and men of
+         * several whose searches failed stood ten to a block beside a landed helicopter (#128).
+         */
+        private fun spacedFrom(npc: NpcEntity, other: NpcEntity) = other.isAlive && other.vehicle == null && other.npcClass != NpcClass.MEDIC && other.squadId != null && !SquadTeams.isHostile(npc, other)
 
         /**
          * A live target he sees, or one not shooting at him now: the cover behaviour's test for

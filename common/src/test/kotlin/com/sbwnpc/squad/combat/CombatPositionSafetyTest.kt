@@ -61,4 +61,19 @@ class CombatPositionSafetyTest {
         assertTrue(CombatPositionSafety.permits(from, Vec3(12.0, 64.0, 0.0), enemy, com.sbwnpc.squad.ai.tactics.OperationTactics.ASSAULT_STANDOFF))
         assertFalse(CombatPositionSafety.permits(from, Vec3(4.0, 64.0, 0.0), enemy, com.sbwnpc.squad.ai.tactics.OperationTactics.ASSAULT_STANDOFF))
     }
+
+    @Test fun `a sentry inside the clearance may step a few blocks nearer for cover, never into the enemy's face`() {
+        val step = CombatPositionSafety.COVER_STEP
+        val from = Vec3(40.0, 64.0, 0.0)
+        assertFalse(CombatPositionSafety.permits(from, Vec3(37.0, 64.0, 0.0), enemy, 64.0))
+        assertTrue(CombatPositionSafety.permits(from, Vec3(37.0, 64.0, 0.0), enemy, 64.0, step))
+        assertFalse(CombatPositionSafety.permits(from, Vec3(35.0, 64.0, 0.0), enemy, 64.0, step))
+        val near = Vec3(26.0, 64.0, 0.0)
+        assertFalse(CombatPositionSafety.permits(near, Vec3(23.0, 64.0, 0.0), enemy, 64.0, step))
+        assertTrue(CombatPositionSafety.permits(near, Vec3(24.5, 64.0, 0.0), enemy, 64.0, step))
+        val close = Vec3(20.0, 64.0, 0.0)
+        assertTrue(CombatPositionSafety.permits(close, close, enemy, 64.0, step))
+        assertFalse(CombatPositionSafety.permits(close, Vec3(19.0, 64.0, 0.0), enemy, 64.0, step))
+        assertFalse(CombatPositionSafety.permits(Vec3(70.0, 64.0, 0.0), Vec3(62.0, 64.0, 0.0), enemy, 64.0, step), "outside the clearance the step does not apply")
+    }
 }

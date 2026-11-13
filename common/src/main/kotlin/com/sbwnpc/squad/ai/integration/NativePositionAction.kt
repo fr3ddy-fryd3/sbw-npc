@@ -58,6 +58,7 @@ internal class NativePositionAction(
         override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int) = exposure * intent.exposureWeight - (point.y - intent.origin.y).coerceIn(-2.0, 8.0) * intent.elevationWeight
         override fun requiresShelter(view: TacticalSnapshot, task: TacticalTask) = intent.requireShelter
         override fun clearance(role: NpcClass) = CombatPositionSafety.clearance(role, intent.assault).let { own -> intent.sightClearance?.let { minOf(it, own) } ?: own }
+        override fun coverStep(task: TacticalTask) = if (task.job == TacticalJob.OVERWATCH && !task.localFireRecovery) CombatPositionSafety.COVER_STEP else 0.0
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
             if (intent.armour != null && !NativeTactics.armourSheltered(npc, point)) return false
             if (intent.roofed && !RoofSearch.roofed(npc.level(), net.minecraft.core.BlockPos.containing(point))) return false
@@ -75,6 +76,8 @@ internal class NativePositionAction(
         val returning = task.job == TacticalJob.OVERWATCH && !intent.hold
         if (returning && heldPost != null && stillServes(heldPost)) task.position = heldPost.post
     }
+
+    private fun permitted(path: net.minecraft.world.level.pathfinder.Path, view: TacticalSnapshot) = TacticalClearance.permitsPath(policy.clearance(npc.npcClass), npc.position(), path, view, policy.coverStep(task))
 
     /** Only for the same anchor: a new order's post must come from a new search. */
     private fun stillServes(held: HeldPost) =
@@ -155,9 +158,10 @@ internal class NativePositionAction(
         task.usesObservedAim = true
         task.observedAim = observation?.let { TacticalAim(it.id, it.position, it.position.add(0.0, 1.5, 0.0)) }
             ?: intent.focus?.native()?.let { TacticalAim(null, it, it.add(0.0, 1.5, 0.0)) }
-        if (task.position != null && ((!TacticalClearance.permitsPosition(policy.clearance(npc.npcClass), npc.position(), task.position!!, view)) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))) invalidate(now, "post_not_permitted")
+        if (task.position != null && ((!TacticalClearance.permitsPosition(policy.clearance(npc.npcClass), npc.position(), task.position!!, view, policy.coverStep(task))) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))) invalidate(now, "post_not_permitted")
         val path = npc.navigation.path
-        if (path != null && path === task.navigationPath && !path.isDone && !TacticalClearance.permitsPath(policy.clearance(npc.npcClass), npc.position(), path, view)) invalidate(now, "path_not_permitted")
+        val running = path?.takeIf { it === task.navigationPath && !it.isDone }
+        if (running != null && !permitted(running, view)) invalidate(now, "path_not_permitted")
         if (reached()) {
             releasePath()
             if (npc.target == null && intent.duty.watching) {
@@ -219,7 +223,7 @@ internal class NativePositionAction(
         if (npc.navigation.isDone) {
             if (!TacticalBudget.path(npc)) return deferred(now, "native_path_budget")
             val route = TacticalPositions.pathToPosition(npc, destination)
-            if (!TacticalPositions.reaches(route, destination) || !TacticalClearance.permitsPath(policy.clearance(npc.npcClass), npc.position(), route!!, view)) {
+            if (!TacticalPositions.reaches(route, destination) || !permitted(route!!, view)) {
                 invalidate(now, "route_unreachable")
                 return ActionUpdate.Running
             }

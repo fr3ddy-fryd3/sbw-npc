@@ -14,6 +14,7 @@ internal object GameTestGroups {
     private val groups: Map<String, List<Class<*>>> = linkedMapOf(
         "overwatch" to listOf(
             DefensiveOverwatchGameTests::class.java,
+            LookoutGameTests::class.java,
             RoofedOverwatchGameTests::class.java,
             FarDefenceGameTests::class.java,
             ScaffoldingGameTests::class.java,
@@ -63,6 +64,7 @@ internal object GameTestGroups {
         ),
         "perception" to listOf(
             NoticingGameTests::class.java,
+            HelicopterSpottingGameTests::class.java,
             SightRangeGameTests::class.java,
             HearingGameTests::class.java,
         ),
@@ -83,6 +85,7 @@ internal object GameTestGroups {
         ),
         "fire-support" to listOf(
             MortarCrewGameTests::class.java,
+            MortarSelfDefenceGameTests::class.java,
             FireSupportGameTests::class.java,
         ),
         "logistics" to listOf(

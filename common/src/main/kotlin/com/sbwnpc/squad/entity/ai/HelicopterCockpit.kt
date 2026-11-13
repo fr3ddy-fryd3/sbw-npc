@@ -3,7 +3,9 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.ai.tactics.AirSupport
 import com.sbwnpc.squad.ai.tactics.FlightMode
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.RotorNoise
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
@@ -19,6 +21,7 @@ import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.level.levelgen.Heightmap
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -109,6 +112,12 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
     private val attackCompletion = HelicopterAttackCompletion()
     private var orbitDirection = 1
 
+    /** Other enemies the crew sees round its standoff target ([StandoffStation]), refreshed every [THREAT_INTERVAL] ticks. */
+    private var standoffThreats: List<Vec3> = emptyList()
+    private var nextThreatTick = 0
+    private var threatsFrom: Vec3? = null
+    private var standoff: Vec3? = null
+
     private fun rollRate(heli: Entity): Float {
         val roll = Ports.vehicles.roll(heli)
         val rate = roll - lastRoll
@@ -186,6 +195,7 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
         // over the terrain decides that, never onGround().
         val height = heli.y - groundY(level, heli.x, heli.z)
         val airborne = height >= MIN_TRANSLATE_HEIGHT
+        if (airborne) RotorNoise.heard(level, heli, entity)
 
         // Stuck on the ground with the enemy about: a sitting aircraft is a coffin, so get out and
         // fight on foot. VehicleCrewBehaviour keeps the pilot from climbing back in until the
@@ -336,7 +346,7 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
 
             FlightMode.STANDOFF, FlightMode.HOLD_CONTACT -> {
                 val from = target?.position() ?: contact.pos ?: home
-                Mission(standoffPoint(heli, from), from, false, HOLD_SPEED)
+                Mission(standoffPoint(heli, from, target), from, false, HOLD_SPEED)
             }
 
             FlightMode.LOITER -> loiterMission(home)
@@ -539,12 +549,39 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
         return vehicle
     }
 
-    /** Nearest point on the standoff ring around [target] — recomputed every tick, so the aircraft
-     *  closes to gun range and then simply stops rather than orbiting or overflying. */
-    private fun standoffPoint(heli: Entity, from: Vec3): Vec3 {
-        val away = Vec3(heli.x - from.x, 0.0, heli.z - from.z)
-        val dir = if (away.lengthSqr() < 1e-4) Vec3(0.0, 0.0, 1.0) else away.normalize()
-        return from.add(dir.scale(STANDOFF_RANGE))
+    /**
+     * The point on the standoff ring around [from] ([StandoffStation]), recomputed every tick so the
+     * aircraft closes to gun range and then stops rather than orbiting or overflying. The other
+     * enemies it keeps clear of are looked for every [THREAT_INTERVAL] ticks, and at once when the
+     * point it stands off from moves on to another man.
+     */
+    private fun standoffPoint(heli: Entity, from: Vec3, target: LivingEntity?): Vec3 {
+        val moved = threatsFrom?.let { HelicopterFlightController.horizontalDistance(it, from) > THREAT_REFRESH_SHIFT } != false
+        if (moved || pilot.tickCount >= nextThreatTick) {
+            nextThreatTick = pilot.tickCount + THREAT_INTERVAL
+            threatsFrom = from
+            standoffThreats = threatsAround(heli, from, target)
+        }
+        val point = StandoffStation.point(heli.position(), from, standoffThreats, STANDOFF_RANGE, standoff)
+        standoff = point
+        if (DebugFlags.on(LogGroup.HELI) && pilot.tickCount % TELEMETRY_INTERVAL == 0) {
+            DebugFlags.log(LogGroup.HELI, "{} event=standoff from={} point={} threats={}", pilot.uuid, from, point, standoffThreats.size)
+        }
+        return point
+    }
+
+    /**
+     * Enemies within twice [STANDOFF_RANGE] of [from] that someone aboard has in sight. Aircrew
+     * sightings never reach the squad's contacts ([com.sbwnpc.squad.combat.tactics.SquadTactics.observe]
+     * skips men in vehicles), so the crew's own eyes are what the pilot keeps clear of.
+     */
+    private fun threatsAround(heli: Entity, from: Vec3, target: LivingEntity?): List<Vec3> {
+        val reach = STANDOFF_RANGE * 2
+        val crew = heli.passengers.filterIsInstance<NpcEntity>()
+        return heli.level().getEntitiesOfClass(LivingEntity::class.java, AABB(from, from).inflate(reach)) { candidate ->
+            candidate !== target && candidate.isAlive && SquadTeams.isHostile(pilot, candidate) &&
+                crew.any { DetectionSightline.sight(it, candidate).visibility == DetectionSightline.Visibility.VISIBLE }
+        }.map { it.position() }
     }
 
     private fun fly(
@@ -663,6 +700,10 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
 
         /** Close enough for the turret to do real work, far enough not to be parked overhead. */
         const val STANDOFF_RANGE = 20.0
+        private const val THREAT_INTERVAL = 20
+
+        /** Blocks the stood-off point may move before its neighbours are looked for again: another man, not the same one walking. */
+        private const val THREAT_REFRESH_SHIFT = 5.0
 
         /** Clear this far from the last fight before putting down. */
         const val RETIRE_DISTANCE = 80.0

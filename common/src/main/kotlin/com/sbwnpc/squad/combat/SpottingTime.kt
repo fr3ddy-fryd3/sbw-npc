@@ -52,6 +52,12 @@ object SpottingTime {
     enum class Size(val timeFactor: Double, val reachFactor: Double) {
         PERSON(timeFactor = 1.0, reachFactor = 1.0),
         DRONE(timeFactor = 2.0, reachFactor = 0.6),
+
+        /**
+         * A helicopter (#246): a big, loud shape on the sky, noticed in a second or two at 150 blocks
+         * by day, out to the 192 blocks aircraft are searched in; at night, in the black band, to 64.
+         */
+        HELICOPTER(timeFactor = 0.6, reachFactor = 2.0),
     }
 
     private const val SPEEDUP = 1.2
