@@ -91,12 +91,22 @@ internal class NativePositionAction(
     private var deferredAt: Long? = null
     private var lastProgress = 0L
     private var closest = Double.MAX_VALUE
+
+    // Where he stood when the search found the post, see [atFeet].
+    private var foundAt: Vec3? = null
+
+    // The search takes a block-centred spot within 4 of the anchor as arrived at it, but once he stands
+    // on that spot it hands back his own position, a few tenths off and so just over 4: taken for a step
+    // passed, the post was dropped and found again next tick, a thousand times in a night clearing on
+    // Hill 74. A post found at his feet that close to the anchor is his arrival; further out it is only a
+    // step reached on the way, and the next search there finds the step after it.
+    private fun atFeet(post: Vec3) = foundAt?.let { post.distanceTo(it) < PROGRESS } == true && post.distanceTo(task.anchor) <= AT_ANCHOR + ANCHOR_SLACK
     private var pendingStart = true
     private var released = false
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
     fun reached(): Boolean =
         task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true &&
-            (!intent.duty.advancing || task.position!!.distanceTo(task.anchor) <= 4) &&
+            (!intent.duty.advancing || task.position!!.distanceTo(task.anchor) <= 4 || atFeet(task.position!!)) &&
             (intent.inspection?.let { DetectionSightline.visible(npc.level() as ServerLevel, npc.eyePosition, it.native().add(0.0, 1.5, 0.0), npc) } != false)
 
     /** He stands on the post this action found, the anchor's or one on the way to it. */
@@ -169,6 +179,7 @@ internal class NativePositionAction(
 
                 TacticalPositions.Outcome.FOUND -> {
                     task.position = result.position
+                    foundAt = npc.position()
                     lastProgress = now
                     closest = Double.MAX_VALUE
                 }
@@ -182,7 +193,7 @@ internal class NativePositionAction(
             lastProgress = now
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
-            if (intent.duty.advancing && destination.distanceTo(task.anchor) > 4) {
+            if (intent.duty.advancing && destination.distanceTo(task.anchor) > 4 && !atFeet(destination)) {
                 // A leg of an advance by legs ends here: he fires from this post before the next rush.
                 // A post a few steps on is passed: a pause every two blocks crawled the attack.
                 if (intent.boundsByLegs && destination.distanceTo(legStart) >= MIN_LEG) {
@@ -413,6 +424,9 @@ internal class NativePositionAction(
 
         /** A MOVE or SEARCH post this near its anchor is the anchor itself, as in [reached]. */
         private const val AT_ANCHOR = 4.0
+
+        // How far his own position may lie past [AT_ANCHOR] from the block-centred spot the search accepted.
+        private const val ANCHOR_SLACK = 1.0
 
         /** How far an assault post's enemy may have moved since the post was planned and still be him. */
         private const val ENEMY_MOVED = 8.0

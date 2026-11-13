@@ -515,14 +515,17 @@ object HtnTacticsGameTests {
         val target = helper.absolutePos(centre)
         GroupOrders.apply(helper.level, manager, listOf(squad.id, recon.id, drones.id), SquadOrder.ATTACK, target.x, target.z)
         fun out(men: List<NpcEntity>) = men.filter { it.isAlive }.map { helper.relativeVec(it.position()).let { p -> kotlin.math.hypot(p.x - centre.x, p.z - centre.z) } }
+        // The closest post follows the light and weather at the objective and the scouts' rank (#332).
+        val at = target.above()
+        val closest = com.sbwnpc.squad.combat.ReconReach.of(helper.level.getMaxLocalRawBrightness(at), com.sbwnpc.squad.combat.Noticing.weatherAt(helper.level, at), scouts.minOf { it.npcRank }).floor
         helper.onEachTick {
             val scoutsOut = out(scouts)
             val riflemenOut = out(riflemen)
-            if (helper.tick % 200L == 0L) scene.result("RUNNING", "tick=${helper.tick} scouts=${scoutsOut.map { it.toInt() }} riflemen=${riflemenOut.map { it.toInt() }} operators=${out(operators).map { it.toInt() }}")
-            helper.assertTrue(scoutsOut.none { it < com.sbwnpc.squad.ai.tactics.ReconProgress.MIN_POST_DISTANCE - 12 }, "A scout went onto the objective: $scoutsOut")
-            if (scoutsOut.isNotEmpty() && scoutsOut.average() <= com.sbwnpc.squad.ai.tactics.ReconProgress.MIN_POST_DISTANCE + 8) {
-                helper.assertTrue(riflemenOut.all { it > com.sbwnpc.squad.ai.tactics.ReconProgress.MIN_POST_DISTANCE + 8 }, "Riflemen went past the scouts while they waited: $riflemenOut")
-                helper.assertTrue(out(operators).all { it > com.sbwnpc.squad.ai.tactics.ReconProgress.MIN_POST_DISTANCE + 8 }, "Drone operators went past the scouts while they waited: ${out(operators)}")
+            if (helper.tick % 200L == 0L) scene.result("RUNNING", "tick=${helper.tick} closest=${closest.toInt()} scouts=${scoutsOut.map { it.toInt() }} riflemen=${riflemenOut.map { it.toInt() }} operators=${out(operators).map { it.toInt() }}")
+            helper.assertTrue(scoutsOut.none { it < closest - 12 }, "A scout went onto the objective: $scoutsOut")
+            if (scoutsOut.isNotEmpty() && scoutsOut.average() <= closest + 8) {
+                helper.assertTrue(riflemenOut.all { it > closest + 8 }, "Riflemen went past the scouts while they waited: $riflemenOut")
+                helper.assertTrue(out(operators).all { it > closest + 8 }, "Drone operators went past the scouts while they waited: ${out(operators)}")
                 scene.result("PASS", "tick=${helper.tick} scouts=${scoutsOut.map { it.toInt() }} riflemen=${riflemenOut.map { it.toInt() }} operators=${out(operators).map { it.toInt() }}")
                 helper.succeed()
             }

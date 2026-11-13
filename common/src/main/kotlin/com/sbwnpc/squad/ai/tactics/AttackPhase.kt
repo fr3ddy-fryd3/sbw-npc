@@ -20,6 +20,9 @@ enum class AttackPhase {
      * seen round the objective during this attack. [sectorsHeld] is false while a group is still
      * on its way round to its approach sector (see [ApproachSectors]). [preparing] is true while
      * the operation's mortars still fire their preparation at the point (#173).
+     * [estimatedDefenders] is every defender this attack has identified and not seen die, seen or
+     * firing on it, however long ago; [defenceFired] is whether the defence has fired on the attack
+     * at all (#331).
      */
     data class Inputs(
         val readyShooters: Int,
@@ -34,6 +37,8 @@ enum class AttackPhase {
         val peakThreatsNearby: Int = threatsNearby,
         val sectorsHeld: Boolean = true,
         val preparing: Boolean = false,
+        val estimatedDefenders: Int = enemiesAtObjective,
+        val defenceFired: Boolean = true,
     )
 
     fun next(inputs: Inputs): AttackPhase {
@@ -77,6 +82,9 @@ enum class AttackPhase {
          *  showed its full size. */
         const val SILENT_TICKS = 300L
 
+        /** The firing line works this long (30 s) before a defence that never fired counts as silenced (owner 13.11, #331). */
+        const val UNAWARE_ENGAGE_TICKS = 600L
+
         /** Enemies this close to the objective count as holding it. */
         const val OBJECTIVE_RADIUS = 48.0
 
@@ -104,18 +112,26 @@ enum class AttackPhase {
         // The flanks go in together with the head-on line, not after it has gone alone.
         private fun flanksIn(inputs: Inputs) = inputs.sectorsHeld || inputs.ticksEngaged >= SECTOR_LIMIT_TICKS
 
-        private fun superior(inputs: Inputs) = inputs.readyShooters >= ASSAULT_RATIO * inputs.enemiesAtObjective
+        private fun superior(inputs: Inputs) = inputs.readyShooters >= ASSAULT_RATIO * strength(inputs)
+
+        // The assault is started against every defender the attack has identified, not only those in
+        // sight: in a night fight on Hill 74 two recon reports of one man each made 22 attackers
+        // "superior" to 23 defenders (#331). Calling it off and going onto the point still count the
+        // defenders in sight, or a started assault would turn back at once.
+        private fun strength(inputs: Inputs) = maxOf(inputs.enemiesAtObjective, inputs.estimatedDefenders)
 
         // A defence counted from memory thins only as its men die, and sixteen men under fire never
         // fall silent: in-game 17.10, 48 attackers stood off 16 defenders and never assaulted (#54).
-        private fun overwhelming(inputs: Inputs) = inputs.ticksEngaged >= OVERWHELMING_ENGAGE_TICKS && inputs.readyShooters >= OVERWHELMING_RATIO * inputs.enemiesAtObjective
+        private fun overwhelming(inputs: Inputs) = inputs.ticksEngaged >= OVERWHELMING_ENGAGE_TICKS && inputs.readyShooters >= OVERWHELMING_RATIO * strength(inputs)
 
         // A fresh force facing an untouched defence is not yet winning: the firing line first
         // has to thin it out or silence it. After a called-off assault silence no longer counts:
-        // the defence that drove it back has shown its size and has to be thinned.
+        // the defence that drove it back has shown its size and has to be thinned. A defence that has
+        // never fired may be unaware of the attack, at night above all (#331): its silence counts only
+        // after [UNAWARE_ENGAGE_TICKS] of fire.
         private fun suppressed(inputs: Inputs) =
             inputs.ticksEngaged >= ENGAGE_TICKS &&
-                (thinned(inputs) || (!inputs.aborted && inputs.ticksSinceIncoming >= SILENT_TICKS))
+                (thinned(inputs) || (!inputs.aborted && inputs.ticksSinceIncoming >= SILENT_TICKS && (inputs.defenceFired || inputs.ticksEngaged >= UNAWARE_ENGAGE_TICKS)))
 
         // Thinned round the objective as well as at it: defenders stepping back past
         // [OBJECTIVE_RADIUS] halved the count at the point while all of them were still there.

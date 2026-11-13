@@ -5,8 +5,9 @@ package com.sbwnpc.squad.ai.tactics
  * enemy is closer than [CLOSE] blocks. A recon squad that is alone in its operation, ordered to
  * attack, and has seen an enemy attacks it as any squad would once it has reported (owner 08.11: it
  * opened fire first, before any report); one whose operation holds infantry
- * stays on its post after its report and goes into the fight only when the infantry's assault begins
- * (owner 08.11: the post keeps the infantry's and the mortars' picture fresh until then).
+ * stays on its post after its report, fires from it once its infantry is in contact, and goes into the
+ * fight only when the operation's assault phase begins (owner 08.11 and 13.11: the post keeps the
+ * infantry's and the mortars' picture fresh until then).
  *
  * Discovered, a recon squad with infantry beside it fights with it; any other leaves at once
  * ([retreats]).
@@ -40,6 +41,14 @@ object ReconRules {
             discovered -> false
             else -> true
         }
+
+    /**
+     * Whether a recon squad keeps its stages and post (owner 13.11): while it holds its fire, and beside
+     * infantry also once the contact frees its fire, until it is [discovered] or the operation's [assault]
+     * phase has begun. Freed to fire on the first shot at the infantry, it used to leave its post and
+     * walk in upright with the firing line, and the defence found the scouts as they moved (Hill 74).
+     */
+    fun keepsPost(company: Company, holdsFire: Boolean, discovered: Boolean, assault: Boolean): Boolean = holdsFire || (company == Company.INFANTRY && !discovered && !assault)
 
     /** Whether a recon squad just discovered withdraws (owner decision 3, 24.10) rather than fights. */
     fun retreats(company: Company, attack: Boolean, sawEnemy: Boolean): Boolean = company != Company.INFANTRY && !(company == Company.ALONE && attack && sawEnemy)

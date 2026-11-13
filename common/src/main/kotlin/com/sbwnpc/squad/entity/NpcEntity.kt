@@ -736,6 +736,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             // A known ally's stray round is damage, but is not a new enemy contact.
             if (source.entity?.let { SquadTeams.sameSide(this, it) } == true) return result
             com.sbwnpc.squad.ai.integration.NativeTactics.scoutHit(this)
+            com.sbwnpc.squad.ai.integration.NativeTactics.shotBy(this, source.entity)
             incomingFire.record(eyePosition, source.directEntity?.takeIf { it !== source.entity }?.deltaMovement, source.entity?.eyePosition ?: source.sourcePosition, level().gameTime)
             val from = incomingFire.point(level().gameTime) ?: source.sourcePosition ?: position()
             suppress(from)

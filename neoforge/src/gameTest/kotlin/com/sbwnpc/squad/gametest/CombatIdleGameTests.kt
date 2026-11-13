@@ -83,7 +83,7 @@ object CombatIdleGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1400, batch = "mixed-infantry-contact")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1700, batch = "mixed-infantry-contact")
     fun mixedInfantryShotgunnerJoinsWeaponRangeAndFires(helper: GameTestHelper) {
         val scene = Scene(helper, "mixed-infantry-contact")
         val members = scene.deploy(SquadPreset.SEVEN, Vec3(20.5, 1.0, 100.5))

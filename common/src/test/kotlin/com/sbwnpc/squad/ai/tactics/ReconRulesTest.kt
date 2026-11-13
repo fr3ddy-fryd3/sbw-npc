@@ -68,4 +68,17 @@ class ReconRulesTest {
         assertTrue(ReconRules.holdsFire(Company.ALONE, foundEnemy = true, discovered = false, reported = false))
         assertFalse(ReconRules.holdsFire(Company.ALONE, foundEnemy = true, discovered = false, reported = true))
     }
+
+    @Test fun `beside infantry in contact it keeps its post until the assault or its discovery`() {
+        assertTrue(ReconRules.keepsPost(Company.INFANTRY, holdsFire = false, discovered = false, assault = false))
+        assertFalse(ReconRules.keepsPost(Company.INFANTRY, holdsFire = false, discovered = false, assault = true))
+        assertFalse(ReconRules.keepsPost(Company.INFANTRY, holdsFire = false, discovered = true, assault = false))
+        Company.entries.forEach { assertTrue(ReconRules.keepsPost(it, holdsFire = true, discovered = false, assault = true)) }
+    }
+
+    @Test fun `without infantry it keeps its post exactly while it holds its fire`() {
+        listOf(Company.ALONE, Company.SUPPORT).forEach { company ->
+            listOf(true, false).forEach { holds -> assertTrue(ReconRules.keepsPost(company, holds, discovered = false, assault = false) == holds) }
+        }
+    }
 }

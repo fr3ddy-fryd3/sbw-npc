@@ -92,4 +92,26 @@ class AttackPhaseTest {
         // A quiet objective is taken whatever the preparation.
         assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(ready.copy(preparing = true, ticksSinceContact = AttackPhase.QUIET_TICKS)))
     }
+
+    @Test fun `a defence that never fired counts as silenced only after thirty seconds`() {
+        // 22 attackers, 6 defenders in sight, none had fired yet: silence counts after 30 s, not 20 (#331).
+        val unaware = inputs(ready = 22, enemies = 6, silent = 599, engaged = 599).copy(defenceFired = false)
+        assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(unaware))
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(unaware.copy(defenceFired = true)))
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(unaware.copy(ticksEngaged = 600, ticksSinceIncoming = 600)))
+        // Thinned by the mortars, the unaware defence is assaulted all the same.
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(unaware.copy(peakEnemiesAtObjective = 12)))
+    }
+
+    @Test fun `the assault starts against every defender identified, not only those in sight`() {
+        // Six in sight, twelve identified: 22 shooters are not two to one, nor three to one later.
+        val counted = inputs(ready = 22, enemies = 6, silent = 300).copy(estimatedDefenders = 12)
+        assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(counted))
+        assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(counted.copy(ticksEngaged = 2000)))
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(counted.copy(estimatedDefenders = 7, ticksEngaged = 2000)))
+    }
+
+    @Test fun `a started assault is called off on the defenders in sight, not the estimate`() {
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.ASSAULT.next(inputs(ready = 22, enemies = 6).copy(estimatedDefenders = 15)))
+    }
 }

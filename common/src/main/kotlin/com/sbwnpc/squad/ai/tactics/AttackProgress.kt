@@ -18,6 +18,9 @@ class AttackProgress(now: Long) {
     private var lastContactAt: Long? = null
     private var engagedSince: Long? = null
     private var lastIncomingAt: Long? = null
+
+    // Set by the first fire on the attack and kept: after a lull the defence is not unaware again.
+    private var defenceFired = false
     private var peakEnemies = 0
     private var peakThreats = 0
     private var aborted = false
@@ -32,8 +35,12 @@ class AttackProgress(now: Long) {
     private var closingHalf = 0
     private var turnSince: Long? = null
 
-    // Defenders seen at the objective and when, kept past the short contact memory: see [defenders].
+    // Defenders seen at the objective and when, kept past the short contact memory and until they
+    // die: see [defenders] and [identified].
     private val knownDefenders = HashMap<UUID, Pair<Point3, Long>>()
+
+    // Defenders who hit a man of this attack and when they last did: see [identified].
+    private val shooters = HashMap<UUID, Long>()
 
     private var lastInputs: AttackPhase.Inputs? = null
 
@@ -74,11 +81,21 @@ class AttackProgress(now: Long) {
      * only 5 of them were in sight: the rest had stepped out of view, not died, and the "thinned"
      * defence beat the attack back with a third of it lost (#54).
      */
-    fun defenders(now: Long, seen: Map<UUID, Point3>, alive: (UUID) -> Boolean): List<Point3> {
+    fun defenders(now: Long, seen: Map<UUID, Point3>, firedOn: Set<UUID> = emptySet(), alive: (UUID) -> Boolean): List<Point3> {
         seen.forEach { (id, position) -> knownDefenders[id] = position to now }
-        knownDefenders.entries.removeIf { (id, known) -> now - known.second > DEFENDER_MEMORY_TICKS || !alive(id) }
-        return knownDefenders.values.map { it.first }
+        firedOn.forEach { shooters[it] = now }
+        // Dead, or neither seen nor heard from for minutes: gone from the area, not hiding in it.
+        knownDefenders.entries.removeIf { (id, known) -> !alive(id) || now - known.second > IDENTIFIED_MEMORY_TICKS }
+        shooters.entries.removeIf { (id, at) -> !alive(id) || now - at > IDENTIFIED_MEMORY_TICKS }
+        return knownDefenders.values.filter { now - it.second <= DEFENDER_MEMORY_TICKS }.map { it.first }
     }
+
+    /**
+     * How many defenders this attack has identified and not seen die: every one seen at the
+     * objective or hitting a man of the attack within [IDENTIFIED_MEMORY_TICKS]. The assault is
+     * started against this many (#331): a defender who stepped out of view has not left.
+     */
+    val identified: Int get() = (knownDefenders.keys + shooters.keys).size
 
     /** Records one update's observations and advances [phase]; returns the inputs it decided on. */
     fun observe(now: Long, contactSeen: Boolean, incoming: Boolean, readyShooters: Int, enemiesAtObjective: Int, occupied: Boolean, threatsNearby: Int, sectorsHeld: Boolean = true, preparing: Boolean = false): AttackPhase.Inputs {
@@ -86,7 +103,10 @@ class AttackProgress(now: Long) {
             lastContactAt = now
             if (engagedSince == null) engagedSince = now
         }
-        if (incoming) lastIncomingAt = now
+        if (incoming) {
+            lastIncomingAt = now
+            defenceFired = true
+        }
         peakEnemies = max(peakEnemies, enemiesAtObjective)
         peakThreats = max(peakThreats, threatsNearby)
         if (threatsNearby > 0) defenceMet = true
@@ -103,6 +123,8 @@ class AttackProgress(now: Long) {
             peakThreatsNearby = peakThreats,
             sectorsHeld = sectorsHeld,
             preparing = preparing,
+            estimatedDefenders = identified,
+            defenceFired = defenceFired,
         )
         val next = phase.next(inputs)
         if (phase != AttackPhase.DEPLOY && next == AttackPhase.DEPLOY) {
@@ -254,8 +276,11 @@ class AttackProgress(now: Long) {
     private fun distance(a: Point3, b: Point3) = kotlin.math.hypot(a.x - b.x, a.z - b.z)
 
     companion object {
-        /** A defender unseen this long (30 s) and not known dead is no longer counted. */
+        /** A defender unseen this long (30 s) no longer counts as in sight; [identified] keeps him longer. */
         const val DEFENDER_MEMORY_TICKS = 600L
+
+        /** A defender neither seen nor firing for this long (3 min) is taken to have left the area. */
+        const val IDENTIFIED_MEMORY_TICKS = 3600L
 
         /** Half the movers on their closing posts this long (20 s) before going onto the point. */
         const val CLOSED_IN_TICKS = 400L

@@ -305,4 +305,28 @@ class AttackProgressTest {
         assertEquals(OperationTactics.ASSAULT_STANDOFF, defender.z - rifleman.post.z, 1.0E-6)
         assertEquals(OperationTactics.CLOSE_QUARTERS_STANDOFF, defender.z - shotgunner.post.z, 1.0E-6)
     }
+
+    @Test fun `every defender seen or firing is identified until he dies`() {
+        val progress = AttackProgress(0)
+        val (a, b, shooter) = ids(3)
+        progress.defenders(0, mapOf(a to objective, b to objective)) { true }
+        // Out of sight for minutes, they are still there; the man who hit us counts too.
+        assertEquals(0, progress.defenders(3000, emptyMap(), setOf(shooter)) { true }.size)
+        assertEquals(3, progress.identified)
+        progress.defenders(3100, emptyMap()) { it != b }
+        assertEquals(2, progress.identified)
+        // Neither seen nor heard from for three minutes, they have left.
+        progress.defenders(3000 + AttackProgress.IDENTIFIED_MEMORY_TICKS + 1, emptyMap()) { true }
+        assertEquals(0, progress.identified)
+    }
+
+    @Test fun `the estimate and whether the defence fired reach the phase`() {
+        val progress = AttackProgress(0)
+        progress.defenders(0, ids(9).associateWith { objective }) { true }
+        val quiet = progress.update(0, ready = 22, enemies = 6)
+        assertEquals(9, quiet.estimatedDefenders)
+        assertFalse(quiet.defenceFired)
+        assertTrue(progress.update(10, ready = 22, enemies = 6, incoming = true).defenceFired)
+        assertTrue(progress.update(20, ready = 22, enemies = 6).defenceFired)
+    }
 }

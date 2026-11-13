@@ -99,7 +99,7 @@ object HeightMenGameTests {
     fun sniperAndGunnerInAnAttackTakeTheRiseByTheFront(helper: GameTestHelper) = heightMen(helper, "height-men-hill", Ground.HILL)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 900, batch = "height-men-flat")
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1200, batch = "height-men-flat")
     fun sniperAndGunnerOnFlatGroundKeepTheirPlacesInTheLine(helper: GameTestHelper) = heightMen(helper, "height-men-flat", Ground.FLAT)
 
     @JvmStatic
@@ -123,7 +123,7 @@ object HeightMenGameTests {
     private const val FIELD_CLEAR = 12
 
     /** By then a height man has gone up to the line, and been given a height if any was offered. */
-    private const val FLAT_CHECK_TICK = 500L
+    private const val FLAT_CHECK_TICK = 800L
 
     /** Just above the feet of a man standing on the field's floor. */
     private const val FLOOR_TOP = 1.5
