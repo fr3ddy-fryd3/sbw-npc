@@ -74,7 +74,8 @@
       "assault": true,
       "taken": true,
       "minAssaultTick": 1600,
-      "minAttackersAlive": 18
+      "minAttackersAlive": 18,
+      "secured": true
     }
   },
   "hill-74-recon-mortars-night": {
@@ -99,7 +100,8 @@
       "assault": true,
       "taken": true,
       "minAssaultTick": 1200,
-      "minAttackersAlive": 18
+      "minAttackersAlive": 18,
+      "secured": true
     }
   }
 }

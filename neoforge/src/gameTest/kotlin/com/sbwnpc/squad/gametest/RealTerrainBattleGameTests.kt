@@ -54,6 +54,7 @@ object RealTerrainBattleGameTests {
     /**
      * Thresholds a scenario may override under `expect`. [minAssaultTick]: the assault starts no earlier (the pressure phase, #331);
      * [minAttackersAlive]: the attack ends with at least this many men. Null leaves either unchecked.
+     * [secured]: the attack completes on the held objective and turns to its defence, as a player sees it.
      */
     private data class Expect(
         val maxFriendlyShare: Double,
@@ -62,6 +63,7 @@ object RealTerrainBattleGameTests {
         val taken: Boolean,
         val minAssaultTick: Long? = null,
         val minAttackersAlive: Int? = null,
+        val secured: Boolean = false,
     )
 
     /** A defender group with [patrol] holds its own ground on a PATROL without a route instead of defending the objective. */
@@ -113,6 +115,7 @@ object RealTerrainBattleGameTests {
                     expect.get("taken")?.asBoolean ?: true,
                     expect.get("minAssaultTick")?.asLong,
                     expect.get("minAttackersAlive")?.asInt,
+                    expect.get("secured")?.asBoolean ?: false,
                 ),
                 json.get("dayTime")?.asLong,
                 json.getAsJsonArray("logGroups")?.map { LogGroup.valueOf(it.asString) }?.toSet().orEmpty(),
@@ -345,12 +348,14 @@ object RealTerrainBattleGameTests {
         val churn = metrics.intermediateReached / manMinutes
         val defendersAlive = defence.sumOf { (_, m) -> m.count { it.isAlive } }
         val taken = phases.containsKey(AttackPhase.CLEAR) || defendersAlive == 0
+        val manager = SquadManager.get(helper.level)
+        val secured = attack.any { (id, _) -> manager.get(id)?.commandReason == "occupied_and_inspected_area" }
         val summary = buildString {
             appendLine("scenario=${scenario.name}")
             appendLine("attackers=${attackers.size} alive=${attackers.count { it.isAlive }}")
             appendLine("defenders=${defence.sumOf { it.second.size }} alive=$defendersAlive")
             appendLine("phases=${phases.entries.joinToString { "${it.key}@${it.value}" }}")
-            appendLine("taken=$taken")
+            appendLine("taken=$taken secured=$secured")
             appendLine("fireGates=${metrics.fireGates.entries.sortedByDescending { it.value }.joinToString { "${it.key}=${it.value}" }}")
             appendLine("friendlyShare=${"%.2f".format(metrics.share("FRIENDLY_OR_VEHICLE"))} readyShare=${"%.2f".format(metrics.share("READY"))}")
             appendLine("postSpacing nearestWithin=${"%.2f".format(fought.spacing.nearestWithin)} nearestBetween=${"%.2f".format(fought.spacing.nearestBetween)} tightPairsWithin=${fought.spacing.tightWithin} stackedPairsWithin=${fought.spacing.stackedWithin} tightPairsBetween=${fought.spacing.tightBetween} standingSamples=${fought.spacing.samples}")
@@ -364,6 +369,7 @@ object RealTerrainBattleGameTests {
         helper.assertTrue(churn <= expect.maxChurnPerManMinute, "Movers ran between posts: ${"%.2f".format(churn)} intermediate posts per man per minute; see summary.txt")
         helper.assertTrue(!expect.assault || phases.containsKey(AttackPhase.ASSAULT), "The attack never assaulted; see timeline.csv")
         helper.assertTrue(!expect.taken || taken, "The objective was not taken; see timeline.csv")
+        helper.assertTrue(!expect.secured || secured, "The attack never completed on the held objective; see summary.txt")
         expect.minAssaultTick?.let { min -> phases[AttackPhase.ASSAULT]?.let { helper.assertTrue(it >= min, "The assault started at tick $it, before $min; see timeline.csv") } }
         expect.minAttackersAlive?.let { min -> helper.assertTrue(attackers.count { it.isAlive } >= min, "Only ${attackers.count { it.isAlive }} attackers alive, fewer than $min; see summary.txt") }
         helper.succeed()
