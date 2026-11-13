@@ -16,6 +16,9 @@ interface TacticalPositionPolicy {
 
     /** How near a known enemy a post or route may come; an assault cuts it, never drops it (#88). */
     fun clearance(role: NpcClass): Double = CombatPositionSafety.clearance(role)
+
+    /** How much nearer an enemy inside the clearance this search may step: only a sentry, for cover (#265). */
+    fun coverStep(task: TacticalTask): Double = 0.0
 }
 
 object DefaultTacticalPositions : TacticalPositionPolicy

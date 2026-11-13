@@ -116,7 +116,10 @@ object TacticalPositions {
         val policy: TacticalPositionPolicy,
         val aim: TacticalAim?,
         val claimOwner: java.util.UUID?,
-    )
+    ) {
+        /** Men on a raised overwatch post stand closer than elsewhere, see [FiringSpots.HEIGHT_POST_SPACING]. */
+        fun spacing(point: Vec3) = FiringSpots.spacing(point.y, task.anchor.y.takeIf { overwatch })
+    }
 
     private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, clearance: Double): Vec3? {
         if (task.job !in TacticalJob.FIRE_SUPPORT) return null
@@ -235,7 +238,7 @@ object TacticalPositions {
             return
         }
         if (!context.policy.candidate(context.view, task, candidate, context.localAnchor)) return
-        if (!safeDistance(entity, context.view, candidate, context.policy.clearance(entity.npcClass))) {
+        if (!safeDistance(entity, context.view, candidate, context.policy.clearance(entity.npcClass), context.policy.coverStep(context.task))) {
             search.reject("close_enemy")
             return
         }
@@ -245,7 +248,7 @@ object TacticalPositions {
             return
         }
         val body = entity.getDimensions(entity.pose).makeBoundingBox(candidate)
-        if (!safeBody(entity, candidate, body, context.hulls, context.taken)) {
+        if (!safeBody(context, candidate, body)) {
             search.reject("occupied_or_hazard")
             return
         }
@@ -326,7 +329,7 @@ object TacticalPositions {
                 continue
             }
             val body = entity.getDimensions(entity.pose).makeBoundingBox(candidate)
-            if (!safeBody(entity, candidate, body, context.hulls, context.taken)) {
+            if (!safeBody(context, candidate, body)) {
                 search.routeValidation = null
                 search.reject("occupied_on_review")
                 search.rejectedRoutes += candidate
@@ -352,7 +355,7 @@ object TacticalPositions {
                 search.skipRejectedRoutes()
                 continue
             }
-            if (FiringPostArrival.reached(entity.position(), candidate) && safeDistance(entity, context.view, candidate, context.policy.clearance(entity.npcClass))) {
+            if (FiringPostArrival.reached(entity.position(), candidate) && safeDistance(entity, context.view, candidate, context.policy.clearance(entity.npcClass), context.policy.coverStep(context.task))) {
                 entity.navigation.stop()
                 task.navigationPath = null
                 FiringSpots.claim(entity.uuid, entity.position(), context.claimOwner)
@@ -447,7 +450,7 @@ object TacticalPositions {
             }
             if (!TickBudget.hasRaycasts(context.level)) break
             val body = context.entity.getDimensions(context.entity.pose).makeBoundingBox(point)
-            val valid = safeBody(context.entity, point, body, context.hulls, context.taken) &&
+            val valid = safeBody(context, point, body) &&
                 (!requiresFiringLane(context, point) || firingReady(context.entity, context.task, point)) &&
                 (!context.overwatch || protected(context.entity, context.task, point, context.hulls))
             if (valid) {
@@ -474,7 +477,7 @@ object TacticalPositions {
         }
 
     private fun safeRoute(context: SearchContext, path: Path): Boolean {
-        if (!safePath(context.entity, context.view, path, context.policy.clearance(context.entity.npcClass))) return false
+        if (!safePath(context.entity, context.view, path, context.policy.clearance(context.entity.npcClass), context.policy.coverStep(context.task))) return false
         return (path.nextNodeIndex until path.nodeCount).none { index ->
             val node = path.getNode(index)
             val foot = Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5)
@@ -483,10 +486,10 @@ object TacticalPositions {
         }
     }
 
-    fun safeDistance(entity: NpcEntity, view: TacticalSnapshot, point: Vec3, clearance: Double = CombatPositionSafety.clearance(entity.npcClass)): Boolean = TacticalClearance.permitsPosition(clearance, entity.position(), point, view)
+    fun safeDistance(entity: NpcEntity, view: TacticalSnapshot, point: Vec3, clearance: Double = CombatPositionSafety.clearance(entity.npcClass), step: Double = 0.0): Boolean = TacticalClearance.permitsPosition(clearance, entity.position(), point, view, step)
 
     /** Repaths and already-running paths must respect newly reported or approaching enemies too. */
-    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path, clearance: Double = CombatPositionSafety.clearance(entity.npcClass)): Boolean = TacticalClearance.permitsPath(clearance, entity.position(), path, view)
+    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path, clearance: Double = CombatPositionSafety.clearance(entity.npcClass), step: Double = 0.0): Boolean = TacticalClearance.permitsPath(clearance, entity.position(), path, view, step)
 
     internal fun reaches(path: Path?, candidate: Vec3): Boolean =
         path?.canReach() == true && path.endNode?.let {
@@ -553,9 +556,11 @@ object TacticalPositions {
         return level.getBlockState(deck).`is`(Blocks.SCAFFOLDING) && level.getBlockState(deck.below()).`is`(Blocks.SCAFFOLDING)
     }
 
-    private fun safeBody(entity: NpcEntity, point: Vec3, body: AABB, hulls: List<AABB>, taken: List<Vec3>): Boolean =
-        entity.level().getFluidState(BlockPos.containing(point)).isEmpty && entity.level().noCollision(entity, body) &&
-            hulls.none { it.intersects(body) } && !GrenadeHazard.threatens(entity.level() as ServerLevel, point) && !FiringSpots.crowded(point, taken)
+    private fun safeBody(context: SearchContext, point: Vec3, body: AABB): Boolean {
+        val level = context.level
+        return level.getFluidState(BlockPos.containing(point)).isEmpty && level.noCollision(context.entity, body) &&
+            context.hulls.none { it.intersects(body) } && !GrenadeHazard.threatens(level, point) && !FiringSpots.crowded(point, context.taken, context.spacing(point))
+    }
     private fun friendlyLane(entity: NpcEntity, eye: Vec3, targetEye: Vec3?): Boolean = targetEye == null || FriendlyFireGuard.assess(entity, SquadTactics.firingLaneEnd(entity, targetEye, eye), entity.spread, targetEye, 0.0, eye).lineClear
 
     /** Physical post suitability only; personal visibility must still authorize aimed fire at the weapon. */

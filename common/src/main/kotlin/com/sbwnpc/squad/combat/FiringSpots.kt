@@ -25,6 +25,19 @@ object FiringSpots {
     /** How far apart two shooters' chosen positions are kept. */
     const val MIN_SPACING = 3.0
 
+    /**
+     * The spacing between men on a height post. At [MIN_SPACING] a 5x5 lookout held one man to a
+     * side; up there two may share a parapet, and the tower is what they would otherwise lose.
+     */
+    const val HEIGHT_POST_SPACING = 2.0
+
+    /**
+     * The spacing for a man standing at feet height [y] whose overwatch post was searched round an
+     * anchor at [overwatchAnchorY] (null: no overwatch duty). One rule for the post search, the
+     * crowding fact and the held-spot check, so none of them moves a man the others placed.
+     */
+    fun spacing(y: Double, overwatchAnchorY: Double?): Double = if (overwatchAnchorY != null && y > overwatchAnchorY + 2.0) HEIGHT_POST_SPACING else MIN_SPACING
+
     private val owners = HashMap<UUID, UUID>()
     private val claims = HashMap<UUID, Vec3>()
 
@@ -80,9 +93,9 @@ object FiringSpots {
     }
 
     /** Whether [pos] is too close to something already claimed. */
-    fun crowded(pos: Vec3, taken: List<Vec3>): Boolean {
+    fun crowded(pos: Vec3, taken: List<Vec3>, spacing: Double = MIN_SPACING): Boolean {
         if (taken.isEmpty()) return false
-        val minSqr = MIN_SPACING * MIN_SPACING
+        val minSqr = spacing * spacing
         return taken.any { it.distanceToSqr(pos) < minSqr }
     }
 }

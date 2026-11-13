@@ -126,6 +126,15 @@ class ReconProgressTest {
         assertEquals(view, p.point(o, Point3(0.0, 64.0, 50.0)))
     }
 
+    @Test fun `its men round a spot on the ring put the centre outside it, and it still posts`() {
+        val p = ReconProgress(1)
+        p.update(95.0, 0)
+        val spot = Point3(0.0, 64.0, ReconProgress.POST_DISTANCE)
+        p.searched(spot, 0)
+        val centre = Point3(0.0, 64.0, ReconProgress.POST_DISTANCE + 1.5)
+        assertEquals(ReconStage.WATCH, p.update(ReconProgress.POST_DISTANCE + 1.5, 10, centre, sees = true))
+    }
+
     @Test fun `seeing the enemy on its way in it posts where it stands`() {
         val p = ReconProgress(1)
         p.update(95.0, 0)

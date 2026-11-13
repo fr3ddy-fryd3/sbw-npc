@@ -254,41 +254,6 @@ object MortarCrewGameTests {
         }
     }
 
-    /**
-     * An enemy at arm's length: the operator fights him off through his engage, his crew duty set
-     * aside (#258), and really shoots him.
-     */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "mortar-self-defence")
-    fun mortarmanDefendsHimselfAtArmsLength(helper: GameTestHelper) {
-        val scene = Scene.create(helper)
-        var enemy: NpcEntity? = null
-        var engaged = false
-        // Shots before the enemy came are not his defence.
-        val shotBefore = HashMap<NpcEntity, Int>()
-        cleanup(helper) {
-            scene.close()
-            enemy?.discard()
-        }
-        helper.onEachTick {
-            if (enemy == null && MortarClaims.activeCrew(scene.mortar) == 2) {
-                val operator = scene.crew.first { it.uuid == MortarClaims.operator(scene.mortar.uuid) }
-                enemy = AttackDeploymentGameTests.spawn(helper, helper.relativeVec(operator.position()).add(4.0, 0.0, 0.0), SquadFaction.COW).also { operator.target = it }
-                scene.crew.forEach { shotBefore[it] = it.lastShotTick }
-            }
-            val man = enemy?.let { foe -> scene.crew.firstOrNull { it.target === foe } } ?: return@onEachTick
-            val running = NativeTactics.reports(man).values.filter { it.status == ExecutionStatus.RUNNING }.map { it.ticket.identity }
-            if (running.any(Engage::isUnit)) {
-                helper.assertTrue(running.none { it.startsWith("crew:") }, "His crew duty still runs beside his engage: $running")
-                engaged = true
-            }
-            val foe = enemy!!
-            // He has to fight the man off, not hand him back to the tube once the engage starts.
-            val fought = man.lastShotTick > shotBefore.getValue(man) || foe.health < foe.maxHealth || !foe.isAlive
-            if (engaged && fought) helper.succeed()
-        }
-    }
-
     /** A squadless mortarman takes a free friendly tube in reach and serves it, through a crew plan of his own (#258). */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "mortar-squadless")
@@ -340,7 +305,7 @@ object MortarCrewGameTests {
     private const val SETTLE = 100L
     private const val HOLD = 300L
 
-    private class Scene(val helper: GameTestHelper, val mortar: Entity, val crew: MutableList<NpcEntity>) {
+    internal class Scene(val helper: GameTestHelper, val mortar: Entity, val crew: MutableList<NpcEntity>) {
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, crew.map { it.uuid })
         fun close() {
@@ -390,7 +355,7 @@ private fun report(name: String, content: String) {
 }
 
 /** Runs [action] when the test ends, passed or failed, so a scene's entities and claims never leak into the next. */
-private fun cleanup(helper: GameTestHelper, action: () -> Unit) {
+internal fun cleanup(helper: GameTestHelper, action: () -> Unit) {
     helper.testInfo.addListener(object : GameTestListener {
         override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
         override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = action()

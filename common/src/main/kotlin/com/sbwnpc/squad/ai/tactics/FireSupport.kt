@@ -137,6 +137,12 @@ object FireSupport {
     /** Nearer than this an enemy has him defend himself instead of serving the tube. */
     const val SELF_DEFENCE_RANGE = 6.0
 
+    /** How far an enemy he has had within [SELF_DEFENCE_RANGE] may step back and still keep him from the tube. */
+    const val SELF_DEFENCE_RELEASE = 10.0
+
+    /** How long, 10 s, he remembers an enemy at arm's length while it stays within [SELF_DEFENCE_RELEASE]. */
+    const val SELF_DEFENCE_MEMORY_TICKS = 200L
+
     /** The crew's methods, first wins. */
     enum class Plan { TAKE_TUBE, STAND_RESERVE, DISPLACE, RESUPPLY, FIRE_MISSION, STAND_BY }
 
