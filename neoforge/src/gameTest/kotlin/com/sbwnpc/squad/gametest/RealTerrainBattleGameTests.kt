@@ -51,9 +51,8 @@ import java.util.UUID
 object RealTerrainBattleGameTests {
     private val LOGGER = LogUtils.getLogger()
 
-    /** Thresholds a scenario may override under `expect`. */
     /**
-     * A scenario's thresholds. [minAssaultTick]: the assault starts no earlier (the pressure phase, #331);
+     * Thresholds a scenario may override under `expect`. [minAssaultTick]: the assault starts no earlier (the pressure phase, #331);
      * [minAttackersAlive]: the attack ends with at least this many men. Null leaves either unchecked.
      */
     private data class Expect(

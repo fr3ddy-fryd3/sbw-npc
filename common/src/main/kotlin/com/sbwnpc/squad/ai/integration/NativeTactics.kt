@@ -350,10 +350,12 @@ object NativeTactics {
     fun targetTaken(hunter: NpcEntity, target: LivingEntity) {
         if (target is NpcEntity && target.npcClass == NpcClass.SCOUT && SquadTeams.isHostile(hunter, target)) {
             reconSquadOf(target)?.let {
-                DebugFlags.log(
-                    LogGroup.SPOTTING, "[recon] scout={} taken by {} {} at {} scoutPose={} scoutMoving={} sees={}",
-                    target.uuid, hunter.npcClass, hunter.uuid, "%.1f".format(hunter.distanceTo(target)), target.pose, target.walkAnimation.isMoving, hunter.sensing.hasLineOfSight(target),
-                )
+                if (DebugFlags.on(LogGroup.SPOTTING)) {
+                    DebugFlags.log(
+                        LogGroup.SPOTTING, "[recon] scout={} taken by {} {} at {} scoutPose={} scoutMoving={} sees={}",
+                        target.uuid, hunter.npcClass, hunter.uuid, "%.1f".format(hunter.distanceTo(target)), target.pose, target.walkAnimation.isMoving, hunter.sensing.hasLineOfSight(target),
+                    )
+                }
                 world(target).recon.discover(it, "targeted", hunter.position())
             }
         }
@@ -934,7 +936,7 @@ object NativeTactics {
         private fun enemiesAt(saved: Squad, objective: Point3, now: Long): Set<UUID> = TeamAwareness.knownContacts(saved.faction, now).filterTo(HashSet()) { id -> level.getEntity(id)?.let { hypot(it.x - objective.x, it.z - objective.z) <= INTEL_RADIUS } == true }
 
         /** Whether [squad], a recon squad, holds its fire now ([ReconRules.holdsFire]). */
-        fun squadHoldsFire(squad: Squad): Boolean = ReconRules.holdsFire(company(squad), squad.order == SquadOrder.ATTACK && recon.sawEnemy(squad), recon.discovered(squad), recon.reported(squad), operations.committedTo(squad.id)?.id in assaulting)
+        fun squadHoldsFire(squad: Squad): Boolean = ReconRules.holdsFire(company(squad), squad.order == SquadOrder.ATTACK && recon.sawEnemy(squad), recon.discovered(squad), recon.reported(squad), operations.committedTo(squad.id)?.id?.let { it in assaulting || it in assaultBegun } == true)
 
         /**
          * A recon squad discovered since the last pass that does not fight leaves at once, as a RETREAT
