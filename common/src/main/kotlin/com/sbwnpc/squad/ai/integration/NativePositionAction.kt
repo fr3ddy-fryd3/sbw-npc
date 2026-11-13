@@ -91,6 +91,9 @@ internal class NativePositionAction(
     private var deferredAt: Long? = null
     private var lastProgress = 0L
     private var closest = Double.MAX_VALUE
+
+    // Where he stood when the search found the post: a post found at his own feet is no step on the way.
+    private var foundAt: Vec3? = null
     private var pendingStart = true
     private var released = false
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
@@ -169,6 +172,7 @@ internal class NativePositionAction(
 
                 TacticalPositions.Outcome.FOUND -> {
                     task.position = result.position
+                    foundAt = npc.position()
                     lastProgress = now
                     closest = Double.MAX_VALUE
                 }
@@ -182,7 +186,11 @@ internal class NativePositionAction(
             lastProgress = now
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
-            if (intent.duty.advancing && destination.distanceTo(task.anchor) > 4) {
+            // A post the search found at his own feet is no step on the way: nothing nearer the anchor is
+            // open, so he holds it. Dropped as a step passed, it was found again next tick, a thousand
+            // times in a night clearing on Hill 74.
+            val atFeet = foundAt?.let { destination.distanceTo(it) < PROGRESS } == true
+            if (intent.duty.advancing && destination.distanceTo(task.anchor) > 4 && !atFeet) {
                 // A leg of an advance by legs ends here: he fires from this post before the next rush.
                 // A post a few steps on is passed: a pause every two blocks crawled the attack.
                 if (intent.boundsByLegs && destination.distanceTo(legStart) >= MIN_LEG) {
