@@ -890,7 +890,17 @@ object NativeTactics {
         private fun intelHoldPoint(saved: Squad, centre: Point3): Point3? {
             intelHolds[saved.id]?.takeIf { it.first == saved.orderStamp }?.let { return it.second }
             val objective = saved.objective?.center?.point() ?: return null
-            return ReconProgress.shortOf(objective, centre, ReconProgress.STAGING_DISTANCE).also { intelHolds[saved.id] = saved.orderStamp to it }
+            // Behind its recon's staging line: by day the scouts' post lies past the fixed one (#332),
+            // and infantry holding there stood in front of them.
+            val manager = SquadManager.get(level)
+            val recons = operations.committedTo(saved.id)?.members?.keys.orEmpty().mapNotNull(manager::get).filter(manager::isReconSquad)
+            val progress = recons.mapNotNull { reconProgress[it.id]?.takeIf { p -> p.stamp == it.orderStamp } }
+            val line = progress.maxOfOrNull { it.stagingDistance } ?: ReconProgress.STAGING_DISTANCE
+            val point = ReconProgress.shortOf(objective, centre, line)
+            // Fixed only once the recon's line is: before it has its reach the line may still move out.
+            val settled = progress.size == recons.size && progress.none { it.reach == null && it.stage == ReconStage.STAGING }
+            if (settled) intelHolds[saved.id] = saved.orderStamp to point
+            return point
         }
 
         /** Whether [saved], attacking infantry, holds short of its firing line for its recon's reports under its current order. */
