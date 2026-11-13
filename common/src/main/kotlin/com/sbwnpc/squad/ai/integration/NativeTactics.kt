@@ -65,6 +65,14 @@ object NativeTactics {
     /** Seen enemies this close to an attacked area keep it from counting as held. */
     private const val AREA_THREAT_RADIUS = 128.0
 
+    /**
+     * Seen enemies this close to a taken area restart its hold count. Narrower than
+     * [AREA_THREAT_RADIUS]: a lone patrol seen 50 to 80 blocks off kept a taken hill from ever
+     * counting as held; the squads deal with it from their defence. Fire on the occupiers still
+     * restarts the count from any range.
+     */
+    private const val AREA_HOLD_RADIUS = 48.0
+
     /** Shooters this near the objective count as its defenders (#331): half again [AttackPhase.OBJECTIVE_RADIUS]. */
     private const val SHOOTER_RADIUS = AttackPhase.OBJECTIVE_RADIUS * 1.5
 
@@ -2054,7 +2062,7 @@ object NativeTactics {
             areaTasks[task.operation] = task
             val point = task.objective.native()
             val observers = squads.flatMap { saved -> saved.members.mapNotNull { level.getEntity(it) as? NpcEntity } }.filter { it.isAlive && it.vehicle == null }
-            val contacts = squads.flatMap { combatView(it.id)?.contacts.orEmpty() }.filter { now - it.seenAt <= 200 && it.position.distanceTo(point) <= AREA_THREAT_RADIUS }.distinctBy { it.id }
+            val contacts = squads.flatMap { combatView(it.id)?.contacts.orEmpty() }.filter { now - it.seenAt <= 200 && it.position.distanceTo(point) <= AREA_HOLD_RADIUS }.distinctBy { it.id }
             val remaining = unverified.getOrPut(task.operation, ::LinkedHashMap)
             val seen = unverifiedSeen.getOrPut(task.operation, ::HashMap)
             contacts.forEach {
