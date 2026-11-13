@@ -51,5 +51,57 @@
       "assault": false,
       "taken": false
     }
+  },
+  "hill-74-recon-mortars-day": {
+    "about": "Owner's world 13.11, by day: two squads of 16 patrol freely on Hill 74, ten blocks above an open plain. One operation attacks it: a squad of 16 from the plain, two recon teams from the flanks and two mortar crews in the rear, so the mortars work on what the scouts find.",
+    "world": "Hill 74 (13.11)",
+    "objective": [-588, 74, 18],
+    "ticks": 6000,
+    "dayTime": 1000,
+    "logGroups": ["SPOTTING", "FIRE_SUPPORT", "RETREAT"],
+    "attackers": [
+      { "preset": "SIXTEEN", "at": [-690, 18] },
+      { "preset": "RECON", "at": [-670, -50] },
+      { "preset": "RECON", "at": [-640, 120] },
+      { "preset": "MORTAR_CREW", "at": [-708, 5] },
+      { "preset": "MORTAR_CREW", "at": [-708, 35] }
+    ],
+    "defenders": [
+      { "preset": "SIXTEEN", "at": [-588, 18], "order": "PATROL" },
+      { "preset": "SIXTEEN", "at": [-576, 50], "order": "PATROL" }
+    ],
+    "expect": {
+      "note": "Observation run: 26 against 32, thresholds to be set from what the first runs show.",
+      "maxFriendlyShare": 1.0,
+      "maxChurnPerManMinute": 99.0,
+      "assault": false,
+      "taken": false
+    }
+  },
+  "hill-74-recon-mortars-night": {
+    "about": "Owner's world 13.11, at night: two squads of 16 patrol freely on Hill 74, ten blocks above an open plain. One operation attacks it: a squad of 16 from the plain, two recon teams from the flanks and two mortar crews in the rear, so the mortars work on what the scouts find.",
+    "world": "Hill 74 (13.11)",
+    "objective": [-588, 74, 18],
+    "ticks": 6000,
+    "dayTime": 14000,
+    "logGroups": ["SPOTTING", "FIRE_SUPPORT", "RETREAT"],
+    "attackers": [
+      { "preset": "SIXTEEN", "at": [-690, 18] },
+      { "preset": "RECON", "at": [-670, -50] },
+      { "preset": "RECON", "at": [-640, 120] },
+      { "preset": "MORTAR_CREW", "at": [-708, 5] },
+      { "preset": "MORTAR_CREW", "at": [-708, 35] }
+    ],
+    "defenders": [
+      { "preset": "SIXTEEN", "at": [-588, 18], "order": "PATROL" },
+      { "preset": "SIXTEEN", "at": [-576, 50], "order": "PATROL" }
+    ],
+    "expect": {
+      "note": "Observation run: 26 against 32, thresholds to be set from what the first runs show.",
+      "maxFriendlyShare": 1.0,
+      "maxChurnPerManMinute": 99.0,
+      "assault": false,
+      "taken": false
+    }
   }
 }

@@ -9,6 +9,7 @@ import com.sbwnpc.squad.ai.tactics.AttackPhase
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.npc.NpcClass
@@ -53,9 +54,20 @@ object RealTerrainBattleGameTests {
     /** Thresholds a scenario may override under `expect`. */
     private data class Expect(val maxFriendlyShare: Double, val maxChurnPerManMinute: Double, val assault: Boolean, val taken: Boolean)
 
-    private data class Group(val preset: SquadPreset, val x: Int, val z: Int, val afterTicks: Int)
+    /** A defender group with [patrol] holds its own ground on a PATROL without a route instead of defending the objective. */
+    private data class Group(val preset: SquadPreset, val x: Int, val z: Int, val afterTicks: Int, val patrol: Boolean)
 
-    private data class Scenario(val name: String, val world: String, val objective: BlockPos, val ticks: Int, val attackers: List<Group>, val defenders: List<Group>, val expect: Expect)
+    private data class Scenario(
+        val name: String,
+        val world: String,
+        val objective: BlockPos,
+        val ticks: Int,
+        val attackers: List<Group>,
+        val defenders: List<Group>,
+        val expect: Expect,
+        val dayTime: Long?,
+        val logGroups: Set<LogGroup>,
+    )
 
     @JvmStatic
     @GameTestGenerator
@@ -90,6 +102,8 @@ object RealTerrainBattleGameTests {
                     expect.get("assault")?.asBoolean ?: true,
                     expect.get("taken")?.asBoolean ?: true,
                 ),
+                json.get("dayTime")?.asLong,
+                json.getAsJsonArray("logGroups")?.map { LogGroup.valueOf(it.asString) }?.toSet().orEmpty(),
             )
         }
     }
@@ -98,7 +112,7 @@ object RealTerrainBattleGameTests {
         json.getAsJsonArray(key).map { entry ->
             val group = entry.asJsonObject
             val at = group.getAsJsonArray("at").map { it.asInt }
-            Group(SquadPreset.valueOf(group.get("preset").asString), at[0], at[1], group.get("afterTicks")?.asInt ?: 0)
+            Group(SquadPreset.valueOf(group.get("preset").asString), at[0], at[1], group.get("afterTicks")?.asInt ?: 0, group.get("order")?.asString == "PATROL")
         }
 
     private fun run(helper: GameTestHelper, scenario: Scenario) {
@@ -114,8 +128,11 @@ object RealTerrainBattleGameTests {
         level.getEntitiesOfClass(NpcEntity::class.java, area).forEach(Entity::discard)
         val manager = SquadManager.get(level)
         val previousGroups = DebugFlags.enabledGroups
-        DebugFlags.enabledGroups = previousGroups + setOf(LogGroup.ORDER, LogGroup.FIRE)
+        DebugFlags.enabledGroups = previousGroups + setOf(LogGroup.ORDER, LogGroup.FIRE) + scenario.logGroups
+        val previousTime = level.dayTime
+        scenario.dayTime?.let(level::setDayTime)
         val npcs = mutableListOf<NpcEntity>()
+        val tubes = mutableListOf<Entity>()
         val squads = mutableListOf<UUID>()
         val observer = FakePlayerFactory.get(level, GameProfile(UUID.nameUUIDFromBytes("battle-observer:${scenario.name}".toByteArray()), "battle-observer")).apply {
             gameMode.changeGameModeForPlayer(GameType.CREATIVE)
@@ -123,15 +140,20 @@ object RealTerrainBattleGameTests {
             setNoGravity(true)
             level.addNewPlayer(this)
         }
+        // Per-man record of where everyone went and what they did, to read the course of the fight.
+        val trace = CombatParticipationTrace(level, report.resolve("participation.csv"))
         var closed = false
         fun cleanup() {
             if (closed) return
             closed = true
+            trace.close()
             squads.forEach { manager.deleteSquad(level, it) }
             npcs.forEach(Entity::discard)
+            tubes.forEach(Entity::discard)
             level.removePlayerImmediately(observer, Entity.RemovalReason.DISCARDED)
             replay.close()
             DebugFlags.enabledGroups = previousGroups
+            level.setDayTime(previousTime)
         }
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
@@ -155,6 +177,14 @@ object RealTerrainBattleGameTests {
                 }
             }
             npcs += members
+            // A deployed mortar crew comes with its tube (SquadDeployment.spawnMortar); without one it fights as riflemen.
+            if (group.preset == SquadPreset.MORTAR_CREW) {
+                tubes += Ports.mortars.create(level, 0f).apply {
+                    moveTo(group.x + 0.5, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, group.x, group.z).toDouble(), group.z + 2.5, 0f, 0f)
+                    level.addFreshEntity(this)
+                    SquadTeams.assign(this, faction)
+                }
+            }
             // One commander per side: a group order refuses squads of different owners.
             val squad = manager.create(level, UUID.nameUUIDFromBytes("battle:$faction".toByteArray()), faction, members.map { it.uuid })
             squads += squad.id
@@ -162,7 +192,14 @@ object RealTerrainBattleGameTests {
         }
 
         val defence = scenario.defenders.map { deploy(it, SquadFaction.COW) }
-        defence.forEach { (id, _) -> manager.issueOrderAt(level, id, SquadOrder.DEFEND, scenario.objective) }
+        scenario.defenders.zip(defence).forEach { (group, squad) ->
+            if (group.patrol) {
+                val ground = BlockPos(group.x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, group.x, group.z), group.z)
+                manager.issueOrderAt(level, squad.first, SquadOrder.PATROL, ground)
+            } else {
+                manager.issueOrderAt(level, squad.first, SquadOrder.DEFEND, scenario.objective)
+            }
+        }
         val attack = mutableListOf<Pair<UUID, List<NpcEntity>>>()
         // Man-ticks under orders: a reinforcement fights for less of the battle than the first wave.
         var manTicks = 0L
@@ -185,6 +222,7 @@ object RealTerrainBattleGameTests {
         val closeness = Closeness()
         val spacing = PostSpacing()
         helper.onEachTick {
+            npcs.filter { (helper.tick + it.id) % 20L == 0L }.forEach { trace.sample(helper.tick, it) }
             if (helper.tick % 20L != 0L) return@onEachTick
             spacing.sample(attack.map { (_, men) -> men.filter { it.isAlive } })
             closeness.sample(attack.flatMap { it.second }.filter { it.isAlive }, defence.flatMap { it.second }.filter { it.isAlive })
