@@ -64,6 +64,9 @@ object NativeTactics {
     /** Seen enemies this close to an attacked area keep it from counting as held. */
     private const val AREA_THREAT_RADIUS = 128.0
 
+    /** Shooters this near the objective count as its defenders (#331): half again [AttackPhase.OBJECTIVE_RADIUS]. */
+    private const val SHOOTER_RADIUS = AttackPhase.OBJECTIVE_RADIUS * 1.5
+
     /** Roles whose long-range weapons fight from a height post, see [MemberDuties]. */
     private val HEIGHT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
 
@@ -331,6 +334,17 @@ object NativeTactics {
         if (npc.npcClass == NpcClass.SCOUT) reconSquadOf(npc)?.let { world(npc).recon.discover(it, "hit", npc.incomingFire.point(npc.level().gameTime)) }
     }
 
+    /**
+     * [npc] was hit by [shooter]: his squad's attack counts the shooter among the defenders it has
+     * identified (#331). The deliberate concession is the muzzle flash: the shooter is counted,
+     * never located or aimed at, which [com.sbwnpc.squad.combat.IncomingFire] keeps to a bearing.
+     */
+    fun shotBy(npc: NpcEntity, shooter: net.minecraft.world.entity.Entity?) {
+        // Only an attack reads them; other squads would only pile them up.
+        val squad = npc.currentSquad()?.takeIf { it.order == SquadOrder.ATTACK } ?: return
+        if (shooter is LivingEntity) world(npc).shooters.getOrPut(squad.id, ::HashSet) += shooter.uuid
+    }
+
     /** [hunter] took [target] as his target: a scout so taken has been seen, and a scout who takes one has seen an enemy (#194). */
     fun targetTaken(hunter: NpcEntity, target: LivingEntity) {
         if (target is NpcEntity && target.npcClass == NpcClass.SCOUT && SquadTeams.isHostile(hunter, target)) reconSquadOf(target)?.let { world(target).recon.discover(it, "targeted", hunter.position()) }
@@ -574,6 +588,9 @@ object NativeTactics {
         private val areaTraces = HashMap<UUID, String>()
         private val areaOccupied = HashMap<UUID, Boolean>()
         private val attacks = HashMap<UUID, AttackProgress>()
+
+        // Per squad, who has hit its men since its attack last looked; see [shotBy].
+        val shooters = HashMap<UUID, MutableSet<UUID>>()
         private val sectors = HashMap<UUID, ApproachSectors<SectorGroup>>()
 
         // Per operation, who of its men on the arc to a flank sector has stopped getting round it (#312).
@@ -2063,10 +2080,15 @@ object NativeTactics {
             val contacts = squads.flatMap { combatView(it.id)?.contacts.orEmpty() }.filter { now - it.seenAt <= 200 }.distinctBy { it.id }
             val members = squads.flatMap { snapshots[it.id]?.members.orEmpty() }
             val threats = contacts.filter { it.position.distanceTo(objective) <= AREA_THREAT_RADIUS }
+            // Only the shooters round the objective are its defenders, not a sniper on another hill.
+            val firedOn = squads.flatMap { shooters.remove(it.id).orEmpty() }.filterTo(HashSet()) { id ->
+                (level.getEntity(id) as? LivingEntity)?.let { it.isAlive && it.position().distanceTo(objective) <= SHOOTER_RADIUS } == true
+            }
             val defenders = progress.defenders(
                 now,
                 contacts.filter { it.position.distanceTo(objective) <= AttackPhase.OBJECTIVE_RADIUS }.associate { it.id to it.position.point() },
-            ) { id -> (level.getEntity(id) as? net.minecraft.world.entity.LivingEntity)?.isAlive == true }
+                firedOn,
+            ) { id -> (level.getEntity(id) as? LivingEntity)?.isAlive == true }
             val before = progress.phase
             val inputs = progress.observe(
                 now,
@@ -3239,6 +3261,7 @@ object NativeTactics {
             supportWaits.clear()
             coverStalls.clear()
             fireSupport.clear()
+            shooters.clear()
             air.clear()
             tanks.clear()
             drones.clear()
