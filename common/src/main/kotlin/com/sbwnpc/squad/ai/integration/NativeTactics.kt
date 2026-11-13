@@ -348,7 +348,15 @@ object NativeTactics {
 
     /** [hunter] took [target] as his target: a scout so taken has been seen, and a scout who takes one has seen an enemy (#194). */
     fun targetTaken(hunter: NpcEntity, target: LivingEntity) {
-        if (target is NpcEntity && target.npcClass == NpcClass.SCOUT && SquadTeams.isHostile(hunter, target)) reconSquadOf(target)?.let { world(target).recon.discover(it, "targeted", hunter.position()) }
+        if (target is NpcEntity && target.npcClass == NpcClass.SCOUT && SquadTeams.isHostile(hunter, target)) {
+            reconSquadOf(target)?.let {
+                DebugFlags.log(
+                    LogGroup.SPOTTING, "[recon] scout={} taken by {} {} at {} scoutPose={} scoutMoving={} sees={}",
+                    target.uuid, hunter.npcClass, hunter.uuid, "%.1f".format(hunter.distanceTo(target)), target.pose, target.walkAnimation.isMoving, hunter.sensing.hasLineOfSight(target),
+                )
+                world(target).recon.discover(it, "targeted", hunter.position())
+            }
+        }
         if (hunter.npcClass == NpcClass.SCOUT) reconSquadOf(hunter)?.let { world(hunter).recon.saw(it) }
     }
 
@@ -702,8 +710,15 @@ object NativeTactics {
         private val reconnoitring = HashSet<UUID>()
         private val stalking = HashSet<UUID>()
 
-        /** Whether [saved] is a recon squad on a hidden approach to the objective of its ATTACK (#194). */
-        private fun hiddenRecon(saved: Squad) = saved.order == SquadOrder.ATTACK && SquadManager.get(level).isReconSquad(saved) && squadHoldsFire(saved)
+        /**
+         * Whether [saved] is a recon squad on its approach to, or post at, the objective of its ATTACK (#194):
+         * hidden, or beside infantry in contact until the operation's assault ([ReconRules.keepsPost]).
+         */
+        private fun hiddenRecon(saved: Squad): Boolean {
+            if (saved.order != SquadOrder.ATTACK || !SquadManager.get(level).isReconSquad(saved)) return false
+            val assault = operations.committedTo(saved.id)?.id?.let { it in assaultBegun } == true
+            return ReconRules.keepsPost(company(saved), squadHoldsFire(saved), recon.discovered(saved), assault)
+        }
 
         /** [squad]'s recon stage, see [NativeTactics.reconStage]. */
         fun reconStageOf(squad: UUID): ReconStage? = reconProgress[squad]?.stage
@@ -713,8 +728,8 @@ object NativeTactics {
 
         /**
          * [saved]'s recon stage and the point its men make for, or null when it is no hidden recon
-         * squad under an ATTACK order. Discovered, or alone and having found its enemy, it fights instead
-         * (ReconRules.holdsFire).
+         * squad under an ATTACK order. Discovered, alone and having found its enemy, or its operation
+         * assaulting, it fights instead (ReconRules.keepsPost).
          */
         private fun reconStage(saved: Squad, centre: Point3, now: Long): Pair<ReconStage, Point3>? {
             val objective = saved.objective?.center?.point()
@@ -812,8 +827,12 @@ object NativeTactics {
         private val intelWaits = HashMap<UUID, IntelWait>()
         private val intelReleased = HashSet<UUID>()
 
-        // Operations whose infantry has gone into the assault: their recon leaves its post and fights.
+        // Operations whose infantry is in contact: their recon may fire, from its post.
         private val assaulting = HashSet<UUID>()
+
+        // Operations that have entered their ASSAULT phase: their recon leaves its post and joins the fight
+        // (owner 13.11). Latched, so a phase that falls back to DEPLOY does not restage the scouts.
+        private val assaultBegun = HashSet<UUID>()
 
         /**
          * The assault of [saved]'s operation begins (owner 08.11) once the wait for the report is over and
@@ -1842,6 +1861,7 @@ object NativeTactics {
                     areaTasks.remove(id.id)
                     intelReleased.remove(id.id)
                     assaulting.remove(id.id)
+                    assaultBegun.remove(id.id)
                     operations.forget(id.id)
                 }
                 commandCrews(now, desiredAgents)
@@ -2130,6 +2150,7 @@ object NativeTactics {
                 sectorsHeld = sectorsHeld[operation] != false,
                 preparing = operations.operation(operation)?.support?.keys.orEmpty().any(fireSupport.preparing),
             )
+            if (progress.phase != AttackPhase.DEPLOY) assaultBegun += operation
             if (progress.phase != before) {
                 DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
                 DecisionTrace.group(operation, level.gameTime, "operation", "attack_phase", "$before -> ${progress.phase}, $inputs")
@@ -3318,6 +3339,7 @@ object NativeTactics {
             intelWaits.clear()
             intelReleased.clear()
             assaulting.clear()
+            assaultBegun.clear()
             intelHolds.clear()
             intelAnnounced.clear()
             intelStrength.clear()
