@@ -9,7 +9,7 @@ and command your own AI-driven infantry, mortar, tank, drone, and helicopter squ
 ![Fabric](https://img.shields.io/badge/Fabric-1.21.1-lightgrey)
 ![Forge](https://img.shields.io/badge/Forge-1.20.1-red)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
-![Status](https://img.shields.io/badge/status-alpha-yellow)
+![Status](https://img.shields.io/badge/status-beta-blue)
 
 </div>
 
@@ -25,10 +25,10 @@ follow orders — Attack, Defend, Patrol, Move, Follow — from a quick-command 
 clicking. Supply points keep them equipped, boats carry them across water, and radio reports tell
 you when they make contact, lose men, need ammunition, or reach their objective.
 
-## Alpha
+## Beta
 
-1.0.0-alpha2 is the second release for all three loaders. It is an alpha: expect rough edges in the AI,
-and keep backups of worlds you care about. Bug reports are welcome on the [Issues](../../issues) page.
+1.0.0-beta1 is the first beta for all three loaders. The features for 1.0 are in; expect rough edges
+in the AI, and keep backups of worlds you care about. Bug reports are welcome on the [Issues](../../issues) page.
 
 ## Requirements
 
@@ -90,8 +90,11 @@ guaranteed response time.
 - **Joint operations** — several squads on one point attack it together, each from its own sector,
   and call off a beaten attack. A second group goes round the flank, takes the high ground or
   envelops, whichever suits the ground, and waits for the mortars to soften the objective first.
+  The infantry first builds a firing line and storms only once the defence it knows of is worn down;
+  an objective held for 30 s with no enemy near it turns the attack into its defence.
 - **Recon squads** — three fast scouts creep to an observation post short of the objective, report
-  what they see in chat and hold their fire. Attackers in the same operation wait for the report.
+  what they see in chat and hold their fire. The post is farther out by day and closer at night, and
+  they keep it until the assault. Attackers in the same operation wait for the report.
 - **Fire teams** — larger squads split into lasting teams, each with its machine gunner and
   assault man.
 - **Soldiers with a record** — each one has a persistent name and experience, and earns his rank.
@@ -99,7 +102,8 @@ guaranteed response time.
   cross water by boat. Amphibious vehicles travel between land and water.
 - **Drone operators** attack with kamikaze drones; other NPCs shoot down or take cover from them.
 - **Helicopters** — Mi-28 gunships and AH-6 transports with NPC pilots and gunners. Aircraft remain
-  visible out to 512 blocks. Surviving crew can take over if the pilot is killed.
+  visible out to 512 blocks. A gunship keeps its distance from the men it attacks. Helicopters are
+  harder to spot at night, and their rotor noise puts nearby enemies on guard. Surviving crew can take over if the pilot is killed.
 - **Logistics and reports** — Barracks replace losses, Supply replenishes equipment, and squads
   report contacts, casualties and ammunition shortages to their owner.
 
@@ -261,7 +265,9 @@ before it had logistics support may need to be broken and placed again.
   Passengers don't throw.
 - NPCs open wooden doors and ladder or scaffolding trapdoors, and climb ladders and scaffolding.
 - Mobs that hunt players hunt NPCs too, and NPCs fight back.
-- Mortar crews only shell what their own side has actually seen. Out of reach of the target, they
+- Off contact, squads march in a column of twos.
+- Mortar crews only shell what their own side has actually seen, and drop the tube to fight an enemy
+  that comes within a few blocks. Out of reach of the target, they
   break the mortar down, carry it closer and set it back up.
 - A killed NPC drops the weapon in its hands with a 3.75% chance (with only its loaded magazine), each
   piece of armour with a 1.25% chance, a box of ammunition for its gun with a 28.125% chance, and one of
