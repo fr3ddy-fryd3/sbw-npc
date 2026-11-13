@@ -99,7 +99,7 @@ object HeightMenGameTests {
     fun sniperAndGunnerInAnAttackTakeTheRiseByTheFront(helper: GameTestHelper) = heightMen(helper, "height-men-hill", Ground.HILL)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 900, batch = "height-men-flat")
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1200, batch = "height-men-flat")
     fun sniperAndGunnerOnFlatGroundKeepTheirPlacesInTheLine(helper: GameTestHelper) = heightMen(helper, "height-men-flat", Ground.FLAT)
 
     @JvmStatic

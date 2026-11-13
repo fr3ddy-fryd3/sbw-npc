@@ -82,6 +82,9 @@ enum class AttackPhase {
          *  showed its full size. */
         const val SILENT_TICKS = 300L
 
+        /** The firing line works this long (30 s) before a defence that never fired counts as silenced (owner 13.11, #331). */
+        const val UNAWARE_ENGAGE_TICKS = 600L
+
         /** Enemies this close to the objective count as holding it. */
         const val OBJECTIVE_RADIUS = 48.0
 
@@ -124,10 +127,11 @@ enum class AttackPhase {
         // A fresh force facing an untouched defence is not yet winning: the firing line first
         // has to thin it out or silence it. After a called-off assault silence no longer counts:
         // the defence that drove it back has shown its size and has to be thinned. A defence that has
-        // never fired is not silenced but unaware of the attack, at night above all (#331).
+        // never fired may be unaware of the attack, at night above all (#331): its silence counts only
+        // after [UNAWARE_ENGAGE_TICKS] of fire.
         private fun suppressed(inputs: Inputs) =
             inputs.ticksEngaged >= ENGAGE_TICKS &&
-                (thinned(inputs) || (!inputs.aborted && inputs.defenceFired && inputs.ticksSinceIncoming >= SILENT_TICKS))
+                (thinned(inputs) || (!inputs.aborted && inputs.ticksSinceIncoming >= SILENT_TICKS && (inputs.defenceFired || inputs.ticksEngaged >= UNAWARE_ENGAGE_TICKS)))
 
         // Thinned round the objective as well as at it: defenders stepping back past
         // [OBJECTIVE_RADIUS] halved the count at the point while all of them were still there.

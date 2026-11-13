@@ -30,7 +30,7 @@ import java.util.UUID
 object FlankSectorGameTests {
     /** The second squad's arc is refused once its men get no further round, and it attacks from its own side. */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1800, batch = "flank-sector-blocked")
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 2100, batch = "flank-sector-blocked")
     fun flankingSquadOffABlockedArcAttacksFromItsSide(helper: GameTestHelper) = blockedFlank(helper, recon = false)
 
     /**
@@ -38,7 +38,7 @@ object FlankSectorGameTests {
      * walks the arc. Found by the enemy, the recon squad joins the attack's sectors as any late group does.
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1800, batch = "flank-sector-recon")
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 2100, batch = "flank-sector-recon")
     fun infantryBesideAHiddenReconSquadAttacksHeadOn(helper: GameTestHelper) = blockedFlank(helper, recon = true)
 
     private fun blockedFlank(helper: GameTestHelper, recon: Boolean) {
@@ -137,5 +137,5 @@ object FlankSectorGameTests {
     /** The flank squad starts about 48 blocks out; closed in to its attack line it stands about 30 or nearer. */
     private const val CLOSED_IN = 32.0
     private const val CLOSEST = 4.0
-    private const val DEADLINE = 1700L
+    private const val DEADLINE = 2000L
 }

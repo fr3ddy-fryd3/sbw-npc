@@ -93,11 +93,12 @@ class AttackPhaseTest {
         assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(ready.copy(preparing = true, ticksSinceContact = AttackPhase.QUIET_TICKS)))
     }
 
-    @Test fun `a defence that never fired is unaware, not silenced`() {
-        // Night on Hill 74 (#331): 22 attackers, 6 defenders in sight, none had fired yet.
-        val unaware = inputs(ready = 22, enemies = 6, silent = 670, engaged = 670).copy(defenceFired = false)
+    @Test fun `a defence that never fired counts as silenced only after thirty seconds`() {
+        // 22 attackers, 6 defenders in sight, none had fired yet: silence counts after 30 s, not 20 (#331).
+        val unaware = inputs(ready = 22, enemies = 6, silent = 599, engaged = 599).copy(defenceFired = false)
         assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(unaware))
         assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(unaware.copy(defenceFired = true)))
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(unaware.copy(ticksEngaged = 600, ticksSinceIncoming = 600)))
         // Thinned by the mortars, the unaware defence is assaulted all the same.
         assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(unaware.copy(peakEnemiesAtObjective = 12)))
     }
