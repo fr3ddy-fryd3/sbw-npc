@@ -177,14 +177,7 @@ object RealTerrainBattleGameTests {
                 }
             }
             npcs += members
-            // A deployed mortar crew comes with its tube (SquadDeployment.spawnMortar); without one it fights as riflemen.
-            if (group.preset == SquadPreset.MORTAR_CREW) {
-                tubes += Ports.mortars.create(level, 0f).apply {
-                    moveTo(group.x + 0.5, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, group.x, group.z).toDouble(), group.z + 2.5, 0f, 0f)
-                    level.addFreshEntity(this)
-                    SquadTeams.assign(this, faction)
-                }
-            }
+            tubes += tubes(level, group, faction)
             // One commander per side: a group order refuses squads of different owners.
             val squad = manager.create(level, UUID.nameUUIDFromBytes("battle:$faction".toByteArray()), faction, members.map { it.uuid })
             squads += squad.id
@@ -192,14 +185,7 @@ object RealTerrainBattleGameTests {
         }
 
         val defence = scenario.defenders.map { deploy(it, SquadFaction.COW) }
-        scenario.defenders.zip(defence).forEach { (group, squad) ->
-            if (group.patrol) {
-                val ground = BlockPos(group.x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, group.x, group.z), group.z)
-                manager.issueOrderAt(level, squad.first, SquadOrder.PATROL, ground)
-            } else {
-                manager.issueOrderAt(level, squad.first, SquadOrder.DEFEND, scenario.objective)
-            }
-        }
+        scenario.defenders.zip(defence).forEach { (group, squad) -> holdGround(level, manager, squad.first, group, scenario.objective) }
         val attack = mutableListOf<Pair<UUID, List<NpcEntity>>>()
         // Man-ticks under orders: a reinforcement fights for less of the battle than the first wave.
         var manTicks = 0L
@@ -392,6 +378,28 @@ object RealTerrainBattleGameTests {
             }
         }
         return started
+    }
+
+    /** A deployed mortar crew comes with its tube (SquadDeployment.spawnMortar); without one it fights as riflemen. */
+    private fun tubes(level: net.minecraft.server.level.ServerLevel, group: Group, faction: SquadFaction): List<Entity> {
+        if (group.preset != SquadPreset.MORTAR_CREW) return emptyList()
+        return listOf(
+            Ports.mortars.create(level, 0f).apply {
+                moveTo(group.x + 0.5, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, group.x, group.z).toDouble(), group.z + 2.5, 0f, 0f)
+                level.addFreshEntity(this)
+                SquadTeams.assign(this, faction)
+            },
+        )
+    }
+
+    /** A defending [group]'s order: a free PATROL on its own ground, or DEFEND of the objective. */
+    private fun holdGround(level: net.minecraft.server.level.ServerLevel, manager: SquadManager, squad: UUID, group: Group, objective: BlockPos) {
+        if (group.patrol) {
+            val ground = BlockPos(group.x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, group.x, group.z), group.z)
+            manager.issueOrderAt(level, squad, SquadOrder.PATROL, ground)
+        } else {
+            manager.issueOrderAt(level, squad, SquadOrder.DEFEND, objective)
+        }
     }
 
     /** Copies the region files covering [radius] round [center] so the save itself is never opened for writing. */

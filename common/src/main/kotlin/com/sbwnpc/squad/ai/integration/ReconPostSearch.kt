@@ -34,15 +34,15 @@ internal object ReconPostSearch {
     private const val TARGET_HEIGHT = 1.5
 
     /**
-     * The best post between [ReconProgress.MIN_POST_DISTANCE] and [ring] blocks from [objective] on the
+     * The best post between the ends of [rings] (blocks from [objective], searched outer first) on the
      * side of [from]: the highest spot that sees it, the nearer of two at one height. Null when none does.
      */
-    fun find(level: Level, objective: Point3, from: Point3, ring: Double, walker: com.sbwnpc.squad.entity.NpcEntity?): Point3? {
+    fun find(level: Level, objective: Point3, from: Point3, rings: ClosedFloatingPointRange<Double>, walker: com.sbwnpc.squad.entity.NpcEntity?): Point3? {
         val bearing = atan2(from.z - objective.z, from.x - objective.x)
         val target = Vec3(objective.x, objective.y + TARGET_HEIGHT, objective.z)
         val seeing = ArrayList<BlockPos>()
-        var radius = ring
-        while (radius >= ReconProgress.MIN_POST_DISTANCE) {
+        var radius = rings.endInclusive
+        while (radius >= rings.start) {
             for (i in -ARC_STEPS..ARC_STEPS) {
                 val angle = bearing + ARC * i / ARC_STEPS
                 val column = BlockPos.containing(objective.x + cos(angle) * radius, objective.y, objective.z + sin(angle) * radius)

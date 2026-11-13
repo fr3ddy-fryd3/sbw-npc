@@ -725,6 +725,7 @@ object NativeTactics {
             }
             val progress = reconProgress[saved.id]?.takeIf { it.stamp == saved.orderStamp } ?: ReconProgress(saved.orderStamp).also { reconProgress[saved.id] = it }
             val before = progress.stage
+            reconReach(saved, progress, objective)?.let { progress.reach = it }
             val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now, centre, reconSees(saved, progress, objective, centre, now), recon.sawEnemy(saved))
             if (stage != before) {
                 DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=stage from={} to={}", saved.id, before, stage)
@@ -755,6 +756,23 @@ object NativeTactics {
         }
 
         /**
+         * The post distances for the light and weather at [objective] and the lowest rank of [saved]'s
+         * men (#332), while [progress] still stages and is not fitted; null until the objective's chunk
+         * is loaded, since an unloaded one reads as pitch dark. Not loaded by the time the stalk
+         * starts, the fixed distances stay.
+         */
+        private fun reconReach(saved: Squad, progress: ReconProgress, objective: Point3): com.sbwnpc.squad.combat.ReconReach? {
+            if (progress.reach != null || progress.stage != ReconStage.STAGING) return null
+            val at = net.minecraft.core.BlockPos.containing(objective.x, objective.y + 1, objective.z)
+            if (!level.hasChunkAt(at)) return null
+            val rank = saved.members.mapNotNull { (level.getEntity(it) as? NpcEntity)?.npcRank }.minByOrNull { it.ordinal } ?: return null
+            val light = level.getMaxLocalRawBrightness(at)
+            return com.sbwnpc.squad.combat.ReconReach.of(light, com.sbwnpc.squad.combat.Noticing.weatherAt(level, at), rank).also {
+                DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=reach light={} rank={} start={} floor={} step={}", saved.id, light, rank, it.start, it.floor, it.step)
+            }
+        }
+
+        /**
          * Where the recon squad of [view] stands, for its stage and posts: its men who can move. A
          * scout stranded on a ledge 120 blocks back held his squad at its staging point for the whole
          * attack, and the infantry waited on its reports (playtest 11.11). All stranded, all count.
@@ -773,7 +791,7 @@ object NativeTactics {
             if (progress.stage != ReconStage.STALK) return true
             val men = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }
             if (progress.spotRing != progress.postDistance) {
-                val found = ReconPostSearch.find(level, objective, centre, progress.postDistance, men.firstOrNull())
+                val found = ReconPostSearch.find(level, objective, centre, progress.minPostDistance..progress.postDistance, men.firstOrNull())
                 progress.searched(found, now)
                 DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_search ring={} from={} objective={} spot={}", saved.id, progress.postDistance, centre, objective, found)
             }

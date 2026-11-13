@@ -145,4 +145,28 @@ class ReconProgressTest {
         assertEquals(ReconStage.WATCH, progress.stage)
         assertEquals(0L, progress.postFrom)
     }
+
+    @Test fun `fitted to the conditions it stages beyond its first post and steps in to the floor`() {
+        val progress = ReconProgress(1)
+        progress.reach = com.sbwnpc.squad.combat.ReconReach(start = 128.0, floor = 102.0, step = 25.0)
+        assertEquals(ReconStage.STAGING, progress.update(160.0, 0))
+        assertEquals(144.0, progress.stagingDistance, 1e-9)
+        assertEquals(ReconStage.STALK, progress.update(150.0, 10))
+        assertEquals(ReconStage.WATCH, progress.update(126.0, 20, Point3(0.0, 64.0, 126.0)))
+        assertEquals(true, progress.closer())
+        assertEquals(103.0, progress.postDistance, 1e-9)
+        progress.update(103.0, 30, Point3(0.0, 64.0, 103.0))
+        assertEquals(true, progress.closer())
+        assertEquals(102.0, progress.postDistance, 1e-9)
+        progress.update(102.0, 40, Point3(0.0, 64.0, 102.0))
+        assertEquals(false, progress.closer())
+    }
+
+    @Test fun `it is fitted once and only while staging`() {
+        val progress = ReconProgress(1)
+        progress.update(85.0, 0)
+        progress.reach = com.sbwnpc.squad.combat.ReconReach(start = 128.0, floor = 102.0, step = 25.0)
+        assertEquals(ReconProgress.POST_DISTANCE, progress.postDistance, 1e-9)
+        assertEquals(null, progress.reach)
+    }
 }

@@ -67,6 +67,32 @@ class ReconProgress(val stamp: Int) {
     var postDistance = POST_DISTANCE
         private set
 
+    /** The nearest post it steps in to, see [closer]. */
+    var minPostDistance = MIN_POST_DISTANCE
+        private set
+
+    /** Where it gathers before the stalk: [STAGING_DISTANCE], or further out when its first post is. */
+    var stagingDistance = STAGING_DISTANCE
+        private set
+
+    private var postStep = POST_STEP
+
+    /**
+     * The post distances for the light, weather and rank at the objective (#332); until set, the
+     * fixed ones hold. Taken once and only while staging: a post that moved with the dusk would send
+     * it back and forth. The staging line moves out with the first post, so the stalk still starts
+     * short of it.
+     */
+    var reach: com.sbwnpc.squad.combat.ReconReach? = null
+        set(value) {
+            if (field != null || value == null || stage != ReconStage.STAGING) return
+            field = value
+            postDistance = value.start
+            minPostDistance = value.floor
+            postStep = value.step
+            stagingDistance = maxOf(STAGING_DISTANCE, value.start + STAGING_MARGIN)
+        }
+
     /**
      * The post it watches from: where it stood on arriving. Its men observe from here; an OBSERVE on
      * the objective itself walked them to within 10 blocks of it, onto the enemy.
@@ -104,7 +130,7 @@ class ReconProgress(val stamp: Int) {
      */
     fun update(distance: Double, now: Long, centre: Point3? = null, sees: Boolean = true, enemySeen: Boolean = false): ReconStage {
         stage = when (stage) {
-            ReconStage.STAGING -> if (distance <= STAGING_DISTANCE + ARRIVAL) ReconStage.STALK else ReconStage.STAGING
+            ReconStage.STAGING -> if (distance <= stagingDistance + ARRIVAL) ReconStage.STALK else ReconStage.STAGING
 
             ReconStage.STALK -> {
                 // A spot it cannot get to in time is given up: it posts at the ring as before.
@@ -142,12 +168,12 @@ class ReconProgress(val stamp: Int) {
     }
 
     /**
-     * Seeing nobody from its post (owner 08.11), it moves [POST_STEP] blocks nearer and watches again,
-     * down to [MIN_POST_DISTANCE]; false once there, and it reports what it has.
+     * Seeing nobody from its post (owner 08.11), it moves a step nearer ([POST_STEP] until its [reach] is set) and
+     * watches again, down to [minPostDistance]; false once there, and it reports what it has.
      */
     fun closer(): Boolean {
-        if (stage != ReconStage.WATCH || postDistance <= MIN_POST_DISTANCE) return false
-        postDistance = maxOf(MIN_POST_DISTANCE, postDistance - POST_STEP)
+        if (stage != ReconStage.WATCH || postDistance <= minPostDistance) return false
+        postDistance = maxOf(minPostDistance, postDistance - postStep)
         stage = ReconStage.STALK
         return true
     }
@@ -178,7 +204,7 @@ class ReconProgress(val stamp: Int) {
     /** Where the squad whose centre is at [centre] makes for in the current stage. */
     fun point(objective: Point3, centre: Point3): Point3 =
         when (stage) {
-            ReconStage.STAGING -> shortOf(objective, centre, STAGING_DISTANCE)
+            ReconStage.STAGING -> shortOf(objective, centre, stagingDistance)
 
             ReconStage.STALK -> spot?.takeIf { spotRing == postDistance } ?: shortOf(objective, centre, postDistance - ARRIVAL)
 
@@ -193,16 +219,19 @@ class ReconProgress(val stamp: Int) {
         /** The staging line (owner 26.10). */
         const val STAGING_DISTANCE = 90.0
 
+        /** A fitted staging line lies this far beyond the first post (#332). */
+        const val STAGING_MARGIN = 16.0
+
         /** Close enough to the staging line to count as on it. */
         const val ARRIVAL = 8.0
 
-        /** The stalk ends this far from the objective, where the observer's post search takes over. */
+        /** The stalk ends this far from the objective, where the observer's post search takes over, until its [reach] is set. */
         const val POST_DISTANCE = 72.0
 
         /** Each time it sees nobody from its post, the next one lies this much nearer (owner 08.11). */
         const val POST_STEP = 16.0
 
-        /** It never goes nearer than this: never onto the enemy. */
+        /** It never goes nearer than this: never onto the enemy; until its [reach] is set. */
         const val MIN_POST_DISTANCE = 40.0
 
         /** Seeing nobody, those waiting for the recon move after this many of its reports (owner 09.11). */
