@@ -2105,14 +2105,14 @@ object NativeTactics {
                     }
                 }
             }
-            val inspected = occupied && observers.any { it.position().distanceTo(point) <= 24 && Vision.inCone(it.position(), it.yHeadRot, point) && DetectionSightline.visible(level, it.eyePosition, point.add(0.0, 1.5, 0.0), it) } && remaining.isEmpty()
+            val sighted = occupied && observers.any { it.position().distanceTo(point) <= 24 && Vision.inCone(it.position(), it.yHeadRot, point) && DetectionSightline.visible(level, it.eyePosition, point.add(0.0, 1.5, 0.0), it) }
             val loaded = listOf(-24, 24).all { x -> listOf(-24, 24).all { z -> level.hasChunkAt(net.minecraft.core.BlockPos.containing(point.add(x.toDouble(), 0.0, z.toDouble()))) } }
             val fire = observers.any { it.incomingFire.recentPoint(now) != null || it.holds(NpcActivity.EVADE) }
             val clock = areaClocks.getOrPut(task.operation, ::AreaControlClock)
-            clock.observe(now, loaded, occupied, inspected, contacts.isNotEmpty() || discovered, fire)
+            clock.observe(now, occupied, sighted, loaded && remaining.isEmpty(), contacts.isNotEmpty() || discovered || fire)
             areaObservedAt[task.operation] = now
             if (DebugFlags.on(LogGroup.ORDER)) {
-                val inputs = "present=$present/$required inspected=$inspected unverified=${remaining.size} contacts=${contacts.size} discovered=$discovered fire=$fire loaded=$loaded counting=${clock.heldTicks > 0}"
+                val inputs = "present=$present/$required sighted=$sighted unverified=${remaining.size} contacts=${contacts.size} discovered=$discovered fire=$fire loaded=$loaded swept=${clock.swept} counting=${clock.heldTicks > 0}"
                 if (areaTraces.put(task.operation, inputs) != inputs) {
                     DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=area_clock {} heldTicks={} nearestContact={} unverifiedAt={}", task.operation, inputs, clock.heldTicks, contacts.minOfOrNull { it.position.distanceTo(point).toInt() }, remaining.values.take(3).map { net.minecraft.core.BlockPos.containing(it).toShortString() })
                 }
