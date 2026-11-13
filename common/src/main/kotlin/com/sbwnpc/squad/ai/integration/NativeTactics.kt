@@ -727,6 +727,7 @@ object NativeTactics {
             val progress = reconProgress[saved.id]?.takeIf { it.stamp == saved.orderStamp } ?: ReconProgress(saved.orderStamp).also { reconProgress[saved.id] = it }
             val before = progress.stage
             reconReach(saved, progress, objective)?.let { progress.reach = it }
+            progress.released = operations.committedTo(saved.id)?.id?.let { it in intelReleased } == true
             val stage = progress.update(hypot(centre.x - objective.x, centre.z - objective.z), now, centre, reconSees(saved, progress, objective, centre, now), recon.sawEnemy(saved))
             if (stage != before) {
                 DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=stage from={} to={}", saved.id, before, stage)
@@ -744,7 +745,6 @@ object NativeTactics {
                 if (total == 0 && progress.closer()) {
                     DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=closer post={}", saved.id, progress.postDistance)
                     SquadReports.movingCloser(level.server, saved, progress.postDistance.toInt())
-                    progress.noteCloser()
                 } else {
                     DebugFlags.log(LogGroup.ORDER, "[recon] squad={} event=post_update new={} total={}", saved.id, fresh, total)
                     SquadReports.postUpdate(level.server, saved, fresh, total)

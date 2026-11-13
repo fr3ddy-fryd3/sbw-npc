@@ -2,6 +2,7 @@ package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ReconProgressTest {
@@ -103,10 +104,13 @@ class ReconProgressTest {
 
     @Test fun `moving closer counts towards three reports but never settles the picture`() {
         val progress = ReconProgress(1)
+        progress.update(95.0, 0)
+        progress.update(70.0, 0, Point3(0.0, 64.0, 70.0))
         progress.noteReport(1, progress.record(setOf(java.util.UUID(1, 1))))
-        progress.noteCloser()
+        progress.closer()
         assertEquals(false, progress.reportsDone, "Moving closer after a sighting released the operation")
-        progress.noteCloser()
+        progress.update(progress.postDistance, 0, Point3(0.0, 64.0, progress.postDistance))
+        progress.closer()
         assertEquals(true, progress.reportsDone, "Three reports did not release the operation")
     }
 
@@ -168,5 +172,39 @@ class ReconProgressTest {
         progress.reach = com.sbwnpc.squad.combat.ReconReach(start = 128.0, floor = 102.0, step = 25.0)
         assertEquals(ReconProgress.POST_DISTANCE, progress.postDistance, 1e-9)
         assertEquals(null, progress.reach)
+    }
+
+    private fun fitted(): ReconProgress = ReconProgress(1).apply { reach = com.sbwnpc.squad.combat.ReconReach(start = 128.0, floor = 102.0, step = 25.0) }
+
+    @Test fun `inside its floor it backs off to between floor and ring before it posts, whatever it sees`() {
+        val o = Point3(0.0, 64.0, 0.0)
+        val p = fitted()
+        p.update(95.0, 0)
+        assertEquals(ReconStage.STALK, p.update(82.0, 10, Point3(0.0, 64.0, 82.0), sees = true, enemySeen = true))
+        assertEquals(true, p.backingOff)
+        assertEquals(Point3(0.0, 64.0, 115.0), p.point(o, Point3(0.0, 64.0, 82.0)))
+        // Past the threshold but short of the floor it keeps going.
+        assertEquals(ReconStage.STALK, p.update(97.0, 20, Point3(0.0, 64.0, 97.0)))
+        assertEquals(ReconStage.WATCH, p.update(103.0, 30, Point3(0.0, 64.0, 103.0)))
+    }
+
+    @Test fun `it does not back off once its operation goes in`() {
+        val p = fitted()
+        p.update(95.0, 0)
+        p.released = true
+        assertEquals(ReconStage.WATCH, p.update(82.0, 10, Point3(0.0, 64.0, 82.0)))
+    }
+
+    @Test fun `at its floor it never aims inside it`() {
+        val o = Point3(0.0, 64.0, 0.0)
+        val p = fitted()
+        p.update(140.0, 0)
+        p.update(126.0, 10, Point3(0.0, 64.0, 126.0))
+        while (p.closer()) {
+            val towards = p.point(o, Point3(0.0, 64.0, 140.0))
+            assertTrue(kotlin.math.hypot(towards.x, towards.z) >= 102.0 - 1e-9, "aimed inside the floor: $towards")
+            p.update(p.postDistance, 20, Point3(0.0, 64.0, p.postDistance))
+        }
+        assertEquals(102.0, p.postDistance, 1e-9)
     }
 }

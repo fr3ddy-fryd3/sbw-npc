@@ -59,11 +59,6 @@ class ReconProgress(val stamp: Int) {
         if (total > 0) foundEnemy = true
     }
 
-    /** It saw nobody and moves nearer: a report towards [REPORTS_AWAITED], never one that settles the picture. */
-    fun noteCloser() {
-        reports++
-    }
-
     /** How far short of the objective its post lies; nearer each time it sees nobody ([closer]). */
     var postDistance = POST_DISTANCE
         private set
@@ -124,6 +119,19 @@ class ReconProgress(val stamp: Int) {
     private var spotSince = 0L
 
     /**
+     * Whether its operation no longer waits for its report: then it does not back off out of its
+     * floor, there is no point once the infantry goes in. Set by the caller before [update].
+     */
+    var released = false
+
+    /**
+     * Whether it is backing off: stalking from inside [minPostDistance] (owner 13.11, #332), where the
+     * enemy notices a scout, it makes back out to its floor before it posts, whatever it sees on the way.
+     */
+    var backingOff = false
+        private set
+
+    /**
      * Advances the stage for a squad whose centre stands [distance] blocks from the objective at [now];
      * returns the stage. In the ring it takes its post only where it [sees] the objective: over broken
      * ground the ring alone let it settle blind, or walk on almost onto the enemy. Once [enemySeen], it
@@ -132,21 +140,24 @@ class ReconProgress(val stamp: Int) {
     fun update(distance: Double, now: Long, centre: Point3? = null, sees: Boolean = true, enemySeen: Boolean = false): ReconStage {
         stage = when (stage) {
             ReconStage.STAGING -> if (distance <= stagingDistance + ARRIVAL) ReconStage.STALK else ReconStage.STAGING
-
-            ReconStage.STALK -> {
-                // A spot it cannot get to in time is given up: it posts at the ring as before.
-                if (spot != null && now - spotSince > SPOT_TICKS) spot = null
-                // Seeing the enemy already, it has its view: it posts where it stands (owner 09.11, a
-                // sentry 63 blocks out kept every spot nearer the ring out of bounds and it stood blind).
-                val inView = distance <= postDistance && (sees || spot == null)
-                if (enemySeen || inView) arrive(now, centre) else ReconStage.STALK
-            }
-
+            ReconStage.STALK -> stalk(distance, now, centre, sees, enemySeen)
             ReconStage.WATCH -> if (now - (postFrom ?: now) >= WATCH_TICKS) ReconStage.REPORTED else ReconStage.WATCH
-
             ReconStage.REPORTED -> ReconStage.REPORTED
         }
         return stage
+    }
+
+    /** The stalk towards its post, see [update]. */
+    private fun stalk(distance: Double, now: Long, centre: Point3?, sees: Boolean, enemySeen: Boolean): ReconStage {
+        if (!released && distance < minPostDistance - ARRIVAL) backingOff = true
+        // Out to the floor itself, not just past the threshold, so it does not flip at the edge.
+        if (backingOff && (released || distance >= minPostDistance)) backingOff = false
+        // A spot it cannot get to in time is given up: it posts at the ring as before.
+        if (spot != null && now - spotSince > SPOT_TICKS) spot = null
+        // Seeing the enemy already, it has its view: it posts where it stands (owner 09.11, a
+        // sentry 63 blocks out kept every spot nearer the ring out of bounds and it stood blind).
+        val inView = distance <= postDistance && (sees || spot == null)
+        return if (!backingOff && (enemySeen || inView)) arrive(now, centre) else ReconStage.STALK
     }
 
     /** The report itself was sent at [now]: the next running update is a full interval later. */
@@ -176,6 +187,8 @@ class ReconProgress(val stamp: Int) {
         if (stage != ReconStage.WATCH || postDistance <= minPostDistance) return false
         postDistance = maxOf(minPostDistance, postDistance - postStep)
         stage = ReconStage.STALK
+        // Moving nearer is a report towards [REPORTS_AWAITED], never one that settles the picture.
+        reports++
         return true
     }
 
@@ -207,7 +220,13 @@ class ReconProgress(val stamp: Int) {
         when (stage) {
             ReconStage.STAGING -> shortOf(objective, centre, stagingDistance)
 
-            ReconStage.STALK -> spot?.takeIf { spotRing == postDistance } ?: shortOf(objective, centre, postDistance - ARRIVAL)
+            ReconStage.STALK ->
+                if (backingOff) {
+                    along(objective, centre, (minPostDistance + postDistance) / 2)
+                } else {
+                    // Never inside the floor: at the floor the ring's arrival margin would aim just past it.
+                    spot?.takeIf { spotRing == postDistance } ?: shortOf(objective, centre, maxOf(minPostDistance, postDistance - ARRIVAL))
+                }
 
             ReconStage.WATCH -> post ?: centre
 
