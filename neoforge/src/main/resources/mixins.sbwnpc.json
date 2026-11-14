@@ -20,7 +20,8 @@
     "AircraftSnapshotMixin",
     "VehicleExperienceMixin",
     "ExperienceHealingMixin",
-    "BulletImpactMixin"
+    "BulletImpactMixin",
+    "GameTestSpacingMixin"
   ],
   "client": [
     "KeyMappingMixin",

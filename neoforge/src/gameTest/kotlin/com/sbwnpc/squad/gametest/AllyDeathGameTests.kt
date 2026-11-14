@@ -10,6 +10,10 @@ import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
+import net.minecraft.gametest.framework.GameTestInfo
+import net.minecraft.gametest.framework.GameTestListener
+import net.minecraft.gametest.framework.GameTestRunner
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
@@ -46,6 +50,7 @@ object AllyDeathGameTests {
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
         val hit = men.first()
+        cleanUpOnEnd(helper, listOf(squad.id)) { men + far + shooter }
         helper.runAtTickTime(40) {
             helper.assertTrue(men.none { it.wary() }, "A man was wary before the shot")
             hit.hurt(ModDamageTypes.causeGunFireDamage(helper.level.registryAccess(), shooter, shooter), 2f)
@@ -54,8 +59,6 @@ object AllyDeathGameTests {
             helper.assertTrue(hit.isAlive && hit.wary(), "The man shot from out of sight did not grow wary")
             helper.assertTrue(men.drop(1).all { it.wary() }, "The men round him did not grow wary")
             helper.assertTrue(!far.wary(), "A man beyond the warning radius grew wary")
-            manager.deleteSquad(helper.level, squad.id)
-            (men + far + shooter).forEach { it.discard() }
             helper.succeed()
         }
     }
@@ -71,6 +74,7 @@ object AllyDeathGameTests {
         val far = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 32.5), SquadFaction.PIG)
         val shooter = AttackDeploymentGameTests.spawn(helper, Vec3(60.5, 1.0, 22.5), SquadFaction.COW).apply { isNoAi = true }
         val impact = helper.absoluteVec(Vec3(22.5, 1.0, 22.5))
+        cleanUpOnEnd(helper) { listOf(man, far, shooter) }
         helper.runAtTickTime(40) {
             helper.assertTrue(!man.wary() && !far.wary(), "A man was wary before the round")
             val start = helper.absoluteVec(Vec3(40.5, 6.0, 22.5))
@@ -85,7 +89,6 @@ object AllyDeathGameTests {
             val toward = man.waryToward()!!
             helper.assertTrue(toward.x > impact.x && toward.y > impact.y, "The man looked away from where the round came from: $toward")
             helper.assertTrue(!far.wary(), "A man ten blocks from the impact grew wary")
-            (listOf(man, far, shooter)).forEach { it.discard() }
             helper.succeed()
         }
     }
@@ -98,6 +101,7 @@ object AllyDeathGameTests {
         val man = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 22.5), SquadFaction.PIG)
         val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(40.5, 1.0, 22.5), SquadFaction.COW).apply { isNoAi = true }
         val lastSeen = helper.absoluteVec(Vec3(40.5, 1.0, 22.5))
+        cleanUpOnEnd(helper) { listOf(man, enemy) }
         helper.runAtTickTime(20) {
             man.target = enemy
             helper.assertTrue(!man.wary(), "The man was wary before the contact ended")
@@ -113,7 +117,6 @@ object AllyDeathGameTests {
             helper.assertTrue(man.wary(), "The man did not grow wary 30 seconds after the contact ended")
             val toward = man.waryToward()!!
             helper.assertTrue(toward.distanceTo(lastSeen) < 2.0, "The man is wary of $toward, not where the enemy was last seen")
-            man.discard()
             helper.succeed()
         }
     }
@@ -124,9 +127,11 @@ object AllyDeathGameTests {
     fun squadApproachingItsObjectiveIsWaryAndWalksUntilContact(helper: GameTestHelper) {
         for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         val manager = SquadManager.get(helper.level)
+        val squads = ArrayList<UUID>()
         fun squad(at: Vec3, order: SquadOrder, objective: BlockPos): NpcEntity {
             val man = AttackDeploymentGameTests.spawn(helper, at, SquadFaction.PIG)
             val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
+            squads += squad.id
             manager.setOrder(squad.id, order)
             manager.setObjective(helper.level, squad.id, helper.absolutePos(objective))
             return man
@@ -136,6 +141,7 @@ object AllyDeathGameTests {
         val distant = squad(Vec3(10.5, 1.0, 30.5), SquadOrder.ATTACK, BlockPos(10 + 150, 1, 30))
         val base = attacker.getAttributeValue(Attributes.MOVEMENT_SPEED)
         var enemy: NpcEntity? = null
+        cleanUpOnEnd(helper, squads) { listOfNotNull(attacker, mover, distant, enemy) }
         helper.runAtTickTime(60) {
             helper.assertTrue(attacker.wary() && mover.wary(), "A man within 100 blocks of his objective was not wary: attacker=${attacker.wary()} mover=${mover.wary()} squad=${attacker.currentSquad()?.order} obj=${attacker.currentSquad()?.objective} pos=${attacker.blockPosition()}")
             helper.assertTrue(!distant.wary(), "A man 150 blocks from his objective was wary")
@@ -147,7 +153,6 @@ object AllyDeathGameTests {
         helper.runAtTickTime(80) {
             helper.assertTrue(!attacker.wary(), "The man stayed wary after his first contact")
             helper.assertTrue(attacker.getAttributeValue(Attributes.MOVEMENT_SPEED) > base * 0.95, "The man kept walking after his first contact")
-            listOf(attacker, mover, distant, enemy!!).forEach { it.discard() }
             helper.succeed()
         }
     }
@@ -167,6 +172,7 @@ object AllyDeathGameTests {
         val allies = men.drop(1)
         val shots = allies.associateWith { it.lastShotTick }
         var enemy: NpcEntity? = null
+        cleanUpOnEnd(helper, listOf(squad.id)) { men + listOfNotNull(enemy) }
         helper.runAtTickTime(40) { men.first().kill() }
         helper.runAtTickTime(60) {
             helper.assertTrue(allies.all { it.wary() }, "The allies did not grow wary")
@@ -179,11 +185,7 @@ object AllyDeathGameTests {
         helper.onEachTick {
             val seen = enemy ?: return@onEachTick
             allies.forEach { com.sbwnpc.squad.combat.tactics.SquadTactics.observe(it, seen) }
-            if (allies.all { it.lastShotTick != shots.getValue(it) }) {
-                manager.deleteSquad(helper.level, squad.id)
-                (men + seen).forEach { it.discard() }
-                helper.succeed()
-            }
+            if (allies.all { it.lastShotTick != shots.getValue(it) }) helper.succeed()
         }
     }
 
@@ -199,6 +201,7 @@ object AllyDeathGameTests {
         val allies = men.drop(1)
         val start = allies.associateWith { it.position() }
         val startYaw = allies.associateWith { it.yHeadRot }
+        cleanUpOnEnd(helper, listOf(squad.id)) { men + shooter }
         val lines = ArrayList<String>()
         // Where he dies, not where he spawned: by tick 40 he may have stepped toward a post.
         var body = victim.position()
@@ -227,10 +230,30 @@ object AllyDeathGameTests {
             // A named killer's direction may send the squad's pair of scouts to look; nobody else goes.
             val moved = allies.count { it.target == null && it.position().distanceTo(start.getValue(it)) >= 4.0 }
             helper.assertTrue(moved <= if (killer) UnverifiedContacts.SCOUTS else 0, "A wary ally with nothing to fight wandered off: $moved moved")
-            manager.deleteSquad(helper.level, squad.id)
-            (men + shooter).forEach { it.discard() }
             helper.succeed()
         }
+    }
+
+    /**
+     * Deletes the scene's [squads] and discards its [entities] however the scene ends: passed,
+     * failed or set up again for a rerun (#272). Cleanup inline before `succeed` was skipped by an
+     * earlier failed assertion, and the leftover squad and men could reach the next scene.
+     */
+    private fun cleanUpOnEnd(helper: GameTestHelper, squads: List<UUID> = emptyList(), entities: () -> List<Entity>) {
+        var done = false
+        fun cleanup() {
+            if (done) return
+            done = true
+            val manager = SquadManager.get(helper.level)
+            squads.forEach { manager.deleteSquad(helper.level, it) }
+            entities().forEach(Entity::discard)
+        }
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+        })
     }
 
     /**
