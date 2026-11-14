@@ -11,6 +11,8 @@ import com.sbwnpc.squad.combat.tactics.TacticalTargetSelection.Opportunity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.SquadTargetSensor
 import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.squad.GroupOrders
+import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import io.netty.channel.embedded.EmbeddedChannel
@@ -158,9 +160,16 @@ object TargetMemoryGameTests {
         val npc = scene.spawn(Vec3(20.5, 1.0, 100.5)).apply { isNoAi = true }
         val blocked = scene.enemy(Vec3(100.5, 1.0, 100.5))
         val report = scene.enemy(Vec3(20.5, 1.0, 20.5))
-        val spotter = scene.spawn(Vec3(32.5, 1.0, 40.5)).apply { isNoAi = true }
+        // Within ReinforcementMarch.JOIN_RADIUS of the attacked point, so his squad counts as in the attack.
+        val spotter = scene.spawn(Vec3(44.5, 1.0, 52.5)).apply { isNoAi = true }
         val squad = scene.squad(listOf(npc), contact = blocked)
-        scene.squad(listOf(spotter), contact = report)
+        // The rule holds in a joint attack only (SquadTactics.coordinated): the spotter's squad, of
+        // the same owner, attacks the same point in one group order.
+        val manager = SquadManager.get(helper.level)
+        val spotting = manager.create(helper.level, squad.owner, SquadFaction.PIG, listOf(spotter.uuid))
+        scene.onClose = { manager.deleteSquad(helper.level, spotting.id) }
+        val joined = GroupOrders.apply(helper.level, manager, listOf(squad.id, spotting.id), SquadOrder.ATTACK, blocked.blockX, blocked.blockZ)
+        helper.assertTrue(joined.none { "cancelled" in it || "unchanged" in it }, "The joint attack was refused: $joined")
         for (y in 1..4) for (z in 90..110) helper.setBlock(BlockPos(50, y, z), Blocks.STONE)
         BrainUtils.setTargetOfEntity(npc, blocked)
         val sensor = SquadTargetSensor()
@@ -168,9 +177,13 @@ object TargetMemoryGameTests {
             npc.yHeadRot = -90f
             helper.assertTrue(DetectionSightline.canSee(spotter, report), "Allied report has no actual spotter sightline")
             TeamAwareness.report(SquadFaction.PIG, report.uuid, report.position(), helper.level.gameTime, spotter.uuid.toString())
+            // Both men have no AI, so nothing else runs the planner that forms the operation.
+            SquadTactics.refresh(npc)
+            SquadTactics.refresh(spotter)
             squad.tactics.snapshot = TacticalSnapshotCollector.collect(squad, helper.level, listOf(npc), npc)
             val personallyKnown = report.uuid in squad.tactics.contacts
             if (helper.tick >= 70) {
+                helper.assertTrue(SquadTactics.coordinated(npc), "The two squads are not one joint attack")
                 helper.assertTrue(FiringOpportunity.assess(npc, blocked) == Opportunity.BLOCKED, "Old target is not blocked")
                 helper.assertTrue(FiringOpportunity.assess(npc, report) == Opportunity.SHOOTABLE, "Allied report is not shootable: ${FiringOpportunity.assess(npc, report)}")
                 helper.assertTrue(report.uuid in TeamAwareness.relayedContacts(SquadFaction.PIG, helper.level.gameTime, TeamAwareness.MEMORY_TICKS), "Allied report is not relayed")
