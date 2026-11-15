@@ -26,7 +26,7 @@ side = "BOTH"
 [[dependencies.sbwnpc]]
 modId = "superbwarfare"
 mandatory = true
-versionRange = "[0.8.9,)"
+versionRange = "[0.8.9.2,)"
 ordering = "AFTER"
 side = "BOTH"
 

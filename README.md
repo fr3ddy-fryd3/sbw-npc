@@ -37,7 +37,7 @@ in the AI, and keep backups of worlds you care about. Bug reports are welcome on
 | Minecraft | 1.21.1 | 1.21.1 | 1.20.1 |
 | Loader | NeoForge 21.1.203 or newer | Fabric Loader 0.17.2 or newer | Forge 47 or newer |
 | Kotlin | Kotlin for Forge 5.8.0 or newer | Fabric Language Kotlin | Kotlin for Forge 4.11 |
-| SuperbWarfare | [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) 0.8.9.1 or newer | [SuperbWarfare ReFabricated](https://github.com/CrawKatt/SuperbWarfareReFabricated) 0.8.9 or newer | SuperbWarfare 0.8.9 or newer for 1.20.1 |
+| SuperbWarfare | [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) 0.8.9.1 or newer | [SuperbWarfare ReFabricated](https://github.com/CrawKatt/SuperbWarfareReFabricated) 0.8.9 or newer | SuperbWarfare 0.8.9.2 or newer for 1.20.1 |
 | SmartBrainLib | 1.16.11 or newer | 1.16.11 or newer | 1.15 or newer |
 
 Optional:
