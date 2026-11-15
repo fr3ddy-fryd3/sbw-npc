@@ -10,11 +10,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Preserve subclass interactions; override only the base vehicle's NPC-driver replacement. */
+/**
+ * SBW 0.8.9 ships `interact` under its Mojang name, 0.8.9.2 under its SRG name; the injection names both.
+ * Preserve subclass interactions; override only the base vehicle's NPC-driver replacement. */
 @Mixin(value = VehicleEntity.class, remap = false)
 public abstract class VehicleBoardingMixin {
     @Inject(
-        method = "m_6096_(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;)Lnet/minecraft/world/InteractionResult;",
+        method = {
+            "m_6096_(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;)Lnet/minecraft/world/InteractionResult;",
+            "interact(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;)Lnet/minecraft/world/InteractionResult;"
+        },
         at = @At("HEAD"),
         cancellable = true,
         remap = false

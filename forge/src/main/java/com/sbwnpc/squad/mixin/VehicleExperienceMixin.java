@@ -16,11 +16,11 @@ import java.util.ArrayDeque;
 @Mixin(value = VehicleEntity.class, remap = false)
 public abstract class VehicleExperienceMixin {
     @Unique private final ArrayDeque<Float> sbwnpc$health = new ArrayDeque<>();
-    @Inject(method = "m_6469_", at = @At("HEAD"))
+    @Inject(method = {"m_6469_", "hurt"}, at = @At("HEAD"))
     private void sbwnpc$before(DamageSource source, float amount, CallbackInfoReturnable<Boolean> ci) {
         sbwnpc$health.push(Ports.INSTANCE.getVehicles().healthFraction((Entity)(Object)this));
     }
-    @Inject(method = "m_6469_", at = @At("RETURN"))
+    @Inject(method = {"m_6469_", "hurt"}, at = @At("RETURN"))
     private void sbwnpc$after(DamageSource source, float amount, CallbackInfoReturnable<Boolean> ci) {
         ExperienceAwards.vehicleDamage((Entity)(Object)this, source, sbwnpc$health.pop());
     }
