@@ -35,6 +35,7 @@ object HtnTacticsGameTests {
 
     /** How long the light engine may take to light the enemy's spot after the lantern is set. */
     private const val LIGHT_SETTLE_TICKS = 100L
+    private const val LIGHT_STABLE_TICKS = 20
     private const val TICKS_PER_SECOND = 20.0
 
     /** How long the original attack is watched after a reinforcement leaves it, and how far it may sway back meanwhile. */
@@ -365,15 +366,21 @@ object HtnTacticsGameTests {
         var enemy: NpcEntity? = null
         var since = 0L
         var noticedAt: Long? = null
+        var litTicks = 0
         helper.onEachTick {
             shooter.yHeadRot = -90f
             if (enemy == null) {
                 // The light engine runs on its own thread, behind an unpaced server: the enemy
                 // steps out only once the lantern lights his spot, and spotting is timed from then.
+                // The first tick after the time of day changes still reads the old sky, which is
+                // as bright as the lantern; so the light must hold for a while, not be seen once.
                 val light = helper.level.getMaxLocalRawBrightness(at)
-                if (lantern && light < LANTERN_LIGHT) {
-                    helper.assertTrue(helper.tick < LIGHT_SETTLE_TICKS, "The lantern lights the enemy only to $light")
-                    return@onEachTick
+                if (lantern) {
+                    litTicks = if (light < LANTERN_LIGHT) 0 else litTicks + 1
+                    if (litTicks < LIGHT_STABLE_TICKS) {
+                        helper.assertTrue(helper.tick < LIGHT_SETTLE_TICKS, "The lantern lights the enemy only to $light")
+                        return@onEachTick
+                    }
                 }
                 enemy = scene.enemy(Vec3(20.5 + distance, 1.0, 60.5))
                 since = helper.tick
