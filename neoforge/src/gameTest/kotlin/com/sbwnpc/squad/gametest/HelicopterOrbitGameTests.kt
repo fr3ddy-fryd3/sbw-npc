@@ -238,6 +238,8 @@ object HelicopterOrbitGameTests {
         helper.onEachTick {
             scene.tick()
             helper.assertFalse(scene.airborne, "A pilot alone lifted off")
+            // Without this, a pilot who never boarded would pass as well.
+            if (helper.tick == 300L) helper.assertTrue(Ports.vehicles.seating(scene.heli).any { it === scene.crew.single() }, "The pilot never took his seat")
             if (helper.tick >= 600) {
                 scene.result("grounded through tick ${helper.tick}")
                 helper.succeed()
