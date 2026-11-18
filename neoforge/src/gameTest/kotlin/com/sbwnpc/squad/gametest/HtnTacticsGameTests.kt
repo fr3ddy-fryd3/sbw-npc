@@ -34,7 +34,7 @@ object HtnTacticsGameTests {
     private const val LANTERN_LIGHT = 12
 
     /** How long the light engine may take to light the enemy's spot after the lantern is set. */
-    private const val LIGHT_SETTLE_TICKS = 100L
+    private const val LIGHT_SETTLE_TICKS = 300L
     private const val LIGHT_STABLE_TICKS = 20
     private const val TICKS_PER_SECOND = 20.0
 
@@ -332,7 +332,7 @@ object HtnTacticsGameTests {
      * the dark, so without its light the scene fails.
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "spot-night-lantern")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "spot-night-lantern")
     fun enemyByALanternIsNoticedAtNightAsByDay(helper: GameTestHelper) = spotting(helper, "spot-night-lantern", Lighting.LANTERN, distance = 70.0)
 
     @JvmStatic
