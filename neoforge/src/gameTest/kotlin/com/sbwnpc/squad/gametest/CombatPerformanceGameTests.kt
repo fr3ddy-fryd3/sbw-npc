@@ -158,6 +158,9 @@ object CombatPerformanceGameTests {
             java.nio.file.Files.writeString(report, "${helper.tick},${members.count { it.isAlive }},$moved,${tally.line("%.1f".format(mspt))}\n", java.nio.file.StandardOpenOption.APPEND)
             if (helper.tick >= 1600) {
                 scene.result("MEASURED", "tick=${helper.tick} moved=$moved menFound=${tally.menFound} of ${members.size}")
+                // #301 left 306 of 307 men standing with their search deferred; a healthy queue got all 312 going.
+                helper.assertTrue(moved * 4 >= members.size * 3, "Only $moved of ${members.size} men moved")
+                helper.assertTrue(tally.menFound * 4 >= members.size * 3, "Only ${tally.menFound} of ${members.size} men found a post")
                 helper.succeed()
             }
         }

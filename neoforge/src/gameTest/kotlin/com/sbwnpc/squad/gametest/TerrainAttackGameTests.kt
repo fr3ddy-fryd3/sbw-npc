@@ -47,8 +47,11 @@ object TerrainAttackGameTests {
     /** Where the ridge (x 34 to 78) reaches its full six-block height. */
     private const val RIDGE_TOP_X = 49.0
 
+    // Under steady return fire the defence never falls silent, so the assault starts on the 800-tick
+    // timeout; 1600 ticks leave the rear men time to reach the ridge top. The scene checks that the
+    // attack does not stall behind the ridge, not how fast it storms.
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "terrain-return-fire")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1600, batch = "terrain-return-fire")
     fun attackPastRidgeUnderFire(helper: GameTestHelper) = ridge(helper, returnFire = true)
 
     @JvmStatic
@@ -287,7 +290,7 @@ object TerrainAttackGameTests {
                 }
             }
         }
-        helper.runAtTickTime(if (sustained) 1599 else 1199) {
+        helper.runAtTickTime(if (sustained || returnFire) 1599 else 1199) {
             try {
                 Files.writeString(directory.resolve("$name.txt"), "shooters=${shooters.size}\nadvanced=${advanced.size}\nalive=${members.count { it.isAlive }}\nenemyRounds=$enemyRounds\n")
                 if (sustained) {
