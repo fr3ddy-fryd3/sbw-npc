@@ -267,12 +267,9 @@ object AllyDeathGameTests {
             lines += sweeps.entries.joinToString("\n") { (ally, yaws) -> "sweep ${ally.uuid.toString().take(8)} yaws=$yaws" }
             val idle = allies.filter { it.target == null }
             helper.assertTrue(
-                idle.all { sweeping(sweeps.getValue(it)) },
+                idle.all { man -> sweeps.getValue(man).let { yaws -> yaws.any { kotlin.math.abs(net.minecraft.util.Mth.wrapDegrees(it - yaws.first())) > 5f } } },
                 "A wary ally with nothing to fight kept its eyes fixed instead of sweeping: $sweeps",
             )
         }
     }
-
-    /** Whether the head yaws sampled over time spread over more than a few degrees. */
-    private fun sweeping(yaws: List<Float>) = yaws.any { kotlin.math.abs(net.minecraft.util.Mth.wrapDegrees(it - yaws.first())) > 5f }
 }
