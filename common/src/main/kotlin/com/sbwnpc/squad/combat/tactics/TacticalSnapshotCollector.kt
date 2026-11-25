@@ -13,7 +13,6 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.RouteManager
 import com.sbwnpc.squad.squad.Squad
-import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
@@ -31,13 +30,12 @@ internal object TacticalSnapshotCollector {
         val knownFocus = state.contacts.values.filter { now - it.seenAt < VISIBLE_CONTACT_TICKS }.maxByOrNull { it.priority }?.position
         val terrain = TacticalTerrain.assess(level, npcs, knownFocus ?: reference.homeCenter(), knownFocus)
         val engaged = npcs.filter { it.target != null && it.npcClass != NpcClass.MEDIC && !it.busyWithRole() && !it.holds(NpcActivity.RESUPPLY) }
-        val home = reference.homeCenter()
         return TacticalSnapshot(
             now = now,
             order = squad.order,
             stamp = squad.orderStamp,
             center = center,
-            home = home,
+            home = reference.homeCenter(),
             members = members,
             contacts = state.contacts.values.toList(),
             incoming = npcs.mapNotNull { it.incomingFire.recentPoint(now) },
@@ -46,30 +44,9 @@ internal object TacticalSnapshotCollector {
             open = terrain.open,
             stalled = TacticalRules.stalled(engaged.count { hasBlockedShot(it) }, engaged.size),
             peakStrength = state.peakStrength,
-            reach = trackReach(state, squad, home, members),
             hasPatrolRoute = squad.routeId?.let { RouteManager.get(level).get(it)?.points?.isNotEmpty() } == true,
             closeContact = npcs.any { closeContact(it, visibleTargetIds) },
         )
-    }
-
-    /**
-     * A defender met short of his area fights from where the contact found him (#266), and his
-     * posts may lie no farther out than that, however far his planner's anchors or a stale
-     * snapshot reach (#336). Taken from the first snapshot of the contact and only ever lowered
-     * to where he has stood since, so the bound neither drifts outward nor creeps home.
-     */
-    private fun trackReach(state: SquadTacticalState, squad: Squad, home: Vec3?, members: List<TacticalMember>): Map<UUID, Double> {
-        val fresh = squad.order != SquadOrder.DEFEND || home == null || state.contacts.isEmpty()
-        val moved = state.reachStamp != squad.orderStamp || state.reachHome?.let { home != null && it.distanceTo(home) > REACH_HOME_SHIFT } == true
-        if (fresh || moved) {
-            state.reach.clear()
-            state.reachStamp = squad.orderStamp
-            state.reachHome = home
-        }
-        if (fresh || home == null) return emptyMap()
-        state.reach.keys.retainAll(members.mapTo(HashSet()) { it.id })
-        members.forEach { state.reach.merge(it.id, it.position.distanceTo(home), ::minOf) }
-        return state.reach.toMap()
     }
 
     private fun observeTargets(members: List<NpcEntity>): Set<UUID> {
@@ -137,9 +114,6 @@ internal object TacticalSnapshotCollector {
     const val CLOSE_CONTACT_RANGE = 64.0
 
     private const val CONTACT_MEMORY_TICKS = 200
-
-    /** A home moved farther than this is another home; the reach measured to the old one is dropped. */
-    private const val REACH_HOME_SHIFT = 4.0
     private const val VISIBLE_CONTACT_TICKS = 40
     private const val RECENT_FIRE_TICKS = 40
     private const val BLOCKED_SIGHT_TICKS = 80

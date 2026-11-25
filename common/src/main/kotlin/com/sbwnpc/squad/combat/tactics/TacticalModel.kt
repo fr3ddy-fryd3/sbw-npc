@@ -73,8 +73,6 @@ data class TacticalSnapshot(
     val open: Boolean = false,
     val stalled: Boolean = false,
     val peakStrength: Int = members.size,
-    /** Each defender's bound from home while a contact lasts, see [SquadTacticalState.reach]. */
-    val reach: Map<java.util.UUID, Double> = emptyMap(),
     val threatOrigin: Vec3? = null,
     val regrouping: Boolean? = null,
     val suppressionWithdrawal: Boolean = false,
