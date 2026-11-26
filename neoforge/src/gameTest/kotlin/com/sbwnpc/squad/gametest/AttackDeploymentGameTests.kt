@@ -99,7 +99,7 @@ object AttackDeploymentGameTests {
             if (approachedAt != null && rounds.size == rear.size) {
                 java.nio.file.Files.writeString(report.resolve("rear-contact-result.txt"), "reported=$reportedAt\napproached=$approachedAt\nallFired=${helper.tick}\nshooters=${rounds.size}/${rear.size}\n")
                 // The pace counts from the scouts' report: before it the rear has nothing to march to.
-                helper.assertTrue(approachedAt!! - reportedAt!! <= 700, "Rear took more than 35 seconds after the report to close a 140-block contact on open ground")
+                helper.assertTrue(approachedAt!! - reportedAt!! <= CLOSING_TICKS, "Rear took more than 45 seconds after the report to close a 140-block contact on open ground")
                 helper.succeed()
             }
         }
@@ -376,4 +376,11 @@ object AttackDeploymentGameTests {
             yHeadRot = -90.0f
         }
     }
+
+    /**
+     * Ticks from the scouts' report to the rear men standing within 80 blocks of a 140-block contact. Measured
+     * over five runs: 542 to 767, the men firing from their cover posts at about 108 blocks before they go on, so the
+     * old 700 sat on the median.
+     */
+    private const val CLOSING_TICKS = 900L
 }

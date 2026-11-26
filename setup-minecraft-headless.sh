@@ -16,6 +16,8 @@ Default: install missing tools, prepare dependencies, run three smoke GameTests.
   --parallel N        Split the selected scenes by batch into N servers, each in its
                       own worktree (.worktrees/headless-shard-K) on the committed HEAD;
                       needs --all, --group or --filter and a prepared checkout
+  --retries N         With --parallel: run the failed scenes again, together, up to N
+                      times; one that passes on a retry is FLAKY, not failed
   --offline           Use cached downloads and Gradle dependencies only
   --no-system-install Do not install missing base tools through apt-get
   -h, --help          Show this help
@@ -39,6 +41,7 @@ report="cloud-$(date -u +%Y%m%d-%H%M%S)"
 offline=false
 system_install=true
 parallel=
+retries=0
 while (($#)); do
     case "$1" in
         --prepare) mode=prepare; shift ;;
@@ -48,6 +51,7 @@ while (($#)); do
         --group) (($# >= 2)) || die '--group requires group names'; [[ $mode != filter ]] || die '--filter and --group are alternatives'; mode=group; group=$2; shift 2 ;;
         --report) (($# >= 2)) || die '--report requires a name'; report=$2; shift 2 ;;
         --parallel) (($# >= 2)) || die '--parallel requires a shard count'; parallel=$2; shift 2 ;;
+        --retries) (($# >= 2)) || die '--retries requires a count'; retries=$2; shift 2 ;;
         --offline) offline=true; shift ;;
         --no-system-install) system_install=false; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -60,7 +64,8 @@ done
 if [[ -n $parallel ]]; then
     [[ $parallel =~ ^[1-9][0-9]*$ ]] || die '--parallel needs a positive shard count'
     [[ $mode == all || $mode == group || $mode == filter ]] || die '--parallel needs --all, --group or --filter'
-    shard_args=(--shards "$parallel" --report "$report")
+    [[ $retries =~ ^[0-9]+$ ]] || die '--retries needs a number'
+    shard_args=(--shards "$parallel" --report "$report" --retries "$retries")
     [[ $mode == group ]] && shard_args+=(--group "$group")
     [[ $mode == filter ]] && shard_args+=(--filter "$filter")
     $offline && shard_args+=(--offline)

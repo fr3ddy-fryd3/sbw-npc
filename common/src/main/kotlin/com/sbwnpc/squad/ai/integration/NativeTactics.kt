@@ -195,12 +195,16 @@ object NativeTactics {
     }
 
     /**
-     * Whether [npc] is on foot and needs a root of his own (#189): squadless and off to a Supply or
-     * out of rounds, or under fire or in his hole with no other plan. He starts the planner himself:
-     * alone in a world, no squad's man would, and he stood where OutOfAmmoBehaviour and
-     * SeekCoverBehaviour used to move him.
+     * Whether [npc] is on foot and needs a root of his own (#189): a squadless medic, squadless and
+     * off to a Supply or out of rounds, or under fire or in his hole with no other plan. He starts
+     * the planner himself: alone in a world, no squad's man would, and he stood where
+     * OutOfAmmoBehaviour and SeekCoverBehaviour used to move him, or, a medic, beside a wounded man
+     * he never treated.
      */
-    fun needsOwnRoot(npc: NpcEntity) = npc.vehicle == null && npc.isAlive && ((npc.npcClass in GROUND && world(npc).supplies.needsLoneRoot(npc)) || answersFireAlone(npc))
+    fun needsOwnRoot(npc: NpcEntity) = npc.vehicle == null && npc.isAlive && (lonelyMedic(npc) || (npc.npcClass in GROUND && world(npc).supplies.needsLoneRoot(npc)) || answersFireAlone(npc))
+
+    /** A medic with no squad: his root treats the wounded round him ([World.commandLoneRoots]). */
+    private fun lonelyMedic(npc: NpcEntity) = npc.npcClass == NpcClass.MEDIC && npc.currentSquad() == null
 
     /** Under fire or in his hole: his root, whatever plan or none he had, answers it (#189). */
     private fun answersFireAlone(npc: NpcEntity) = npc.isSuppressed() || npc.holds(NpcActivity.DUG_IN)
