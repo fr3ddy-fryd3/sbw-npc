@@ -33,6 +33,7 @@ import net.minecraft.world.phys.Vec3
 object FriendlyFireGuard {
 
     private const val SIDESTEP_DISTANCE = 2.5
+    private const val SIDESTEP_MAX = 12.0
     private const val SIDESTEP_CHECK_RADIUS = 1.5
 
     /** Result of one combined [assess] pass — both answers from a single walk over the allies. */
@@ -136,16 +137,20 @@ object FriendlyFireGuard {
      *  less crowded with allies rather than a fixed left/right, so it doesn't reliably step
      *  straight into a second ally standing on the "wrong" side. Only meaningful for the firing-
      *  cone risk — repositioning the shooter doesn't change where an explosive round lands at the
-     *  target, so callers should not use this to try to "fix" a blocked blast-radius check. */
-    fun sidestepAwayFromAllies(shooter: NpcEntity, aimPoint: Vec3, canMoveTo: (Vec3) -> Boolean = { true }): Vec3? {
+     *  target, so callers should not use this to try to "fix" a blocked blast-radius check.
+     *  Each of [spentBatches] runs of sidesteps that left the lane blocked makes the next step one
+     *  [SIDESTEP_DISTANCE] longer, up to [SIDESTEP_MAX]: a row of allies wider than one step never
+     *  cleared (#341). */
+    fun sidestepAwayFromAllies(shooter: NpcEntity, aimPoint: Vec3, spentBatches: Int = 0, canMoveTo: (Vec3) -> Boolean = { true }): Vec3? {
         val dir = aimPoint.subtract(shooter.eyePosition)
         val flat = Vec3(dir.x, 0.0, dir.z)
         if (flat.lengthSqr() < 1.0e-6) return null
         val perp = Vec3(-flat.z, 0.0, flat.x).normalize()
 
         val from = shooter.position()
-        val optionA = from.add(perp.scale(SIDESTEP_DISTANCE))
-        val optionB = from.add(perp.scale(-SIDESTEP_DISTANCE))
+        val distance = minOf(SIDESTEP_DISTANCE * (1 + spentBatches), SIDESTEP_MAX)
+        val optionA = from.add(perp.scale(distance))
+        val optionB = from.add(perp.scale(-distance))
 
         fun crowding(p: Vec3): Int {
             var n = 0
