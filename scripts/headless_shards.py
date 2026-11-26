@@ -6,6 +6,10 @@ Called by `setup-minecraft-headless.sh --parallel N`. The scenes selected by --a
 batch run side by side in one server and may rely on it. Every shard runs the committed HEAD in
 `.worktrees/headless-shard-K`, so two servers never share `neoforge/build/gametest/server/`.
 The shard logs, reports and one summary with every failed scene land in the main checkout.
+
+With --retries N the scenes that failed run again, together, up to N more times in the first
+shard's worktree. A scene that passes on a retry is reported as FLAKY and does not fail the run;
+one that fails every time stays FAILED.
 """
 
 import argparse
@@ -132,6 +136,7 @@ def main() -> int:
     parser.add_argument("--group")
     parser.add_argument("--filter")
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--retries", type=int, default=0)
     args = parser.parse_args()
     if git("status", "--porcelain", "--untracked-files=no"):
         sys.exit("Shards run the committed HEAD: commit or stash the changes first")
@@ -166,7 +171,7 @@ def main() -> int:
         t.join()
 
     lower = {n.lower(): n for n in found}
-    summary, broken = [], False
+    summary, broken, red = [], False, []
     for index, tree, name, names, _ in runs:
         complete, failed = outcome(tree / "build/headless/logs" / f"{name}.log")
         log = tree / "build/headless/logs" / f"{name}.log"
@@ -178,15 +183,43 @@ def main() -> int:
         if not complete:
             broken = True
             summary.append(f"shard {index}: server did not finish (exit {codes[index]}); see {logs / (name + '.log')}")
-        for item in failed:
-            summary.append(f"FAILED {lower.get(item, item)} (shard {index})")
-    failures = sum(1 for line in summary if line.startswith("FAILED"))
+        red += [lower.get(item, item) for item in failed]
+
+    flaky = {}
+    tree = runs[0][1]
+    for attempt in range(1, args.retries + 1):
+        if not red:
+            break
+        name = f"{args.report}-retry{attempt}"
+        print(f"retry {attempt}: {len(red)} scenes {','.join(red)}")
+        command = ["bash", "setup-minecraft-headless.sh", "--filter", ",".join(red), "--report", name]
+        if args.offline:
+            command.append("--offline")
+        with open(logs / f"{name}.runner.log", "w") as out:
+            code = subprocess.run(command, cwd=tree, stdout=out, stderr=subprocess.STDOUT).returncode
+        log = tree / "build/headless/logs" / f"{name}.log"
+        complete, failed = outcome(log)
+        if log.exists():
+            shutil.copy2(log, logs / f"{name}.log")
+        if not complete:
+            broken = True
+            summary.append(f"retry {attempt}: server did not finish (exit {code}); see {logs / (name + '.log')}")
+            break
+        still = [lower.get(item, item) for item in failed]
+        for scene in red:
+            if scene not in still:
+                flaky[scene] = attempt
+        red = still
+    for scene, attempt in flaky.items():
+        summary.append(f"FLAKY {scene} (passed on retry {attempt})")
+    for scene in red:
+        summary.append(f"FAILED {scene}")
     verdict = "incomplete: " if broken else ""
-    summary.insert(0, f"{verdict}{len(found) - failures}/{len(found)} scenes passed in {len(runs)} shards at {head[:7]}")
+    summary.insert(0, f"{verdict}{len(found) - len(red)}/{len(found)} scenes passed, {len(flaky)} of them only on a retry, in {len(runs)} shards at {head[:7]}")
     (reports / "summary.txt").write_text("\n".join(summary) + "\n")
     print("\n".join(summary))
     print(f"Reports: {reports}")
-    return 1 if broken or len(summary) > 1 else 0
+    return 1 if broken or red else 0
 
 
 if __name__ == "__main__":

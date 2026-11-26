@@ -60,6 +60,7 @@ bash setup-minecraft-headless.sh --offline --report repeat
 | `--group GROUPS` | Run the GameTests of these domains, comma-separated (see below). An unknown name stops the run with `Unknown GameTest group` and the list of known ones. Not combined with `--filter` |
 | `--report NAME` | Report directory name (default `cloud-YYYYmmdd-HHMMSS`). ASCII letters, digits, `-` and `_` only; a repeated name overwrites the report, so give runs you want to compare different names |
 | `--parallel N` | Split the selected scenes (`--all`, `--group` or `--filter`) into N servers that run at once. See below |
+| `--retries N` | With `--parallel`: run the failed scenes again, together, up to N times in the first shard's worktree. A scene that passes on a retry is listed as `FLAKY` and does not fail the run; one that fails every time stays `FAILED` |
 | `--offline` | Use cached downloads and Gradle dependencies only |
 | `--no-system-install` | Don't install missing base tools through `apt-get` |
 
@@ -81,7 +82,8 @@ from `build/headless/`, so prepare the main checkout once before the first run.
 
 Shard logs go to `build/headless/logs/<report>-sK.log`. Reports go to
 `neoforge/build/reports/gameTest/<report>/shard-K/`, next to `summary.txt`, which lists every
-failed scene and every shard whose server did not finish. Each server takes about 4 GB for Gradle
+failed scene, every `FLAKY` one (red first, green on a retry) and every shard whose server did not
+finish. Each server takes about 4 GB for Gradle
 and as much again for the game, so three shards suit a 16-core machine with 27 GB.
 
 Domains for `--group`, to run what a change touches (a class may sit in several):
