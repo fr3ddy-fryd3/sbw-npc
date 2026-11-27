@@ -188,6 +188,25 @@ object PlannedEngageGameTests {
     }
 
     /**
+     * A row of mates wider than one sidestep stands across his line of fire (#341): stepping aside
+     * 2.5 blocks never clears it, so his plan has to take him to a lane of his own, and he fires.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "planned-engage-crowd")
+    fun rowOfMatesAcrossTheLaneMakesHimFindALineOfHisOwn(helper: GameTestHelper) {
+        val contact = Contact(helper, "planned-engage-crowd", 40.0)
+        val row = (-4..4).map { contact.scene.spawn(Vec3(26.5, 1.0, 100.5 + it * 1.6)).apply { isNoAi = true } }
+        helper.onEachTick {
+            contact.tick()
+            if (contact.man.lastShotTick >= 0) {
+                contact.scene.result("PASS", "choices=${contact.choices()} moved=${"%.1f".format(contact.man.position().distanceTo(contact.start))} row=${row.size}")
+                helper.succeed()
+            }
+            if (helper.tick % 100L == 0L) contact.scene.result("RUNNING", "tick=${helper.tick} choices=${contact.choices()} at=${contact.man.position()}")
+        }
+    }
+
+    /**
      * The fight ends in a march: his enemy falls back out of reach and the squad gets a MOVE
      * order. His engage gives way to the march, and the firing spot it held is free again.
      */

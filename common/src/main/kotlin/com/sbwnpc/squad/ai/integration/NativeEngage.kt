@@ -73,6 +73,9 @@ internal class EngageState(private val npc: NpcEntity) {
         private set
     var sidestepRestUntil = 0
 
+    /** Runs of sidesteps spent with the lane still blocked, so the next step is longer; reset when the lane clears. */
+    var sidestepBatches = 0
+
     /** Until when his last search for a spot clear of a hull stands, kept across units like [sidestepRestUntil]. */
     var researchRestUntil = 0
 
@@ -178,6 +181,7 @@ internal object EngageFacts {
         val seen = npc.fireObservation
         val squad = npc.currentSquad()
         val holding = CombatPosition.holdsPosition(squad?.order)
+        if (seen.allyBlockedChecks == 0) state.sidestepBatches = 0
         var result = facts.observe(TacticalFacts.IN_CONTACT, target != null && !SquadTransit.marching(npc))
             .observe(TacticalFacts.SIDEARM, npc.usingSidearm)
             .observe(TacticalFacts.HOLDING_ORDER, holding)
@@ -693,13 +697,14 @@ private class Sidestep(npc: NpcEntity, state: EngageState, sidearm: Boolean) : E
         if (pos != null && !npc.navigation.isDone && !FiringPostArrival.reached(npc.position(), pos)) return
         if (attempts >= MAX_ATTEMPTS) {
             state.sidestepRestUntil = clock + BATCH_REST
+            state.sidestepBatches++
             done("attempts_spent")
             return
         }
         nextTry = clock + COOLDOWN
         attempts++
         val bounds = state.bounds()
-        FriendlyFireGuard.sidestepAwayFromAllies(npc, target.eyePosition) { bounds.permits(it) && (!state.constrained || state.navigator.safePosition(npc, target, it)) }?.let {
+        FriendlyFireGuard.sidestepAwayFromAllies(npc, target.eyePosition, state.sidestepBatches) { bounds.permits(it) && (!state.constrained || state.navigator.safePosition(npc, target, it)) }?.let {
             val route = npc.navigation.path
             if (state.constrained && route != null && !state.navigator.safePath(npc, target, route)) {
                 npc.navigation.stop()

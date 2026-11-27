@@ -33,6 +33,7 @@ import net.minecraft.world.phys.Vec3
 object FriendlyFireGuard {
 
     private const val SIDESTEP_DISTANCE = 2.5
+    private const val SIDESTEP_MAX = 12.0
     private const val SIDESTEP_CHECK_RADIUS = 1.5
 
     /** Result of one combined [assess] pass — both answers from a single walk over the allies. */
@@ -131,22 +132,23 @@ object FriendlyFireGuard {
      *  still counts for the firing cone: a round stops on a creative player's body all the same. */
     private fun canBeHurt(ally: LivingEntity): Boolean = ally !is Player || (!ally.isCreative && !ally.isSpectator)
 
+    /** How far the step is after [spentBatches] runs of sidesteps that left the lane blocked: one plain step longer each, up to a cap (#341). */
+    internal fun sidestepDistance(spentBatches: Int) = minOf(SIDESTEP_DISTANCE * (1 + spentBatches), SIDESTEP_MAX)
+
     /** Steps [shooter] a short distance perpendicular to the shooter->[aimPoint] line, trying for
      *  an angle clear of whatever ally is currently in the way. Picks whichever side is currently
      *  less crowded with allies rather than a fixed left/right, so it doesn't reliably step
      *  straight into a second ally standing on the "wrong" side. Only meaningful for the firing-
      *  cone risk — repositioning the shooter doesn't change where an explosive round lands at the
-     *  target, so callers should not use this to try to "fix" a blocked blast-radius check. */
-    fun sidestepAwayFromAllies(shooter: NpcEntity, aimPoint: Vec3, canMoveTo: (Vec3) -> Boolean = { true }): Vec3? {
+     *  target, so callers should not use this to try to "fix" a blocked blast-radius check.
+     *  The step is [sidestepDistance] long: a row of allies wider than one plain step never cleared (#341). */
+    fun sidestepAwayFromAllies(shooter: NpcEntity, aimPoint: Vec3, spentBatches: Int = 0, canMoveTo: (Vec3) -> Boolean = { true }): Vec3? {
         val dir = aimPoint.subtract(shooter.eyePosition)
         val flat = Vec3(dir.x, 0.0, dir.z)
         if (flat.lengthSqr() < 1.0e-6) return null
         val perp = Vec3(-flat.z, 0.0, flat.x).normalize()
 
         val from = shooter.position()
-        val optionA = from.add(perp.scale(SIDESTEP_DISTANCE))
-        val optionB = from.add(perp.scale(-SIDESTEP_DISTANCE))
-
         fun crowding(p: Vec3): Int {
             var n = 0
             val r2 = SIDESTEP_CHECK_RADIUS * SIDESTEP_CHECK_RADIUS
@@ -154,7 +156,9 @@ object FriendlyFireGuard {
             return n
         }
 
-        val chosen = listOf(optionA, optionB).filter(canMoveTo).minByOrNull(::crowding) ?: return null
+        // A step the order's bounds forbid falls back to a shorter one, down to the plain step.
+        val chosen = generateSequence(sidestepDistance(spentBatches)) { it - SIDESTEP_DISTANCE }.takeWhile { it >= SIDESTEP_DISTANCE }
+            .firstNotNullOfOrNull { distance -> listOf(from.add(perp.scale(distance)), from.add(perp.scale(-distance))).filter(canMoveTo).minByOrNull(::crowding) } ?: return null
         return chosen.takeIf { shooter.navigation.moveTo(it.x, it.y, it.z, 1.0) }
     }
 }
