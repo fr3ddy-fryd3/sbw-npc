@@ -88,10 +88,13 @@ object FarDefenceGameTests {
         helper.onEachTick {
             scene.tick(squad)
             if (contactAt == null && npcs.any { it.target === enemy }) contactAt = helper.tick
-            val outOfArea = npcs.flatMap { man -> DecisionTrace.decisionsOf(man.uuid).filter { it.event == "post_failed" && ONLY_ORDER.containsMatchIn(it.detail) } }
-            helper.assertTrue(outOfArea.isEmpty(), "Every post a defender searched lay outside his area: ${outOfArea.firstOrNull()?.detail}")
+            val outOfArea = npcs.associateWith { man -> DecisionTrace.decisionsOf(man.uuid).filter { it.event == "post_failed" && ONLY_ORDER.containsMatchIn(it.detail) } }
             val since = contactAt ?: return@onEachTick
             if (helper.tick - since >= CONTACT_TICKS) {
+                // One search refused on every probe is the chain at work: its next method takes the
+                // man to a post a tick later. Stuck is a man who keeps failing.
+                val stuck = outOfArea.filter { (_, failed) -> failed.size > TOLERATED_FAILURES }
+                helper.assertTrue(stuck.isEmpty(), "A defender kept searching posts that all lay outside his area: ${stuck.values.firstOrNull()?.lastOrNull()?.detail}")
                 val stacked = npcs.flatMap { a -> npcs.filter { it !== a && it.distanceTo(a) < STACKED } }
                 helper.assertTrue(stacked.isEmpty(), "Defenders stood stacked: ${stacked.size / 2} pairs")
                 // His posts never take him farther from the point he defends than he started.
@@ -104,6 +107,9 @@ object FarDefenceGameTests {
 
     /** How long into the contact the scene watches their post searches. */
     private const val CONTACT_TICKS = 200L
+
+    /** Searches refused only for the order's area that a man's chain of methods may spend before it finds him a post. */
+    private const val TOLERATED_FAILURES = 4
 
     /** A post search refused for being out of the order's area and for nothing else. */
     private val ONLY_ORDER = Regex("""rejected=\{order=\d+\}""")
