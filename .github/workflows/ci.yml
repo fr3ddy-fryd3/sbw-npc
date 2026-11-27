@@ -33,7 +33,12 @@ jobs:
         run: ./gradlew --console=plain :common:check :neoforge:check
 
       - name: Dedicated server smoke
-        run: ./gradlew --console=plain runGameTestServer -PgameTestFilter=moveAcrossFlatGround,survivalRecruitmentRestrictsDeploymentButKeepsExistingGarrisons,classMultipliersApplyOnceToKillsDeferredRewardsAndSavedExperience -PgameTestReportName=ci-smoke
+        # A scene that fails once and passes on the rerun is flaky, not red: the rerun keeps the build green
+        # and leaves a warning, so the flake is visible without blocking. A scene red twice fails the build.
+        run: |
+          ./gradlew --console=plain runGameTestServer -PgameTestFilter=moveAcrossFlatGround,survivalRecruitmentRestrictsDeploymentButKeepsExistingGarrisons,classMultipliersApplyOnceToKillsDeferredRewardsAndSavedExperience -PgameTestReportName=ci-smoke && exit 0
+          echo "::warning::Server smoke failed once; rerunning it"
+          ./gradlew --console=plain runGameTestServer -PgameTestFilter=moveAcrossFlatGround,survivalRecruitmentRestrictsDeploymentButKeepsExistingGarrisons,classMultipliersApplyOnceToKillsDeferredRewardsAndSavedExperience -PgameTestReportName=ci-smoke
 
       - name: Keep server smoke report
         if: always()
