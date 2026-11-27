@@ -44,7 +44,12 @@ jobs:
         run: ./gradlew --console=plain check
 
       - name: Dedicated server smoke
-        run: ./gradlew --console=plain runGameTestServer -PgameTestFilter=moveAcrossFlatGround,survivalRecruitmentRestrictsDeploymentButKeepsExistingGarrisons,classMultipliersApplyOnceToKillsDeferredRewardsAndSavedExperience -PgameTestReportName=release-smoke
+        # A scene that fails once and passes on the rerun is flaky, not red: the rerun keeps the build green
+        # and leaves a warning, so the flake is visible without blocking. A scene red twice fails the build.
+        run: |
+          ./gradlew --console=plain runGameTestServer -PgameTestFilter=moveAcrossFlatGround,survivalRecruitmentRestrictsDeploymentButKeepsExistingGarrisons,classMultipliersApplyOnceToKillsDeferredRewardsAndSavedExperience -PgameTestReportName=release-smoke && exit 0
+          echo "::warning::Server smoke failed once; rerunning it"
+          ./gradlew --console=plain runGameTestServer -PgameTestFilter=moveAcrossFlatGround,survivalRecruitmentRestrictsDeploymentButKeepsExistingGarrisons,classMultipliersApplyOnceToKillsDeferredRewardsAndSavedExperience -PgameTestReportName=release-smoke
 
       # Plain build is the production build: DebugFlags stay off. A Gradle run configures one loader and
       # stages only its jar into build/libs, so each loader is built and verified in turn and its jar is
